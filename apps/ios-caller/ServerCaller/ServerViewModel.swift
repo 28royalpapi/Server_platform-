@@ -400,7 +400,7 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
     func makeDescription(offer: Bool) async throws -> [String: Any] {
         guard let peer else { throw ServerError.message("WebRTC not initialized.") }
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-        let description: RTCSessionDescription = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        let description: RTCSessionDescription = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<RTCSessionDescription, Error>) in
             let callback: (RTCSessionDescription?, Error?) -> Void = { sdp, error in
                 if let error { continuation.resume(throwing: error) }
                 else if let sdp { continuation.resume(returning: sdp) }
