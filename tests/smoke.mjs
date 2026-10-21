@@ -31,7 +31,7 @@ assert.match(calls,/GUEST_INVITE_RATE_LIMITED/);
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
-const configCode=config.replace(/\\/\\/.*$/gm,"");
+const configCode=config.split("\n").filter(line=>!line.trim().startsWith("//")).join("\n");
 assert.doesNotMatch(configCode,/service[_-]?role|sb_secret/i,"browser config contains no privileged key");
 assert.match(config,/hzuovekqsjtpvmbuybxs\.supabase\.co/);
 assert.match(app,/signInWithOtp/);
