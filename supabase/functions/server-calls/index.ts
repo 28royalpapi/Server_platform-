@@ -1,53 +1,126 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
-const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json"};
-const out=(x:unknown,s=200)=>new Response(JSON.stringify(x),{status:s,headers:cors});
+
+const cors = {"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
+const out=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:cors});
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
-const phone=(x:unknown)=>typeof x==="string"&&/^\+[1-9][0-9]{7,14}$/.test(x.trim())?x.trim():null;
-const rand=()=>Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
-function db(){const u=Deno.env.get("SUPABASE_URL")||"";let k=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";if(!k){try{const x=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}");k=x.default||Object.values(x)[0]||""}catch{}}if(!u||!k)throw 0;return createClient(u,k,{auth:{persistSession:false,autoRefreshToken:false}})}
-Deno.serve(async(req)=>{if(req.method==="OPTIONS")return new Response("ok",{headers:cors});if(req.method!=="POST")return out({error:"METHOD_NOT_ALLOWED"},405);let b:any;try{b=await req.json()}catch{return out({error:"INVALID_JSON"},400)}let d:any;try{d=db()}catch{return out({error:"SERVER_NOT_CONFIGURED"},500)}const bearer=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";if(!/^[0-9a-f]{64}$/.test(bearer))return out({error:"SESSION_REQUIRED"},401);const {data:s}=await d.from("server_sessions").select("id,user_id").eq("token_hash",await sha(bearer)).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();if(!s)return out({error:"SESSION_REQUIRED"},401);const {data:profile}=await d.from("server_profiles").select("user_id,phone_e164,phone_verified_at").eq("user_id",s.user_id).maybeSingle();if(!profile?.phone_verified_at)return out({error:"VERIFIED_PROFILE_REQUIRED"},401);await d.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",s.id);const action=String(b.action||"");
-if(action==="save_preferences"){
- const terms=typeof b.terms_version==="string"?b.terms_version.trim().slice(0,40):"";
- const privacy=typeof b.privacy_version==="string"?b.privacy_version.trim().slice(0,40):"";
- if(b.accepted!==true||!terms||!privacy)return out({error:"LEGAL_ACCEPTANCE_REQUIRED"},400);
- const {data:saved,error}=await d.from("server_profiles").update({
-  accepted_terms_version:terms,accepted_privacy_version:privacy,accepted_legal_at:new Date().toISOString(),
-  notifications_enabled:b.notifications_enabled!==false,contacts_access_requested:b.contacts_access_requested===true,
-  updated_at:new Date().toISOString()
- }).eq("user_id",s.user_id).select("user_id,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").maybeSingle();
- if(error||!saved)return out({error:"PREFERENCES_SAVE_FAILED"},503);
- return out({ok:true,profile:saved});
-}
-if(action==="incoming"){
- const {data:incoming,error}=await d.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",s.user_id).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
- if(error)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
- const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
- const {data:callers}=ids.length?await d.from("server_profiles").select("user_id,phone_e164").in("user_id",ids):{data:[]};
- const phones=new Map((callers||[]).map((x:any)=>[x.user_id,x.phone_e164]));
- return out({calls:(incoming||[]).map((x:any)=>({id:x.id,state:x.state,route:x.route,caller_phone_e164:phones.get(x.caller_user_id)||"Server caller",created_at:x.created_at,updated_at:x.updated_at}))});
-}
-if(action==="start"){const to=phone(b.to_phone||b.phone_e164);if(!to||to===profile.phone_e164)return out({error:"INVALID_DESTINATION"},400);const {data:callee}=await d.from("server_profiles").select("user_id").eq("phone_e164",to).maybeSingle();const route=callee?"server":"guest";const {data:call,error}=await d.from("server_calls").insert({caller_user_id:s.user_id,callee_user_id:callee?.user_id||null,callee_phone_e164:to,route,state:"ringing"}).select("id,state,route,created_at,callee_user_id").single();if(error||!call)return out({error:"CALL_CREATE_FAILED"},503);const ms=[{call_id:call.id,user_id:s.user_id,member_role:"caller"}];if(callee)ms.push({call_id:call.id,user_id:callee.user_id,member_role:"callee"});const {error:me}=await d.from("server_call_members").insert(ms);if(me){await d.from("server_calls").delete().eq("id",call.id);return out({error:"CALL_MEMBERSHIP_FAILED"},503)}if(route==="guest"){const {data:gw}=await d.from("server_gateway_devices").select("id").eq("enabled",true).gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();if(!gw){await d.from("server_calls").delete().eq("id",call.id);return out({error:"SMS_GATEWAY_OFFLINE"},503)}const raw=rand(),expires=new Date(Date.now()+20*60000).toISOString();const {data:inv,error:ie}=await d.from("server_guest_invites").insert({call_id:call.id,phone_e164:to,token_hash:await sha(raw),expires_at:expires}).select("id").single();if(ie||!inv){await d.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503)}const base=(Deno.env.get("SERVER_GUEST_BASE_URL")||"https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-web").replace(/\/$/,"");const link=base+"?token="+encodeURIComponent(raw);const {error:qe}=await d.from("server_sms_jobs").insert({category:"guest_invite",recipient_e164:to,body:"Server internet-call invitation. Open while online and allow microphone access: "+link,call_id:call.id,guest_invite_id:inv.id});if(qe)return out({error:"INVITE_SMS_QUEUE_FAILED"},503);return out({ok:true,call,guest_invite_url:link,invite_expires_at:expires,ice_servers:[{urls:"stun:stun.l.google.com:19302"}]})}return out({ok:true,call,ice_servers:[{urls:"stun:stun.l.google.com:19302"}]})}
-if(action==="poll"){const id=typeof b.call_id==="string"?b.call_id:"";if(id){const {data:m}=await d.from("server_call_members").select("call_id").eq("call_id",id).eq("user_id",s.user_id).maybeSingle();if(!m)return out({error:"CALL_ACCESS_DENIED"},403)}let q=d.from("server_calls").select("id,state,route,caller_user_id,callee_user_id,callee_phone_e164,created_at,updated_at").or("caller_user_id.eq."+s.user_id+",callee_user_id.eq."+s.user_id).order("created_at",{ascending:false}).limit(30);if(id)q=q.eq("id",id);const {data:calls,error}=await q;if(error)return out({error:"CALL_POLL_FAILED"},503);let signals:any[]=[];if(id){const after=Math.max(0,Number(b.after_seq)||0);const {data:sg,error:se}=await d.from("server_call_signals").select("seq,from_user_id,kind,payload,created_at").eq("call_id",id).gt("seq",after).order("seq",{ascending:true}).limit(100);if(se)return out({error:"SIGNAL_POLL_FAILED"},503);signals=(sg||[]).filter((x:any)=>x.from_user_id!==s.user_id)}return out({calls:calls||[],call:id?(calls||[]).find((x:any)=>x.id===id)||null:null,signals,next_after_seq:signals.length?signals[signals.length-1].seq:(Number(b.after_seq)||0)})}
-if(action==="signal"){const id=String(b.call_id||""),kind=String(b.kind||"");if(!id||!["offer","answer","ice","hangup","state"].includes(kind)||JSON.stringify(b.payload||{}).length>18000)return out({error:"INVALID_SIGNAL"},400);const {data:m}=await d.from("server_call_members").select("call_id").eq("call_id",id).eq("user_id",s.user_id).maybeSingle();if(!m)return out({error:"CALL_ACCESS_DENIED"},403);const {data:sg,error}=await d.from("server_call_signals").insert({call_id:id,from_user_id:s.user_id,kind,payload:b.payload||{}}).select("seq").single();if(error||!sg)return out({error:"SIGNAL_SAVE_FAILED"},503);if(kind==="hangup")await d.from("server_calls").update({state:"ended",ended_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",id);return out({ok:true,seq:sg.seq})}
-if(action==="accept"||action==="answer"||action==="hangup"){
- const id=String(b.call_id||"");if(!id)return out({error:"CALL_ID_REQUIRED"},400);
- const {data:m}=await d.from("server_call_members").select("member_role").eq("call_id",id).eq("user_id",s.user_id).maybeSingle();
- if(!m)return out({error:"CALL_ACCESS_DENIED"},403);
- const now=new Date().toISOString();
- if(action==="accept"||action==="answer"){
-  const {data:call}=await d.from("server_calls").select("id,state,callee_user_id").eq("id",id).maybeSingle();
-  if(!call||call.callee_user_id!==s.user_id||!["ringing","connecting"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
-  const {error}=await d.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",id);
-  if(error)return out({error:"CALL_STATE_UPDATE_FAILED"},503);
-  await d.from("server_call_members").update({joined_at:now}).eq("call_id",id).eq("user_id",s.user_id);
-  return out({ok:true,state:"connecting",ice_servers:[{urls:"stun:stun.l.google.com:19302"}]});
- }
- await d.from("server_call_signals").insert({call_id:id,from_user_id:s.user_id,kind:"hangup",payload:{}});
- const {error}=await d.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",id);
- if(error)return out({error:"CALL_STATE_UPDATE_FAILED"},503);
- await d.from("server_call_members").update({left_at:now}).eq("call_id",id).eq("user_id",s.user_id);
- return out({ok:true,state:"ended"});
-}
-if(action==="me"){return out({ok:true,profile})}
-return out({error:"UNKNOWN_ACTION"},400)});
+const phone=(v:unknown)=>typeof v==="string"&&/^\+[1-9][0-9]{7,14}$/.test(v.trim())?v.trim():null;
+const allowed=new Set(["offer","answer","ice","hangup","state"]);
+Deno.serve(async(req:Request)=>{
+ if(req.method==="OPTIONS") return new Response("ok",{headers:cors});
+ if(req.method!=="POST") return out({error:"METHOD_NOT_ALLOWED"},405);
+ let b:Record<string,unknown>; try{b=await req.json();if(!b||Array.isArray(b)||typeof b!=="object")throw 0;}catch{return out({error:"INVALID_JSON"},400);}
+ const url=Deno.env.get("SUPABASE_URL")||""; const key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();
+ if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
+ const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+ const auth=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+ if(!/^[0-9a-f]{64}$/.test(auth))return out({error:"SESSION_REQUIRED"},401);
+ const sessionHash=await sha(auth);
+ const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+ if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
+ const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,phone_e164,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
+ if(profileError||!profile||!profile.phone_verified_at)return out({error:"VERIFIED_PROFILE_REQUIRED"},401);
+ await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
+ const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
+ try{
+  if(action==="me"){
+   const {data,error}=await db.from("server_profiles").select("user_id,phone_e164,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
+   if(error)return out({error:"PROFILE_LOOKUP_FAILED"},503);
+   return out({profile:data||{user_id:uid,phone_e164:profile.phone_e164}});
+  }
+  if(action==="save_preferences"){
+   const terms=typeof b.terms_version==="string"?b.terms_version.slice(0,40):"",privacy=typeof b.privacy_version==="string"?b.privacy_version.slice(0,40):"";
+   if(!terms||!privacy||b.accepted!==true)return out({error:"LEGAL_ACCEPTANCE_REQUIRED"},400);
+   const patch={user_id:uid,phone_e164:phone(profile.phone_e164),accepted_terms_version:terms,accepted_privacy_version:privacy,accepted_legal_at:new Date().toISOString(),notifications_enabled:b.notifications_enabled!==false,contacts_access_requested:b.contacts_access_requested===true,updated_at:new Date().toISOString()};
+   const {data,error}=await db.from("server_profiles").upsert(patch,{onConflict:"user_id"}).select("user_id,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").single();
+   if(error||!data)return out({error:"PREFERENCES_SAVE_FAILED"},503); return out({ok:true,profile:data});
+  }
+  if(action==="start"){
+   const to=phone(b.to_phone),caller=phone(profile.phone_e164);
+   if(!to||!caller)return out({error:"VERIFIED_PHONE_REQUIRED"},400);
+   if(to===caller)return out({error:"CANNOT_CALL_SELF"},400);
+   const {data:callee}=await db.from("server_profiles").select("user_id,phone_e164").eq("phone_e164",to).maybeSingle();
+   const route=callee?"server":"guest";
+   const now=new Date().toISOString();
+   const {data:call,error:ce}=await db.from("server_calls").insert({caller_user_id:uid,callee_user_id:callee?.user_id||null,callee_phone_e164:to,route,state:"ringing",created_at:now,updated_at:now}).select("id,state,route,created_at,callee_phone_e164,callee_user_id").single();
+   if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
+   await db.from("server_call_members").upsert([{call_id:call.id,user_id:uid,member_role:"caller"},{...(callee?{call_id:call.id,user_id:callee.user_id,member_role:"callee"}:{})}].filter(x=>!!x.user_id),{onConflict:"call_id,user_id"});
+   if(route==="guest"){
+    const callerKey=await sha("guest-caller:"+uid),targetKey=await sha("guest-target:"+to);
+    const [callerLimit,targetLimit]=await Promise.all([db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_caller",p_key_hash:callerKey,p_window_seconds:3600,p_max_hits:10}),db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_target",p_key_hash:targetKey,p_window_seconds:3600,p_max_hits:5})]);
+    if(callerLimit.error||targetLimit.error||callerLimit.data!==true||targetLimit.data!==true){await db.from("server_calls").delete().eq("id",call.id);return out({error:"GUEST_INVITE_RATE_LIMITED"},429);}
+    const {data:gateway}=await db.from("server_gateway_devices").select("id").eq("enabled",true).gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();
+    if(!gateway){await db.from("server_calls").delete().eq("id",call.id);return out({error:"SMS_GATEWAY_OFFLINE"},503);}
+    const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
+    const tokenHash=await sha(token);const expires=new Date(Date.now()+20*60*1000).toISOString();
+    const {data:invite,error:ie}=await db.from("server_guest_invites").insert({call_id:call.id,phone_e164:to,token_hash:tokenHash,expires_at:expires}).select("id").single();
+    if(ie||!invite){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503);}
+    const guestUrl=(Deno.env.get("SERVER_GUEST_BASE_URL")||"https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-web").replace(/\/$/,"");
+    const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"?token="+encodeURIComponent(token)+" (expires in 20 minutes).";
+    const {error:qe}=await db.from("server_sms_jobs").insert({category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"});
+    if(qe){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_SMS_QUEUE_FAILED"},503);}
+    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call:{id:call.id,state:call.state,route,created_at:call.created_at},invite_expires_at:expires});
+   }
+   return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call});
+  }
+  if(action==="incoming"){
+   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
+   if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
+   const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
+   const {data:profiles}=ids.length?await db.from("server_profiles").select("user_id,phone_e164").in("user_id",ids):{data:[]};
+   const phones=new Map((profiles||[]).map((p:any)=>[p.user_id,p.phone_e164]));
+   return out({calls:(incoming||[]).map((c:any)=>({id:c.id,state:c.state,route:c.route,caller_phone_e164:phones.get(c.caller_user_id)||"Server caller",created_at:c.created_at,updated_at:c.updated_at}))});
+  }
+  if(action==="poll"){
+   const callId=typeof b.call_id==="string"?b.call_id:"";
+   if(callId){
+    const {data:member}=await db.from("server_call_members").select("call_id").eq("call_id",callId).eq("user_id",uid).maybeSingle();
+    if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
+   }
+   let q=db.from("server_calls").select("id,state,route,caller_user_id,callee_user_id,callee_phone_e164,created_at,updated_at").or("caller_user_id.eq."+uid+",callee_user_id.eq."+uid).order("created_at",{ascending:false}).limit(30);
+   if(callId)q=q.eq("id",callId);
+   const {data:calls,error}=await q;if(error)return out({error:"CALL_POLL_FAILED"},503);
+   let signals:unknown[]=[];
+   if(callId){
+    const after=Number.isSafeInteger(b.after_seq)&&Number(b.after_seq)>=0?Number(b.after_seq):0;
+    const {data:s,error:se}=await db.from("server_call_signals").select("seq,from_user_id,kind,payload,created_at").eq("call_id",callId).gt("seq",after).order("seq",{ascending:true}).limit(100);
+    if(se)return out({error:"SIGNAL_POLL_FAILED"},503);const rows=s||[];signals=rows.filter((x:any)=>x.from_user_id!==uid);
+   }
+   const rows=(signals as any[]);const call=callId?(calls||[]).find((x:any)=>x.id===callId)||null:null;
+   const {data:allSignals}=callId?await db.from("server_call_signals").select("seq").eq("call_id",callId).gt("seq",Number(b.after_seq)||0).order("seq",{ascending:true}).limit(100):{data:[]};
+   return out({calls:calls||[],call,signals,next_after_seq:allSignals?.length?allSignals[allSignals.length-1].seq:(Number(b.after_seq)||0)});
+  }
+  if(action==="answer"||action==="accept"||action==="hangup"||action==="end"||action==="set_active"){
+   const callId=typeof b.call_id==="string"?b.call_id:"";if(!callId)return out({error:"CALL_ID_REQUIRED"},400);
+   const {data:member}=await db.from("server_call_members").select("member_role").eq("call_id",callId).eq("user_id",uid).maybeSingle();
+   if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
+   const now=new Date().toISOString();
+   if(action==="answer"||action==="accept"){
+    const {data:call}=await db.from("server_calls").select("id,state,callee_user_id").eq("id",callId).maybeSingle();
+    if(!call||call.callee_user_id!==uid||!["ringing","connecting"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
+    await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",callId);
+    await db.from("server_call_members").update({joined_at:now}).eq("call_id",callId).eq("user_id",uid);
+    return out({ok:true,state:"connecting",ice_servers:[{urls:"stun:stun.l.google.com:19302"}]});
+   }
+   if(action==="set_active"){
+    const {error}=await db.from("server_calls").update({state:"active",updated_at:now}).eq("id",callId).in("state",["ringing","connecting"]);
+    if(error)return out({error:"CALL_STATE_UPDATE_FAILED"},503);return out({ok:true,state:"active"});
+   }
+   await db.from("server_call_signals").insert({call_id:callId,from_user_id:uid,kind:"hangup",payload:{}});
+   const {error}=await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",callId);
+   if(error)return out({error:"CALL_END_FAILED"},503);
+   await db.from("server_call_members").update({left_at:now}).eq("call_id",callId).eq("user_id",uid);return out({ok:true,state:"ended"});
+  }
+  if(action==="signal"){
+   const callId=typeof b.call_id==="string"?b.call_id:"",kind=typeof b.kind==="string"?b.kind:"",payload=b.payload&&typeof b.payload==="object"&&!Array.isArray(b.payload)?b.payload:{};
+   if(!callId||!allowed.has(kind)||JSON.stringify(payload).length>18000)return out({error:"INVALID_SIGNAL"},400);
+   const {data:member}=await db.from("server_call_members").select("call_id").eq("call_id",callId).eq("user_id",uid).maybeSingle();
+   if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
+   const {data:signal,error}=await db.from("server_call_signals").insert({call_id:callId,from_user_id:uid,kind,payload}).select("seq,created_at").single();
+   if(error||!signal)return out({error:"SIGNAL_SAVE_FAILED"},503);
+   if(kind==="hangup"){const now=new Date().toISOString();await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",callId);}
+   return out({ok:true,seq:signal.seq,created_at:signal.created_at});
+  }
+  if(action==="ice_servers")return out({ice_servers:[{urls:"stun:stun.l.google.com:19302"}]});
+  return out({error:"UNKNOWN_ACTION"},400);
+ }catch{return out({error:"SERVER_CALLS_INTERNAL_ERROR"},500);}
+});
