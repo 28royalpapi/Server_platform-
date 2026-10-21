@@ -66,8 +66,8 @@ class ServerConnectionService : ConnectionService() {
   override fun onCreateOutgoingConnection(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest): Connection {
     val phone = request.address?.schemeSpecificPart.orEmpty()
     val connection = ServerTelecomConnection(this).apply {
-      setAddress(request.address, Connection.PRESENTATION_ALLOWED)
-      setCallerDisplayName("Server internet call", Connection.PRESENTATION_ALLOWED)
+      setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
+      setCallerDisplayName("Server internet call", TelecomManager.PRESENTATION_ALLOWED)
       setAudioModeIsVoip(true)
       setExtras(Bundle().apply { putString("server_remote_phone", phone) })
       setDialing()
@@ -84,8 +84,8 @@ class ServerConnectionService : ConnectionService() {
     val phone = extras.getString("server_remote_phone") ?: request.address?.schemeSpecificPart.orEmpty()
     val callId = extras.getString("server_call_id").orEmpty()
     return ServerTelecomConnection(this).apply {
-      setAddress(request.address, Connection.PRESENTATION_ALLOWED)
-      setCallerDisplayName(if (phone.isBlank()) "Server caller" else phone, Connection.PRESENTATION_ALLOWED)
+      setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
+      setCallerDisplayName(if (phone.isBlank()) "Server caller" else phone, TelecomManager.PRESENTATION_ALLOWED)
       setAudioModeIsVoip(true)
       setExtras(Bundle().apply { putString("server_call_id", callId); putString("server_remote_phone", phone) })
       setRinging()
