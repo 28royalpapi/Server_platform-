@@ -1,0 +1,9 @@
+<resources>
+  <item name="server_phone" type="id" />
+  <item name="server_otp" type="id" />
+  <item name="server_target" type="id" />
+  <item name="server_send_otp" type="id" />
+  <item name="server_verify_otp" type="id" />
+  <item name="server_start_call" type="id" />
+  <item name="server_end_call" type="id" />
+</resources>
