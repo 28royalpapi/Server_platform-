@@ -1,0 +1,13 @@
+project_id = "hzuovekqsjtpvmbuybxs"
+
+[functions.server-calls]
+verify_jwt = true
+
+[functions.server-gateway]
+verify_jwt = false
+
+[functions.server-guest]
+verify_jwt = false
+
+[functions.server-send-sms]
+verify_jwt = false
