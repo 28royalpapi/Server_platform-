@@ -10,7 +10,7 @@ const raw=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]|
 if(typeof raw!=="string"||raw.length<48||raw.length>256)return out({error:"INVALID_INVITE"},401);
 let db:any;try{db=client()}catch{return out({error:"SERVER_NOT_CONFIGURED"},503)}
 const {data:invite,error:ie}=await db.from("server_guest_invites").select("id,call_id,phone_e164,expires_at,joined_at,revoked_at").eq("token_hash",await sha(raw)).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
-if(ie||!invite)return out({error:"INVITE_EXPIRED_OR_INVALID"},401);
+if(ie||!invite)return out({error:"GUEST_INVITE_EXPIRED_OR_INVALID"},401);
 const action=String(b.action||"");
 if(req.method==="GET"||action==="inspect"){
  const {data:call}=await db.from("server_calls").select("id,state,route,created_at,updated_at").eq("id",invite.call_id).maybeSingle();
