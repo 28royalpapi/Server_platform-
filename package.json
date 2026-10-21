@@ -1,0 +1,11 @@
+{
+  "name": "server-platform",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Server phone onboarding, SIM-backed OTP queue, calling signalling, and guest WebRTC.",
+  "scripts": {
+    "check": "node tests/smoke.mjs",
+    "check:web": "node --check web/app.js && node --check web/guest.js"
+  }
+}
