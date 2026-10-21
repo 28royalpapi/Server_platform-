@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
-  actions: write
+  actions: read
 jobs:
   import-native:
     runs-on: ubuntu-latest
@@ -32,11 +32,7 @@ jobs:
           rm .bootstrap/native-apps-*.b64 native-source-ready.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps .github/workflows/build-server-native.yml
-          git add -u
+          git add apps
+          git add -u .bootstrap native-source-ready.txt
           git commit -m "Import Server Android and iOS client source"
           git push origin main
-      - name: Trigger Android and iOS build checks
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run build-server-native.yml --ref main
