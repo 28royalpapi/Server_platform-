@@ -233,9 +233,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(phone)) { setStatus("Enter the full phone number with country code, e.g. +2348012345678.", true); return@launch }
     sendOtpButton.isEnabled = false
     try {
-      authRequest("/auth/v1/otp", JSONObject().put("phone", phone).put("create_user", true), false)
+      authRequest("/functions/v1/server-auth", JSONObject().put("action", "request_otp").put("phone", phone), false)
       currentPhone = phone; prefs.edit().putString("phone", phone).apply()
-      setStatus("Supabase Auth accepted the request. Check the real SMS on this number; if the SIM gateway is not connected, the request should fail instead.")
+      setStatus("A real SMS OTP has been queued through the paired SIM gateway. Check this handset; if the gateway is offline, the request fails instead.")
     } catch (e: Exception) { setStatus(e.message ?: "OTP request failed.", true) }
     finally { sendOtpButton.isEnabled = true }
   }
@@ -246,11 +246,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (token.length !in 4..8 || !token.all(Char::isDigit)) { setStatus("Enter the digits received by SMS.", true); return@launch }
     verifyButton.isEnabled = false
     try {
-      val result = authRequest("/auth/v1/verify", JSONObject().put("phone", phone).put("token", token).put("type", "sms"), false)
+      val result = authRequest("/functions/v1/server-auth", JSONObject().put("action", "verify_otp").put("phone", phone).put("code", token), false)
       accessToken = result.optString("access_token").takeIf { it.isNotBlank() }
       refreshToken = result.optString("refresh_token").takeIf { it.isNotBlank() }
-      accessExpiry = System.currentTimeMillis() / 1000 + result.optLong("expires_in", 3600)
-      if (accessToken.isNullOrBlank()) throw IllegalStateException("Auth did not return a session. Check phone provider settings.")
+      accessExpiry = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond } catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
+      if (accessToken.isNullOrBlank()) throw IllegalStateException("OTP verification did not return a Server session.")
       prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).putString("phone", phone).apply()
       otpInput.setText(""); showSignedIn()
     } catch (e: Exception) { setStatus(e.message ?: "OTP verification failed.", true) }
@@ -288,10 +288,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (accessToken.isNullOrBlank()) throw IllegalStateException("Verify your phone first.")
     if (accessExpiry > System.currentTimeMillis() / 1000 + 90) return
     val refresh = refreshToken ?: throw IllegalStateException("Your session expired. Verify your phone again.")
-    val res = http("/auth/v1/token?grant_type=refresh_token", JSONObject().put("refresh_token", refresh), false)
+    val res = http("/functions/v1/server-auth", JSONObject().put("action", "refresh"), true)
     accessToken = res.optString("access_token")
-    refreshToken = res.optString("refresh_token", refresh)
-    accessExpiry = System.currentTimeMillis() / 1000 + res.optLong("expires_in", 3600)
+    refreshToken = null
+    accessExpiry = try { java.time.Instant.parse(res.optString("expires_at")).epochSecond } catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
     prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).apply()
   }
 
