@@ -11,9 +11,14 @@ Deno.serve(async(req:Request)=>{
  const url=Deno.env.get("SUPABASE_URL")||"",key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});const action=typeof b.action==="string"?b.action:"";
  if(action==="create_pairing_code"){
-  const jwt=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1];if(!jwt)return out({error:"AUTH_REQUIRED"},401);
-  const {data:auth,error:ae}=await db.auth.getUser(jwt);if(ae||!auth.user)return out({error:"AUTH_REQUIRED"},401);
-  const {data:allowed,error:le}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_code",p_key_hash:await sha(auth.user.id),p_window_seconds:3600,p_max_hits:5});
+  const sessionToken=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+  if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
+  const tokenHash=await sha(sessionToken);
+  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id").eq("token_hash",tokenHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
+  const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
+  if(profileError||!profile?.phone_verified_at)return out({error:"VERIFIED_PROFILE_REQUIRED"},401);
+  const {data:allowed,error:le}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_code",p_key_hash:await sha(profile.user_id),p_window_seconds:3600,p_max_hits:5});
   if(le||allowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
   const pairing=code(),expires=new Date(Date.now()+10*60*1000).toISOString();
   const {error}=await db.from("server_gateway_pairings").insert({code_hash:await sha(pairing),expires_at:expires});
