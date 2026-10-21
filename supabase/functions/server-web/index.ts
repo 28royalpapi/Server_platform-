@@ -13,12 +13,19 @@ const headers = {
  "content-security-policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://hzuovekqsjtpvmbuybxs.supabase.co; media-src 'self' blob:; img-src data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 };
 Deno.serve((req: Request) => {
- if (req.method === "OPTIONS") return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-methods":"GET,HEAD,OPTIONS","access-control-allow-headers":"content-type"}});
- if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method not allowed",{status:405,headers:{"allow":"GET, HEAD, OPTIONS"}});
- const url = new URL(req.url);
- const view = url.searchParams.get("view");
- let page = view==="terms" ? pages.terms : view==="privacy" ? pages.privacy : (url.searchParams.has("token") ? pages.guest : pages.home);
- if (view==="home") page=pages.home;
- if(req.method==="HEAD") { const response = new Response(null,{status:200}); response.headers.set("content-type","text/html; charset=utf-8"); response.headers.set("cache-control","no-store, max-age=0"); response.headers.set("x-content-type-options","nosniff"); return response; }
- const response = new Response(page,{status:200}); response.headers.set("content-type","text/html; charset=utf-8"); response.headers.set("cache-control","no-store, max-age=0"); response.headers.set("x-content-type-options","nosniff"); response.headers.set("referrer-policy","no-referrer"); response.headers.set("permissions-policy","microphone=(self), camera=(), geolocation=()"); response.headers.set("content-security-policy","default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://hzuovekqsjtpvmbuybxs.supabase.co; media-src 'self' blob:; img-src data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"); return response;
+ if(req.method==="OPTIONS") return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-methods":"GET,HEAD,OPTIONS","access-control-allow-headers":"content-type"}});
+ if(req.method!=="GET"&&req.method!=="HEAD") return new Response("Method not allowed",{status:405,headers:{"allow":"GET, HEAD, OPTIONS"}});
+ const url=new URL(req.url);
+ const view=url.searchParams.get("view");
+ const token=url.searchParams.get("token");
+ const base="https://cdn.jsdelivr.net/gh/28royalpapi/Server_platform-@main/web/";
+ let destination=base+"index.html";
+ if(token) destination=base+"guest.html#token="+encodeURIComponent(token);
+ else if(view==="terms") destination=base+"terms.html";
+ else if(view==="privacy") destination=base+"privacy.html";
+ const response=new Response(null,{status:302});
+ response.headers.set("location",destination);
+ response.headers.set("cache-control","no-store, max-age=0");
+ response.headers.set("referrer-policy","no-referrer");
+ return response;
 });
