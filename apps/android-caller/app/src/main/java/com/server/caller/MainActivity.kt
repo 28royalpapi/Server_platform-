@@ -287,7 +287,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private suspend fun ensureFreshSession() {
     if (accessToken.isNullOrBlank()) throw IllegalStateException("Verify your phone first.")
     if (accessExpiry > System.currentTimeMillis() / 1000 + 90) return
-    val refresh = refreshToken ?: throw IllegalStateException("Your session expired. Verify your phone again.")
     val res = http("/functions/v1/server-auth", JSONObject().put("action", "refresh"), true)
     accessToken = res.optString("access_token")
     refreshToken = null
