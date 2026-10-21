@@ -17,7 +17,7 @@ Server is a phone onboarding and internet-calling project. Website onboarding ve
 | `server-guest` | Time-limited guest browser call invitation and WebRTC signalling |
 | `server-send-sms` | Optional Supabase Auth Send SMS Hook adapter; the main custom OTP flow does not require Supabase Auth's SMS hook |
 | Database | Profile, gateway, call, signalling, SMS, OTP-challenge, private-session, rate-limit tables and five-minute maintenance |
-| Web | Real SIM-OTP flow, preferences/consent, gateway pairing UI and guest call page |
+| Web | Real SIM-OTP flow, preferences/consent, gateway pairing UI and guest call page; `server-web` redirects to the repository-backed static HTML host |
 | Native apps | Android caller, Android SIM gateway and iOS caller source checked in; build/test status is linked below |
 
 ## Phone OTP flow
@@ -45,6 +45,6 @@ Server-to-Server calls and guest browser calls use WebRTC. Guest calls require t
 
 ## Build/test status
 
-[Latest Android/iOS CI](https://github.com/28royalpapi/Server_platform-/actions) includes backend source assertions, Android Gradle builds and emulator UI tests/recordings, and iOS Simulator builds/recordings. Check individual run results and artifacts; do not treat source presence or a queued workflow as proof of passing builds.
+[Latest backend CI](https://github.com/28royalpapi/Server_platform-/actions/runs/39665035984) passed static checks and 5/5 live API contracts. [Latest Android/iOS CI](https://github.com/28royalpapi/Server_platform-/actions/runs/39665036017) passed backend checks, built both Android APKs, built and launched the iOS Simulator app, and saved an iOS startup recording; the Android emulator smoke-test step is still running as of the last inspection. Check run results and artifacts; do not treat source presence or a queued workflow as proof of passing builds.
 
 Real SIM SMS, end-to-end audio between two devices, background push calls, TURN, and store-ready device security have not been confirmed. Do not treat Server as production-ready until those checks pass.
