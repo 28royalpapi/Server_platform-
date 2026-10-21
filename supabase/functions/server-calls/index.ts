@@ -41,6 +41,9 @@ Deno.serve(async(req:Request)=>{
    if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
    await db.from("server_call_members").upsert([{call_id:call.id,user_id:uid,member_role:"caller"},{...(callee?{call_id:call.id,user_id:callee.user_id,member_role:"callee"}:{})}].filter(x=>!!x.user_id),{onConflict:"call_id,user_id"});
    if(route==="guest"){
+    const callerKey=await sha("guest-caller:"+uid),targetKey=await sha("guest-target:"+to);
+    const [callerLimit,targetLimit]=await Promise.all([db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_caller",p_key_hash:callerKey,p_window_seconds:3600,p_max_hits:10}),db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_target",p_key_hash:targetKey,p_window_seconds:3600,p_max_hits:5})]);
+    if(callerLimit.error||targetLimit.error||callerLimit.data!==true||targetLimit.data!==true){await db.from("server_calls").delete().eq("id",call.id);return out({error:"GUEST_INVITE_RATE_LIMITED"},429);}
     const {data:gateway}=await db.from("server_gateway_devices").select("id").eq("enabled",true).gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();
     if(!gateway){await db.from("server_calls").delete().eq("id",call.id);return out({error:"SMS_GATEWAY_OFFLINE"},503);}
     const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
