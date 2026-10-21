@@ -1,12 +1,9 @@
 # Server web setup
 
-This site is the onboarding surface only: existing-number verification, consent and preferences. It is not the ordinary calling UI. Guest invitations are opened at `guest.html?token=...` and require HTTPS, internet access, browser microphone permission, and the remote party to remain online.
+The web surface supports existing-number verification, consent/preferences and the browser guest invitation page. Ordinary calls belong in the installed native client; this setup site is not the normal dialer.
 
-The browser configuration points to the Server Backend Supabase project. Only the public publishable key is stored in `config.js`; never place service-role or secret keys in web assets.
+`config.js` points to the Server Backend Supabase project and contains only the public publishable key. The primary OTP flow calls `server-auth`, which rate-limits issuance, uses a five-minute HMAC-protected code and queues the real SMS to a paired Android SIM gateway. Supabase Auth phone-provider settings and the optional `server-send-sms` hook are **not** prerequisites for this custom flow.
 
-## Before real OTP testing
+An OTP request deliberately returns `SMS_GATEWAY_OFFLINE` until a paired gateway has checked in within the last 90 seconds. Install the Android SIM gateway on a device with a working SIM, configure this project URL and public key, claim an unexpired one-time pairing code, and keep the gateway's foreground service online. Carrier SMS fees may apply.
 
-1. In Supabase Authentication, enable Phone auth and configure the signed Send SMS Hook to `https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-send-sms`.
-2. Set a strong `SEND_SMS_HOOK_SECRET` as a Supabase Edge Function secret and use the matching Standard Webhooks secret in the Auth hook configuration.
-3. Pair an always-online Android SIM gateway. A real SMS is sent through that phone's SIM; carrier SMS charges may apply.
-4. Verify delivery with a phone you control. Do not treat an accepted HTTP request or a simulated code as proof of SMS delivery.
+Guest links open `guest.html?token=...` and require HTTPS, internet access, a supported browser, microphone permission, and the remote caller to remain online. A web invitation cannot initiate a normal cellular call or reach a guest without data. Only STUN is configured; calls behind restrictive NAT may require TURN infrastructure.
