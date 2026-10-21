@@ -12,26 +12,30 @@ Deno.serve(async(req:Request)=>{
  const url=Deno.env.get("SUPABASE_URL")||""; const key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();
  if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
- const auth=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1];
- if(!auth)return out({error:"AUTH_REQUIRED"},401);
- const {data:ud,error:ue}=await db.auth.getUser(auth);
- if(ue||!ud.user)return out({error:"AUTH_REQUIRED"},401);
- const uid=ud.user.id; const action=typeof b.action==="string"?b.action:"";
+ const auth=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+ if(!/^[0-9a-f]{64}$/.test(auth))return out({error:"SESSION_REQUIRED"},401);
+ const sessionHash=await sha(auth);
+ const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+ if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
+ const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,phone_e164,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
+ if(profileError||!profile||!profile.phone_verified_at)return out({error:"VERIFIED_PROFILE_REQUIRED"},401);
+ await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
+ const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
   if(action==="me"){
    const {data,error}=await db.from("server_profiles").select("user_id,phone_e164,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
    if(error)return out({error:"PROFILE_LOOKUP_FAILED"},503);
-   return out({profile:data||{user_id:uid,phone_e164:ud.user.phone||null}});
+   return out({profile:data||{user_id:uid,phone_e164:profile.phone_e164}});
   }
   if(action==="save_preferences"){
    const terms=typeof b.terms_version==="string"?b.terms_version.slice(0,40):"",privacy=typeof b.privacy_version==="string"?b.privacy_version.slice(0,40):"";
    if(!terms||!privacy||b.accepted!==true)return out({error:"LEGAL_ACCEPTANCE_REQUIRED"},400);
-   const patch={user_id:uid,phone_e164:phone(ud.user.phone),accepted_terms_version:terms,accepted_privacy_version:privacy,accepted_legal_at:new Date().toISOString(),notifications_enabled:b.notifications_enabled!==false,contacts_access_requested:b.contacts_access_requested===true,updated_at:new Date().toISOString()};
+   const patch={user_id:uid,phone_e164:phone(profile.phone_e164),accepted_terms_version:terms,accepted_privacy_version:privacy,accepted_legal_at:new Date().toISOString(),notifications_enabled:b.notifications_enabled!==false,contacts_access_requested:b.contacts_access_requested===true,updated_at:new Date().toISOString()};
    const {data,error}=await db.from("server_profiles").upsert(patch,{onConflict:"user_id"}).select("user_id,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").single();
    if(error||!data)return out({error:"PREFERENCES_SAVE_FAILED"},503); return out({ok:true,profile:data});
   }
   if(action==="start"){
-   const to=phone(b.to_phone),caller=phone(ud.user.phone);
+   const to=phone(b.to_phone),caller=phone(profile.phone_e164);
    if(!to||!caller)return out({error:"VERIFIED_PHONE_REQUIRED"},400);
    if(to===caller)return out({error:"CANNOT_CALL_SELF"},400);
    const {data:callee}=await db.from("server_profiles").select("user_id,phone_e164").eq("phone_e164",to).maybeSingle();
