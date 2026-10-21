@@ -243,7 +243,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun verifyOtp() = lifecycleScope.launch {
     val phone = currentPhone.ifBlank { phoneInput.text.toString().trim().replace(" ", "") }
     val token = otpInput.text.toString().trim()
-    if (token.length !in 4..8 || !token.all(Char::isDigit)) { setStatus("Enter the digits received by SMS.", true); return@launch }
+    if (token.length != 6 || !token.all(Char::isDigit)) { setStatus("Enter the digits received by SMS.", true); return@launch }
     verifyButton.isEnabled = false
     try {
       val result = authRequest("/functions/v1/server-auth", JSONObject().put("action", "verify_otp").put("phone", phone).put("code", token), false)
