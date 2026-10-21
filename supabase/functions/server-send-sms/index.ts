@@ -16,7 +16,7 @@ Deno.serve(async(req:Request)=>{
  const user=event.user as Record<string,unknown>|undefined,sms=event.sms as Record<string,unknown>|undefined;
  const to=typeof user?.phone==="string"?user.phone.trim():"",otp=typeof sms?.otp==="string"?sms.otp.trim():"";
  if(!/^\+[1-9][0-9]{7,14}$/.test(to)||!/^\d{4,8}$/.test(otp))return out({error:"INVALID_AUTH_SMS_EVENT"},400);
- const url=Deno.env.get("SUPABASE_URL")||"",key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
+ const url=Deno.env.get("SUPABASE_URL")||"",key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
  const {data:existing}=await db.from("server_sms_jobs").select("id").eq("source_event_id",eventId).maybeSingle();
  if(existing)return new Response("{}",{status:200,headers:cors});
