@@ -309,7 +309,7 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
         if handles[uuid] != nil { return }
         handles[uuid] = handle
         let update = CXCallUpdate(); update.remoteHandle = CXHandle(type: .phoneNumber, value: handle); update.hasVideo = false
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             provider.reportNewIncomingCall(with: uuid, update: update) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: ()) }
             }
@@ -320,7 +320,7 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
         guard let uuid = UUID(uuidString: id) else { return }
         handles[uuid] = handle
         let action = CXStartCallAction(call: uuid, handle: CXHandle(type: .phoneNumber, value: handle))
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             controller.request(CXTransaction(action: action)) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: ()) }
             }
@@ -330,7 +330,7 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
     func requestAnswer(id: String) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         let action = CXAnswerCallAction(call: uuid)
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             controller.request(CXTransaction(action: action)) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: ()) }
             }
@@ -340,7 +340,7 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
     func requestEnd(id: String) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         let action = CXEndCallAction(call: uuid)
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             controller.request(CXTransaction(action: action)) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: ()) }
             }
@@ -400,7 +400,7 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
     func makeDescription(offer: Bool) async throws -> [String: Any] {
         guard let peer else { throw ServerError.message("WebRTC not initialized.") }
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-        let description: RTCSessionDescription = try await withCheckedThrowingContinuation { continuation in
+        let description: RTCSessionDescription = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let callback: (RTCSessionDescription?, Error?) -> Void = { sdp, error in
                 if let error { continuation.resume(throwing: error) }
                 else if let sdp { continuation.resume(returning: sdp) }
@@ -415,7 +415,7 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
 
     private func setLocal(_ description: RTCSessionDescription) async throws {
         guard let peer else { throw ServerError.message("WebRTC not initialized.") }
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             peer.setLocalDescription(description) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume() }
             }
@@ -425,12 +425,12 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
     func setRemote(_ json: [String: Any]) async throws {
         guard let peer, let sdp = json["sdp"] as? String else { throw ServerError.message("Invalid remote SDP.") }
         let type: RTCSdpType = (json["type"] as? String) == "offer" ? .offer : .answer
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             peer.setRemoteDescription(RTCSessionDescription(type: type, sdp: sdp)) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume() }
             }
         }
-        for value in pendingCandidates { addIce(value) }; pendingCandidates.removeAll()
+        for value in pendingCandidates { try addIce(value) }; pendingCandidates.removeAll()
     }
 
     func addIce(_ value: [String: Any]) throws {
