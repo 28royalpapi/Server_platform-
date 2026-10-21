@@ -1,7 +1,7 @@
 project_id = "hzuovekqsjtpvmbuybxs"
 
 [functions.server-calls]
-verify_jwt = true
+verify_jwt = false
 
 [functions.server-gateway]
 verify_jwt = false
@@ -10,4 +10,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.server-send-sms]
+verify_jwt = false
+
+[functions.server-auth]
 verify_jwt = false
