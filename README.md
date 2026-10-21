@@ -1,45 +1,50 @@
 # Server Platform
 
-Server is a Nigerian phone onboarding and internet-calling project. Website onboarding verifies an existing number; ordinary calls are intended to run through installed native clients. This is **not** an additional SIM/eSIM or a PSTN/carrier bridge.
+Server is a phone onboarding and internet-calling project. Website onboarding verifies an existing number; ordinary calls are intended to run through installed native clients. This is **not** an additional SIM/eSIM or a PSTN/carrier bridge.
 
 ## Live Supabase backend
 
 - **Project:** [Server Backend](https://supabase.com/dashboard/project/hzuovekqsjtpvmbuybxs)
 - **Project URL:** `https://hzuovekqsjtpvmbuybxs.supabase.co`
 - **Organization:** Viva Aliya Baby
-- **Current deployment:** 4 Edge Functions are deployed and ACTIVE; the schema migration is applied.
+- **Current deployment:** five Edge Functions are deployed and ACTIVE; the database schema, private session/OTP migration, and five-minute maintenance schedule are applied.
 
 | Component | Current status |
 |---|---|
-| `server-calls` | Deployed; profile preferences, call records and WebRTC signalling |
-| `server-gateway` | Deployed; one-time pairing code creation/claim, SIM SMS job polling and delivery reporting |
-| `server-guest` | Deployed; time-limited guest invite join and signalling |
-| `server-send-sms` | Deployed; validates Supabase Auth's signed Send SMS Hook and queues real SMS work |
-| Database schema | Applied; profiles, SMS jobs, gateway pairing/devices, calls, members, guest invites, signals and rate-limit tables |
-| Browser config | Uses the new project's public publishable key only |
+| `server-auth` | Custom SIM-backed phone OTP issuance/verification, high-entropy opaque session tokens (30 days), renewal and revocation |
+| `server-calls` | Private-session authorization, profiles/preferences, calls, incoming-call lookup and WebRTC signalling |
+| `server-gateway` | One-time Android SIM gateway pairing and SMS queue polling/send status |
+| `server-guest` | Time-limited guest browser call invitation and WebRTC signalling |
+| `server-send-sms` | Optional Supabase Auth Send SMS Hook adapter; the main custom OTP flow does not require Supabase Auth's SMS hook |
+| Database | Profile, gateway, call, signalling, SMS, OTP-challenge, private-session, rate-limit tables and five-minute maintenance |
+| Web | Real SIM-OTP flow, preferences/consent, gateway pairing UI and guest call page |
+| Native apps | Android caller, Android SIM gateway and iOS caller source checked in; build/test status is linked below |
 
-The actual deployed TypeScript is checked into `supabase/functions/`. Database SQL is in `supabase/migrations/20261021114947_server_backend_schema.sql`.
+## Phone OTP flow
 
-## Required before live OTP delivery
+The primary login flow deliberately uses Server's own OTP API rather than requiring a separate paid SMS provider:
+1. `server-auth` makes a six-digit code, stores an HMAC (pepper held in Supabase Vault), limits requests/attempts, and queues the actual SMS only if a gateway has reported online recently.
+2. The paired Android SIM gateway uses the device's SIM to send the queued SMS. Mobile carrier fees may apply.
+3. The code expires after five minutes, is single-use, and only up to five wrong attempts are allowed per challenge. The server stores only the HMAC of the code, not the plaintext code.
+4. On successful verification, the client receives an opaque random session token (not a Supabase Auth JWT); only its SHA-256 hash is stored. The token is valid for 30 days, can be renewed while active, and can be revoked on logout.
+5. Calls and pairing-code creation validate that session in the Edge Function before using the service-role database client. Database secrets and session tokens are never committed into GitHub.
 
-Deploying a function does not configure Supabase Auth to call it or create a physical SMS gateway. In the new project's Dashboard:
+No Supabase Auth Phone provider or Send SMS Hook setting is required for this custom OTP path. The optional `server-send-sms` function remains for deployments that specifically choose the Supabase Auth hook route.
 
-1. Enable **Authentication → Providers → Phone**.
-2. Set the **Authentication → Hooks → Send SMS Hook** URL to `https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-send-sms`.
-3. Set a high-entropy `SEND_SMS_HOOK_SECRET` as a Supabase Edge Function secret and configure the matching Standard Webhooks secret on that Auth hook. Do not put it in GitHub or frontend JavaScript. The deployed hook deliberately refuses OTP requests when this secret is not set.
-4. Sign in through the website once OTP works, generate a one-time gateway pairing code from the setup completion screen, then pair an actual Android phone with a working SIM. Keep its foreground service and internet connection running.
-5. Test delivery to a phone you control. SMS delivery must be proved by receipt on the device; an API response is not proof.
+## First real SMS test
 
-The website files are in `web/`. Its `config.js` contains only the public publishable key, which is intended for browser use. No service-role or secret key is committed.
+The new project has no online gateway yet. The backend safely refuses an OTP request with `SMS_GATEWAY_OFFLINE` until a SIM gateway is paired and polling.
+
+1. Install `apps/android-sim-gateway` on an Android phone with a working SIM, SMS permission and mobile data/Wi-Fi. Keep its foreground service running and disable battery optimization for it.
+2. Enter the project URL `https://hzuovekqsjtpvmbuybxs.supabase.co` and public publishable key shown in `web/config.js` in the gateway setup screen, then claim a valid one-time pairing code. Pairing codes should be generated by the signed-in setup page.
+3. Once the gateway reports online, request a code for a phone you control and verify the SMS receipt and code entry. API responses alone are not proof of carrier delivery.
 
 ## Calling limitations
 
-Server-to-Server calls and guest browser calls use WebRTC. Guest calls require the guest to open the invitation while online and grant microphone access. Without TURN relay infrastructure, some networks may not connect peer-to-peer. An SMS invitation cannot cause a traditional cellular ring/audio call when the guest has no data. Background incoming calls also require platform-specific push delivery; iOS PushKit/APNs is not configured.
+Server-to-Server calls and guest browser calls use WebRTC. Guest calls require the guest to open the invitation while online and grant microphone access. Only a public STUN server is configured by default; restrictive networks need a separately operated TURN relay. An SMS link cannot cause a traditional cellular ring or work when a guest has no data. Background incoming calls require platform-specific push delivery; iOS PushKit/APNs is not configured.
 
-## Source verification
+## Build/test status
 
-- `npm run check` — backend and web source contract assertions.
-- `npm run check:web` — JavaScript syntax validation.
-- Native Android/iOS builds, emulator recordings, actual carrier SMS, and end-to-end audio calls are **not yet verified** unless a CI run or device test explicitly demonstrates them.
+[Latest Android/iOS CI](https://github.com/28royalpapi/Server_platform-/actions) includes backend source assertions, Android Gradle builds and emulator UI tests/recordings, and iOS Simulator builds/recordings. Check individual run results and artifacts; do not treat source presence or a queued workflow as proof of passing builds.
 
-Do not treat Server as production-ready until the SMS hook is configured, a physical SIM gateway is paired, security checks are passed, and end-to-end device tests succeed.
+Real SIM SMS, end-to-end audio between two devices, background push calls, TURN, and store-ready device security have not been confirmed. Do not treat Server as production-ready until those checks pass.
