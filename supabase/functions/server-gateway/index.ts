@@ -21,6 +21,9 @@ Deno.serve(async(req:Request)=>{
   return out({ok:true,pairing_code:pairing,expires_at:expires,instructions:"Enter this one-time code in the Android Server SIM Gateway app within 10 minutes. It is shown only once."});
  }
  if(action==="claim"){
+  const ip=(req.headers.get("cf-connecting-ip")||req.headers.get("x-real-ip")||(req.headers.get("x-forwarded-for")||"unknown").split(",")[0].trim()).slice(0,160);
+  const {data:claimAllowed,error:claimLimitError}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_claim",p_key_hash:await sha("gateway-claim-ip:"+ip),p_window_seconds:60,p_max_hits:8});
+  if(claimLimitError||claimAllowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
   const pairingCode=typeof b.pairing_code==="string"?b.pairing_code.trim().toUpperCase():"";
   if(!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(pairingCode))return out({error:"PAIRING_CODE_INVALID"},400);
   const {data:pair,error:pe}=await db.from("server_gateway_pairings").select("id,expires_at,claimed_at").eq("code_hash",await sha(pairingCode)).is("claimed_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
