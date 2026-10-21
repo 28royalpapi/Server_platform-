@@ -35,7 +35,7 @@ import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
-import org.webrtc.JavaAudioDeviceModule
+import org.webrtc.audio.JavaAudioDeviceModule
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
