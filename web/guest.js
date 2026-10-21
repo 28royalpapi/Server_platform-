@@ -1,5 +1,7 @@
 const cfg=window.SERVER_CONFIG||{};
-const url=new URL(location.href),inviteToken=url.searchParams.get("token")||"";
+const url=new URL(location.href);
+const fragmentToken=url.hash.startsWith("#token=")?decodeURIComponent(url.hash.slice(7)):"";
+const inviteToken=url.searchParams.get("token")||fragmentToken||"";
 history.replaceState(null,"",location.pathname);
 const statusEl=document.querySelector("#guest-status"),joinButton=document.querySelector("#join-call"),leaveButton=document.querySelector("#leave-call"),audioEl=document.querySelector("#remote-audio");
 let pc=null,localStream=null,lastSeq=0,polling=false,leaving=false,pendingIce=[],callId="";
