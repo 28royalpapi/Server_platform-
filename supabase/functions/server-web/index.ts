@@ -19,7 +19,6 @@ Deno.serve((req: Request) => {
  const view = url.searchParams.get("view");
  let page = view==="terms" ? pages.terms : view==="privacy" ? pages.privacy : (url.searchParams.has("token") ? pages.guest : pages.home);
  if (view==="home") page=pages.home;
- if(req.method==="HEAD") { const head = new Headers(headers); head.set("Content-Type","text/html; charset=utf-8"); return new Response(null,{status:200,headers:head}); }
- const responseHeaders = new Headers(headers); responseHeaders.set("Content-Type","text/html; charset=utf-8");
- return new Response(page,{status:200,headers:responseHeaders});
+ if(req.method==="HEAD") { const response = new Response(null,{status:200}); response.headers.set("content-type","text/html; charset=utf-8"); response.headers.set("cache-control","no-store, max-age=0"); response.headers.set("x-content-type-options","nosniff"); return response; }
+ const response = new Response(page,{status:200}); response.headers.set("content-type","text/html; charset=utf-8"); response.headers.set("cache-control","no-store, max-age=0"); response.headers.set("x-content-type-options","nosniff"); response.headers.set("referrer-policy","no-referrer"); response.headers.set("permissions-policy","microphone=(self), camera=(), geolocation=()"); response.headers.set("content-security-policy","default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://hzuovekqsjtpvmbuybxs.supabase.co; media-src 'self' blob:; img-src data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"); return response;
 });
