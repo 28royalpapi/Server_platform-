@@ -45,11 +45,11 @@ jobs:
       - name: Run Android phone emulator UI smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
-          profile: pixel_6
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -memory 2048 -cores 2
           disable-animations: true
           script: |
             gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
