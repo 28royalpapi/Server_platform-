@@ -9,6 +9,9 @@ on:
       - '.github/workflows/build-server-native.yml'
       - 'supabase/**'
       - 'web/**'
+concurrency:
+  group: server-native-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
