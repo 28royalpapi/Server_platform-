@@ -18,7 +18,7 @@ Deno.serve((req: Request) => {
  const url=new URL(req.url);
  const view=url.searchParams.get("view");
  const token=url.searchParams.get("token");
- const base="https://raw.githack.com/28royalpapi/Server_platform-/main/web/";
+ const base="https://cdn.jsdelivr.net/gh/28royalpapi/Server_platform-@1905b39b2a8c8687f08d9384d6813ecbc1c28f4b/web/";
  let destination=base+"index.html";
  if(token) destination=base+"guest.html#token="+encodeURIComponent(token);
  else if(view==="terms") destination=base+"terms.html";
