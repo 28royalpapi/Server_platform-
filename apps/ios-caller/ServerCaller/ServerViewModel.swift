@@ -85,16 +85,16 @@ final class ServerViewModel: ObservableObject {
 
     func verifyOtp() async {
         let clean = storedPhone.isEmpty ? phone.trimmingCharacters(in: .whitespacesAndNewlines) : storedPhone
-        guard otp.count >= 4, otp.count <= 8, otp.allSatisfy(\.isNumber) else { update("Enter the digits received by SMS.", error: true); return }
+        guard otp.count == 6, otp.allSatisfy(\.isNumber) else { update("Enter the digits received by SMS.", error: true); return }
         isBusy = true; defer { isBusy = false }
         do {
-            let result = try await request("/auth/v1/verify", body: ["phone": clean, "token": otp, "type": "sms"], authorized: false)
-            guard let access = result["access_token"] as? String, let refresh = result["refresh_token"] as? String else { throw ServerError.message("Supabase Auth did not return a session.") }
-            accessToken = access; refreshToken = refresh
-            expiresAt = Date().timeIntervalSince1970 + (result["expires_in"] as? Double ?? 3600)
-            Keychain.save(access, key: "server.access"); Keychain.save(refresh, key: "server.refresh")
+            let result = try await request("/functions/v1/server-auth", body: ["action": "verify_otp", "phone": clean, "code": otp], authorized: false)
+            guard let access = result["access_token"] as? String else { throw ServerError.message("Server verified the code but did not return a session.") }
+            accessToken = access; refreshToken = nil
+            expiresAt = Self.parseExpiry(result["expires_at"] as? String) ?? Date().timeIntervalSince1970 + 30 * 24 * 60 * 60
+            Keychain.save(access, key: "server.access"); Keychain.delete("server.refresh")
             UserDefaults.standard.set(expiresAt, forKey: "server.expiry")
-            isSignedIn = true; otp = ""; update("Phone ownership verified by Supabase Auth."); startIncomingPolling()
+            isSignedIn = true; otp = ""; update("Phone ownership verified and a private Server session created."); startIncomingPolling()
         } catch { update(error.localizedDescription, error: true) }
     }
 
