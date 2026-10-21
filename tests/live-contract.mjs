@@ -1,0 +1,68 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const config = await readFile("web/config.js", "utf8");
+const url = config.match(/supabaseUrl:\s*"([^"]+)"/)?.[1];
+const key = config.match(/publishableKey:\s*"([^"]+)"/)?.[1];
+assert.equal(url, "https://hzuovekqsjtpvmbuybxs.supabase.co", "web config must target the dedicated Server Backend project");
+assert.ok(key && key.startsWith("sb_publishable_"), "web config must use a public publishable key");
+
+async function request(path, method = "POST", body) {
+  const headers = { apikey: key };
+  if (body !== undefined) headers["content-type"] = "application/json";
+  const response = await fetch(url + "/functions/v1/" + path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(20000)
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch {}
+  return { response, text, data };
+}
+
+const checks = [];
+const record = (name, ok, detail) => {
+  checks.push({ name, ok, detail });
+  console.log((ok ? "PASS" : "FAIL") + " " + name + " — " + detail);
+};
+
+// Invalid phone input must be rejected before any OTP is generated or queued.
+{
+  const r = await request("server-auth", "POST", { action: "request_otp", phone: "not-a-real-number" });
+  const ok = r.response.status === 400 && r.data.error === "INVALID_PHONE_FORMAT";
+  record("server-auth input validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
+// Private call API must reject requests with no Server session token.
+{
+  const r = await request("server-calls", "POST", { action: "poll" });
+  const ok = r.response.status === 401 && r.data.error === "SESSION_REQUIRED";
+  record("server-calls session boundary", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
+// Invalid gateway pairing codes must not create a gateway device.
+{
+  const r = await request("server-gateway", "POST", { action: "claim", pairing_code: "INVALID0" });
+  const ok = r.response.status === 400 && r.data.error === "PAIRING_CODE_INVALID";
+  record("server-gateway pairing validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
+// Guest API must reject missing bearer invitation tokens.
+{
+  const r = await request("server-guest", "POST", { action: "join" });
+  const ok = r.response.status === 401;
+  record("server-guest token boundary", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
+// Public onboarding page must actually be served by the deployed edge function.
+{
+  const r = await request("server-web", "GET");
+  const ok = r.response.status === 200 && /Server/i.test(r.text) && /text\/html/i.test(r.response.headers.get("content-type") || "");
+  record("server-web live page", ok, "HTTP " + r.response.status + ", content-type " + (r.response.headers.get("content-type") || "missing") + ", body " + r.text.length + " bytes");
+}
+
+const failed = checks.filter((x) => !x.ok);
+console.log("\nLive contract tests: " + (checks.length - failed.length) + "/" + checks.length + " passed.");
+if (failed.length) process.exitCode = 1;
