@@ -77,9 +77,9 @@ final class ServerViewModel: ObservableObject {
         guard clean.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil else { update("Enter the full number with country code, e.g. +2348012345678.", error: true); return }
         isBusy = true; defer { isBusy = false }
         do {
-            _ = try await request("/auth/v1/otp", body: ["phone": clean, "create_user": true], authorized: false)
+            _ = try await request("/functions/v1/server-auth", body: ["action": "request_otp", "phone": clean], authorized: false)
             storedPhone = clean; phone = clean; Keychain.save(clean, key: "server.phone")
-            update("Supabase Auth accepted the request. Check the actual SMS on this number. If the SIM gateway is offline, OTP sending must fail.")
+            update("A real SMS OTP has been queued through the paired SIM gateway. Check the handset; if the gateway is offline, sending must fail.")
         } catch { update(error.localizedDescription, error: true) }
     }
 
