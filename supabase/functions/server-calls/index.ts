@@ -54,8 +54,8 @@ Deno.serve(async(req:Request)=>{
     const tokenHash=await sha(token);const expires=new Date(Date.now()+20*60*1000).toISOString();
     const {data:invite,error:ie}=await db.from("server_guest_invites").insert({call_id:call.id,phone_e164:to,token_hash:tokenHash,expires_at:expires}).select("id").single();
     if(ie||!invite){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503);}
-    const guestUrl=(Deno.env.get("SERVER_GUEST_BASE_URL")||"https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-web").replace(/\/$/,"");
-    const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"?token="+encodeURIComponent(token)+" (expires in 20 minutes).";
+    const guestUrl=(Deno.env.get("SERVER_GUEST_BASE_URL")||"https://cdn.jsdelivr.net/gh/28royalpapi/Server_platform-@main/web/guest.html").replace(/\/$/,"");
+    const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
     const {error:qe}=await db.from("server_sms_jobs").insert({category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"});
     if(qe){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_SMS_QUEUE_FAILED"},503);}
     return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call:{id:call.id,state:call.state,route,created_at:call.created_at},invite_expires_at:expires});
