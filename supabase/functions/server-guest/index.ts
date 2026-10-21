@@ -6,7 +6,7 @@ const kinds=new Set(["offer","answer","ice","hangup","state"]);
 Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers:cors});if(req.method!=="POST")return out({error:"METHOD_NOT_ALLOWED"},405);
  let b:Record<string,unknown>;try{b=await req.json();if(!b||Array.isArray(b)||typeof b!=="object")throw 0;}catch{return out({error:"INVALID_JSON"},400);}
- const url=Deno.env.get("SUPABASE_URL")||"",key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
+ const url=Deno.env.get("SUPABASE_URL")||"",key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const token=typeof b.token==="string"?b.token:"";if(token.length<48||token.length>256)return out({error:"GUEST_TOKEN_INVALID"},401);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
  const {data:invite,error:invErr}=await db.from("server_guest_invites").select("id,call_id,phone_e164,expires_at,joined_at,revoked_at").eq("token_hash",await sha(token)).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
