@@ -1,0 +1,2 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+Deno.serve((req: Request) => new Response(JSON.stringify({service:"Server",status:"ok",timestamp:new Date().toISOString()}),{headers:{"Content-Type":"application/json"}}));

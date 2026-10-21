@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (!configured()) setStatus("Add your new Supabase project URL and publishable key to the build configuration. No test OTP is used.", true)
     else if (!accessToken.isNullOrBlank()) showSignedIn()
     handleTelecomIntent(intent)
+    handleAppLink(intent)
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) askMic.launch(Manifest.permission.RECORD_AUDIO)
   }
 
@@ -126,7 +127,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     authPanel.addView(otpInput, matchWrap())
     verifyButton = button("Verify phone") { verifyOtp() }.apply { id = R.id.server_verify_otp }
     authPanel.addView(verifyButton, matchWrap())
-    authPanel.addView(TextView(this).apply { text = "No code is invented by this app. SMS delivery needs the deployed Supabase Auth hook and an online, paired SIM gateway."; textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(12), 0, 0) })
+    authPanel.addView(TextView(this).apply { text = "No code is invented by this app. SMS delivery requires an online, paired Android SIM gateway."; textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(12), 0, 0) })
 
     callPanel = panel().apply { visibility = View.GONE }
     root.addView(callPanel, matchWrap())
@@ -196,6 +197,44 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     super.onNewIntent(intent)
     setIntent(intent)
     handleTelecomIntent(intent)
+    handleAppLink(intent)
+  }
+
+  private fun handleAppLink(incoming: Intent?) {
+    val uri = incoming?.data ?: return
+    if (uri.scheme != "server" || uri.host != "setup") return
+    val code = uri.getQueryParameter("handoff").orEmpty()
+    if (!Regex("^[0-9a-f]{64}$").matches(code)) {
+      setStatus("The setup link is invalid or expired. Return to the website and open Server again.", true)
+      return
+    }
+    if (!configured()) {
+      setStatus("This Server app build is not connected to the live backend.", true)
+      return
+    }
+    lifecycleScope.launch {
+      setStatus("Transferring your verified setup securely…")
+      try {
+        val result = authRequest("/functions/v1/server-handoff", JSONObject().put("action", "claim").put("handoff_code", code), false)
+        val token = result.optString("access_token").takeIf { it.isNotBlank() }
+          ?: throw IllegalStateException("The setup handoff did not return an app session.")
+        val user = result.optJSONObject("user")
+        val phone = user?.optString("phone")?.takeIf { !it.isNullOrBlank() && it != "null" }
+          ?: throw IllegalStateException("The setup handoff did not return a verified phone number.")
+        val expiry = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond }
+          catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
+        accessToken = token
+        refreshToken = null
+        accessExpiry = expiry
+        currentPhone = phone
+        prefs.edit().putString("access_token", token).remove("refresh_token")
+          .putLong("access_expiry", expiry).putString("phone", phone).apply()
+        showSignedIn()
+        setStatus("Setup transferred. Tap ‘Enable Server in phone app’ to register the Server internet-calling account. This is not a SIM/eSIM.")
+      } catch (e: Exception) {
+        setStatus(e.message ?: "Could not transfer setup to the Server app.", true)
+      }
+    }
   }
 
   private fun handleTelecomIntent(intent: Intent?) {

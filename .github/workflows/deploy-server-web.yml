@@ -1,34 +1,32 @@
-name: Deploy Server onboarding website
+name: Validate Server onboarding website
 on:
   push:
     branches: [main]
     paths:
       - 'web/**'
+      - 'supabase/functions/server-web/**'
+      - '.github/workflows/deploy-server-web.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'supabase/functions/server-web/**'
       - '.github/workflows/deploy-server-web.yml'
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
-  group: server-pages
+  group: server-web-validation
   cancel-in-progress: true
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v4
         with:
-          enablement: true
-      - name: Upload onboarding website
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-      - name: Deploy onboarding website
-        id: deployment
-        uses: actions/deploy-pages@v4
+          node-version: '22'
+      - name: Check onboarding and guest browser code
+        run: |
+          npm run check
+          npm run check:web
+          npm run check:live

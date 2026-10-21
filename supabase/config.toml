@@ -14,3 +14,12 @@ verify_jwt = false
 
 [functions.server-auth]
 verify_jwt = false
+
+[functions.server-handoff]
+verify_jwt = false
+
+[functions.server-web]
+verify_jwt = false
+
+[functions.server-health]
+verify_jwt = true

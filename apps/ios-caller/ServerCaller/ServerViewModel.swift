@@ -71,6 +71,49 @@ final class ServerViewModel: ObservableObject {
     }
     var maskedPhone: String { storedPhone.count > 6 ? String(storedPhone.prefix(4)) + "••••" + String(storedPhone.suffix(3)) : storedPhone }
 
+    func handleAppHandoff(_ url: URL) async {
+        guard url.scheme == "server", url.host == "setup" else { return }
+        guard let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "handoff" })?.value,
+              code.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
+            update("The setup link is invalid or expired. Return to the website and open Server again.", error: true)
+            return
+        }
+        guard isConfigured else {
+            update("This Server app build is not connected to the live backend.", error: true)
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let result = try await request("/functions/v1/server-handoff",
+                                           body: ["action": "claim", "handoff_code": code],
+                                           authorized: false)
+            guard let access = result["access_token"] as? String, access.count == 64 else {
+                throw ServerError.message("The setup handoff did not return an app session.")
+            }
+            let user = result["user"] as? [String: Any]
+            guard let transferredPhone = user?["phone"] as? String, !transferredPhone.isEmpty else {
+                throw ServerError.message("The setup handoff did not return a verified phone number.")
+            }
+            accessToken = access
+            refreshToken = nil
+            Keychain.save(access, key: "server.access")
+            Keychain.delete("server.refresh")
+            expiresAt = Self.parseExpiry(result["expires_at"] as? String)
+                ?? Date().addingTimeInterval(30 * 24 * 60 * 60).timeIntervalSince1970
+            UserDefaults.standard.set(expiresAt, forKey: "server.expiry")
+            storedPhone = transferredPhone
+            UserDefaults.standard.set(storedPhone, forKey: "server.phone")
+            phone = transferredPhone
+            isSignedIn = true
+            update("Setup transferred securely. Server is an internet-calling account, not a SIM/eSIM.")
+            startIncomingPolling()
+        } catch {
+            update("Could not transfer setup to the Server app: \(error.localizedDescription)", error: true)
+        }
+    }
+
     func requestOtp() async {
         guard isConfigured else { update("Supabase project URL and publishable key are not configured.", error: true); return }
         let clean = phone.trimmingCharacters(in: .whitespacesAndNewlines)

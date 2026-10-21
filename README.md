@@ -16,6 +16,8 @@ Server is a phone onboarding and internet-calling project. Website onboarding ve
 | `server-gateway` | One-time Android SIM gateway pairing and SMS queue polling/send status |
 | `server-guest` | Time-limited guest browser call invitation and WebRTC signalling |
 | `server-send-sms` | Optional Supabase Auth Send SMS Hook adapter; the main custom OTP flow does not require Supabase Auth's SMS hook |
+| `server-handoff` | Two-minute single-use exchange transfers verified onboarding to a native app |
+| `server-health` | Protected deployment heartbeat endpoint |
 | Database | Profile, gateway, call, signalling, SMS, OTP-challenge, private-session, rate-limit tables and five-minute maintenance |
 | Web | Real SIM-OTP flow, preferences/consent, gateway pairing UI and guest call page; `server-web` redirects to the repository-backed static HTML host |
 | Native apps | Android caller, Android SIM gateway and iOS caller source checked in; build/test status is linked below |
@@ -27,7 +29,7 @@ The primary login flow deliberately uses Server's own OTP API rather than requir
 2. The paired Android SIM gateway uses the device's SIM to send the queued SMS. Mobile carrier fees may apply.
 3. The code expires after five minutes, is single-use, and only up to five wrong attempts are allowed per challenge. The server stores only the HMAC of the code, not the plaintext code.
 4. On successful verification, the client receives an opaque random session token (not a Supabase Auth JWT); only its SHA-256 hash is stored. The token is valid for 30 days, can be renewed while active, and can be revoked on logout.
-5. Calls and pairing-code creation validate that session in the Edge Function before using the service-role database client. Database secrets and session tokens are never committed into GitHub.
+5. Calls and pairing-code creation validate that session in the Edge Function before using the service-role database client. Database secrets and session tokens are never committed into GitHub. After consent and preferences are saved, the web app exchanges its verified session for a two-minute, single-use code; the native app redeems it for its own private session. The 30-day session itself is never placed in the deep-link URL.
 
 No Supabase Auth Phone provider or Send SMS Hook setting is required for this custom OTP path. The optional `server-send-sms` function remains for deployments that specifically choose the Supabase Auth hook route.
 

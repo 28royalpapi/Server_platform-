@@ -61,6 +61,34 @@ forms.preferences.addEventListener("submit", async (event) => {
   setStep("done");
  } catch (error) { showStatus(String(error?.message || "Could not save setup.").slice(0,250)); } finally { setBusy(button,false); }
 });
+document.querySelector("#open-server-app").addEventListener("click", async () => {
+ const button = document.querySelector("#open-server-app");
+ const help = document.querySelector("#app-handoff-help");
+ button.disabled = true;
+ const original = "Open Server calling app";
+ button.textContent = "Preparing secure handoff…";
+ try {
+  if (!sessionToken) throw new Error("Your setup session has expired. Verify your phone again.");
+  const result = await postFunction("server-handoff", { action: "create" }, sessionToken);
+  const appLink = result.app_link || ("server://setup?handoff=" + encodeURIComponent(result.handoff_code || ""));
+  if (!/^server:\/\/setup\?handoff=[0-9a-f]{64}$/.test(appLink)) throw new Error("The backend did not return a valid one-time app link.");
+  help.textContent = "Opening the installed Server app. The one-time link expires in two minutes.";
+  showStatus("Opening Server with your verified setup.", true);
+  window.location.assign(appLink);
+  window.setTimeout(() => {
+   if (document.visibilityState === "visible") {
+    showStatus("If Server did not open, install the Server app first, then return here and retry. This link expires in two minutes.");
+   }
+   button.disabled = false;
+   button.textContent = original;
+  }, 1800);
+ } catch (error) {
+  showStatus(String(error?.message || "Could not open the Server app.").slice(0,250));
+  button.disabled = false;
+  button.textContent = original;
+ }
+});
+
 document.querySelector("#create-gateway-pairing").addEventListener("click", async () => {
  const button=document.querySelector("#create-gateway-pairing"),result=document.querySelector("#pairing-result"); button.disabled=true; button.textContent="Generating…"; result.classList.add("hidden");
  try {

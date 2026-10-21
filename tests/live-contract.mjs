@@ -56,6 +56,13 @@ const record = (name, ok, detail) => {
   record("server-guest token boundary", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
+// Handoff rejects malformed single-use codes without touching a session.
+{
+  const r = await request("server-handoff", "POST", { action: "claim", handoff_code: "invalid" });
+  const ok = r.response.status === 400 && r.data.error === "HANDOFF_CODE_INVALID";
+  record("server-handoff code validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
 // Public onboarding page must actually be served by the deployed edge function.
 {
   const r = await request("server-web", "GET");
