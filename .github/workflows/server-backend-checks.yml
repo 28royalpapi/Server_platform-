@@ -17,5 +17,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm run check
-      - run: npm run check:web
+      - name: Static backend and browser checks
+        run: |
+          npm run check
+          npm run check:web
+      - name: Test live Supabase function contracts without sending real SMS
+        run: npm run check:live
