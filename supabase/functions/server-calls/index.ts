@@ -54,9 +54,17 @@ Deno.serve(async(req:Request)=>{
     const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"?token="+encodeURIComponent(token)+" (expires in 20 minutes).";
     const {error:qe}=await db.from("server_sms_jobs").insert({category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"});
     if(qe){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_SMS_QUEUE_FAILED"},503);}
-    return out({ok:true,call:{id:call.id,state:call.state,route,created_at:call.created_at},invite_expires_at:expires});
+    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call:{id:call.id,state:call.state,route,created_at:call.created_at},invite_expires_at:expires});
    }
-   return out({ok:true,call});
+   return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call});
+  }
+  if(action==="incoming"){
+   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
+   if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
+   const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
+   const {data:profiles}=ids.length?await db.from("server_profiles").select("user_id,phone_e164").in("user_id",ids):{data:[]};
+   const phones=new Map((profiles||[]).map((p:any)=>[p.user_id,p.phone_e164]));
+   return out({calls:(incoming||[]).map((c:any)=>({id:c.id,state:c.state,route:c.route,caller_phone_e164:phones.get(c.caller_user_id)||"Server caller",created_at:c.created_at,updated_at:c.updated_at}))});
   }
   if(action==="poll"){
    const callId=typeof b.call_id==="string"?b.call_id:"";
@@ -71,16 +79,18 @@ Deno.serve(async(req:Request)=>{
    if(callId){
     const after=Number.isSafeInteger(b.after_seq)&&Number(b.after_seq)>=0?Number(b.after_seq):0;
     const {data:s,error:se}=await db.from("server_call_signals").select("seq,from_user_id,kind,payload,created_at").eq("call_id",callId).gt("seq",after).order("seq",{ascending:true}).limit(100);
-    if(se)return out({error:"SIGNAL_POLL_FAILED"},503);signals=(s||[]).filter((x:any)=>x.from_user_id!==uid);
+    if(se)return out({error:"SIGNAL_POLL_FAILED"},503);const rows=s||[];signals=rows.filter((x:any)=>x.from_user_id!==uid);
    }
-   return out({calls:calls||[],signals,next_after_seq:signals.length?(signals[signals.length-1] as any).seq:(Number(b.after_seq)||0)});
+   const rows=(signals as any[]);const call=callId?(calls||[]).find((x:any)=>x.id===callId)||null:null;
+   const {data:allSignals}=callId?await db.from("server_call_signals").select("seq").eq("call_id",callId).gt("seq",Number(b.after_seq)||0).order("seq",{ascending:true}).limit(100):{data:[]};
+   return out({calls:calls||[],call,signals,next_after_seq:allSignals?.length?allSignals[allSignals.length-1].seq:(Number(b.after_seq)||0)});
   }
-  if(action==="answer"||action==="hangup"||action==="set_active"){
+  if(action==="answer"||action==="accept"||action==="hangup"||action==="end"||action==="set_active"){
    const callId=typeof b.call_id==="string"?b.call_id:"";if(!callId)return out({error:"CALL_ID_REQUIRED"},400);
    const {data:member}=await db.from("server_call_members").select("member_role").eq("call_id",callId).eq("user_id",uid).maybeSingle();
    if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
    const now=new Date().toISOString();
-   if(action==="answer"){
+   if(action==="answer"||action==="accept"){
     const {data:call}=await db.from("server_calls").select("id,state,callee_user_id").eq("id",callId).maybeSingle();
     if(!call||call.callee_user_id!==uid||!["ringing","connecting"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
     await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",callId);
