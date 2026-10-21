@@ -1,0 +1,107 @@
+name: Build Server native clients and emulator previews
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'apps/android-caller/**'
+      - 'apps/android-sim-gateway/**'
+      - 'apps/ios-caller/**'
+      - '.github/workflows/build-server-native.yml'
+      - 'supabase/**'
+      - 'web/**'
+permissions:
+  contents: read
+jobs:
+  backend-source-contract-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify backend contract and web JavaScript syntax
+        run: |
+          npm run check
+          npm run check:web
+
+  android-build-and-emulator-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android SDK components
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+      - name: Build Server caller and SIM gateway
+        run: |
+          gradle -p apps/android-caller assembleDebug --no-daemon
+          gradle -p apps/android-sim-gateway assembleDebug --no-daemon
+      - name: Run Android phone emulator UI smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          disable-animations: true
+          script: |
+            gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
+            adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
+            REC_PID=$!
+            sleep 2
+            adb shell am start -n com.server.caller.debug/com.server.caller.MainActivity
+            wait $REC_PID || true
+            mkdir -p artifacts
+            adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-build-and-startup-recording
+          path: |
+            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/androidTest-results/**
+            artifacts/server-android-startup.mp4
+          if-no-files-found: warn
+
+  ios-simulator-build-and-preview:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve WebRTC and build for iOS Simulator
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild -resolvePackageDependencies -project apps/ios-caller/ServerCaller.xcodeproj -scheme ServerCaller
+          xcodebuild -project apps/ios-caller/ServerCaller.xcodeproj -scheme ServerCaller -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tee /tmp/server-ios-build.log
+      - name: Launch in iOS Simulator and record startup screen
+        run: |
+          SIM_UDID=$(xcrun simctl list devices available | awk '/iPhone/ { if (match($0, /\([0-9A-F-]+\)/)) {print substr($0,RSTART+1,RLENGTH-2); exit}}')
+          if [ -z "$SIM_UDID" ]; then echo 'No iPhone Simulator device was available.'; exit 1; fi
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -path '*/Build/Products/Debug-iphonesimulator/ServerCaller.app' -print -quit)
+          test -d "$APP_PATH"
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          xcrun simctl install "$SIM_UDID" "$APP_PATH"
+          mkdir -p artifacts
+          xcrun simctl io "$SIM_UDID" recordVideo artifacts/server-ios-startup.mp4 & REC_PID=$!
+          sleep 2
+          xcrun simctl launch "$SIM_UDID" com.server.caller
+          sleep 15
+          kill -INT "$REC_PID" || true
+          wait "$REC_PID" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-ios-build-and-startup-recording
+          path: |
+            artifacts/server-ios-startup.mp4
+            /tmp/server-ios-build.log
+          if-no-files-found: warn
