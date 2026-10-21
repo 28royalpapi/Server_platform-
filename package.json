@@ -6,6 +6,7 @@
   "description": "Server phone onboarding, SIM-backed OTP queue, calling signalling, and guest WebRTC.",
   "scripts": {
     "check": "node tests/smoke.mjs",
-    "check:web": "node --check web/app.js && node --check web/guest.js"
+    "check:web": "node --check web/app.js && node --check web/guest.js",
+    "check:live": "node tests/live-contract.mjs"
   }
 }
