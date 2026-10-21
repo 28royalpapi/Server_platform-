@@ -22,10 +22,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify backend contract and web JavaScript syntax
+      - name: Verify source contracts and browser JavaScript
         run: |
           npm run check
           npm run check:web
+      - name: Probe deployed Supabase functions without triggering real SMS
+        run: npm run check:live
 
   android-build-and-emulator-smoke:
     runs-on: ubuntu-latest
