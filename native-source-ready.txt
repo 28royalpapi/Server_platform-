@@ -1,1 +1,1 @@
-One-time import trigger. Workflow verifies the original archive SHA-256 before extraction, then removes this trigger and staging chunks.
+Retry import trigger: archive SHA-256 must validate before native source is committed.
