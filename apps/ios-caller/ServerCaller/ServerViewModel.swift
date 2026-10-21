@@ -233,8 +233,8 @@ final class ServerViewModel: ObservableObject {
         return try await request("/functions/v1/server-calls", body: payload, authorized: true)
     }
 
-    private func request(_ path: String, body: [String: Any], authorized: Bool) async throws -> [String: Any] {
-        if authorized { try await refreshIfNeeded() }
+    private func request(_ path: String, body: [String: Any], authorized: Bool, refresh: Bool = true) async throws -> [String: Any] {
+        if authorized && refresh { try await refreshIfNeeded() }
         guard let url = URL(string: ServerBuildConfig.url.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path) else { throw ServerError.message("Invalid Supabase URL.") }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "content-type")
@@ -251,14 +251,22 @@ final class ServerViewModel: ObservableObject {
         return parsed
     }
 
+    private static func parseExpiry(_ value: String?) -> TimeInterval? {
+        guard let value else { return nil }
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) { return date.timeIntervalSince1970 }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)?.timeIntervalSince1970
+    }
+
     private func refreshIfNeeded() async throws {
-        guard let refreshToken else { throw ServerError.message("Verify your phone first.") }
         if expiresAt > Date().timeIntervalSince1970 + 90 { return }
-        let result = try await request("/auth/v1/token?grant_type=refresh_token", body: ["refresh_token": refreshToken], authorized: false)
+        guard accessToken != nil else { throw ServerError.message("Verify your phone first.") }
+        let result = try await request("/functions/v1/server-auth", body: ["action": "refresh"], authorized: true, refresh: false)
         guard let access = result["access_token"] as? String else { throw ServerError.message("Session refresh failed; verify your number again.") }
-        accessToken = access; self.refreshToken = result["refresh_token"] as? String ?? refreshToken
-        expiresAt = Date().timeIntervalSince1970 + (result["expires_in"] as? Double ?? 3600)
-        Keychain.save(access, key: "server.access"); if let newRefresh = self.refreshToken { Keychain.save(newRefresh, key: "server.refresh") }
+        accessToken = access
+        expiresAt = Self.parseExpiry(result["expires_at"] as? String) ?? Date().timeIntervalSince1970 + 30 * 24 * 60 * 60
+        Keychain.save(access, key: "server.access"); Keychain.delete("server.refresh")
         UserDefaults.standard.set(expiresAt, forKey: "server.expiry")
     }
 
