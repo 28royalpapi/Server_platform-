@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'apps/android-sim-gateway/**'
+      - 'apps/android-caller/**'
       - '.github/workflows/server-rea-apk-audit.yml'
 
 permissions:
@@ -36,8 +37,10 @@ jobs:
       - name: Install Android build components
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Build the exact debug APK to inspect
-        run: gradle -p apps/android-sim-gateway assembleDebug --no-daemon
+      - name: Build the exact debug APKs to inspect
+        run: |
+          gradle -p apps/android-sim-gateway assembleDebug --no-daemon
+          gradle -p apps/android-caller assembleDebug --no-daemon
 
       - name: Install the pinned JADX engine used by REA
         shell: bash
@@ -90,14 +93,32 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.SmsGatewayService sendJob --json > artifacts/rea-gateway-sms-method.json
           echo 'REA inspected the compiled pairing method and the SIM SMS send/status callback method.'
 
-      - name: Upload REA evidence and inspected APK
+      - name: Inspect the compiled caller and WebRTC methods with REA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-debug.apk"
+          npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-caller-package.json
+          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.MainActivity --json > artifacts/rea-caller-main-class.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity startCall --json > artifacts/rea-caller-start-call.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity preparePeer --json > artifacts/rea-caller-prepare-peer.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity handleSignal --json > artifacts/rea-caller-handle-signal.json
+          echo 'REA inspected the compiled caller entry point, WebRTC setup, offer/answer handling, and ICE state callback source.'
+
+      - name: Upload REA evidence and inspected APKs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: server-rea-gateway-audit
+          name: server-rea-mobile-audit
           path: |
             artifacts/rea-gateway-package.json
             artifacts/rea-gateway-pairing-method.json
             artifacts/rea-gateway-sms-method.json
+            artifacts/rea-caller-package.json
+            artifacts/rea-caller-main-class.json
+            artifacts/rea-caller-start-call.json
+            artifacts/rea-caller-prepare-peer.json
+            artifacts/rea-caller-handle-signal.json
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
