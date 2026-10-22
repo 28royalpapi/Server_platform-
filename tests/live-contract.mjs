@@ -43,6 +43,31 @@ const record = (name, ok, detail) => {
     "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
+// One-time end-to-end bootstrap test. Creates a device-only test profile; remove it after this workflow run.
+{
+  const installationId = globalThis.crypto.randomUUID();
+  const deviceSecret = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(32)))
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const r = await request("server-auth", "POST", {
+    action: "register_device",
+    installation_id: installationId,
+    device_secret: deviceSecret,
+    selected_sim_slot: 0,
+    selected_sim_carrier: "CI test — not a real SIM",
+    accepted_terms: true,
+    terms_version: "server-terms-1.0",
+    privacy_version: "server-privacy-1.0"
+  });
+  const id = r.data.user?.id || "";
+  const serverId = r.data.user?.server_id || "";
+  const ok = r.response.status === 200 && /^[0-9a-f-]{36}$/i.test(id) &&
+    /^SVR-[0-9A-F]{10}$/.test(serverId) && typeof r.data.access_token === "string" &&
+    r.data.user?.phone === null && r.data.user?.phone_verified_at === null;
+  record("server-auth creates device-only Server identity without OTP", ok,
+    "HTTP " + r.response.status + ", Server ID " + (serverId || "missing") +
+    ", test user " + (id || "missing") + ", installation " + installationId +
+    (r.data.error ? ", " + r.data.error : ""));
+}
 // Invalid phone input must be rejected before any OTP is generated or queued.
 {
   const r = await request("server-auth", "POST", { action: "request_otp", phone: "not-a-real-number" });
