@@ -370,7 +370,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         if (Build.VERSION.SDK_INT >= 33) manager.getPhoneNumber(info.subscriptionId) else info.number
       } catch (_: Exception) { "" }?.trim().orEmpty()
       val slot = info.simSlotIndex
-      val labelText = "SIM ${slot + 1} · $carrier" + if (number.isNotBlank()) "\\n$number" else "\\nNumber not exposed by Android"
+      val labelText = "SIM ${slot + 1} · $carrier" + if (number.isNotBlank()) "\n$number" else "\nNumber not exposed by Android"
       val choice = button(labelText) {
         selectedSimSubscriptionId = info.subscriptionId
         selectedSimSlot = slot
