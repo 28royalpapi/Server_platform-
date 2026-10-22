@@ -24,5 +24,7 @@ Deno.serve((req: Request) => {
   return response;
  }
  const page=view==="terms"?pages.terms:view==="privacy"?pages.privacy:view==="guest"?pages.guest:pages.home;
- return new Response(req.method==="HEAD"?null:page,{status:200,headers});
+ const responseHeaders=new Headers(headers);
+ responseHeaders.set("Content-Type","text/html; charset=utf-8");
+ return new Response(req.method==="HEAD"?null:page,{status:200,headers:responseHeaders});
 });
