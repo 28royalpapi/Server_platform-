@@ -76,7 +76,7 @@ jobs:
               STATE=$(adb get-state 2>/dev/null || true)
               BOOTED=""
               if [ "$STATE" = "device" ]; then
-                BOOTED=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)
+                BOOTED=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
               fi
               if [ "$STATE" = "device" ] && [ "$BOOTED" = "1" ]; then
                 READY=1
