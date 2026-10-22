@@ -159,7 +159,7 @@ final class ServerViewModel: ObservableObject {
 
     func dialUsingCellularNetwork() {
         let target = targetPhone.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard target.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil else {
+        guard target.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil else {
             update("Enter the recipient's full number with country code first.", error: true)
             return
         }
