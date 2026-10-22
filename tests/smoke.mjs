@@ -1,3 +1,4 @@
+import { normalizePhone } from "../web/phone-number.js";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
@@ -60,6 +61,14 @@ const configCode=config.split("\n").filter(line=>!line.trim().startsWith("//")).
 assert.doesNotMatch(configCode,/service[_-]?role|sb_secret/i,"browser config contains no privileged key");
 assert.match(config,/hzuovekqsjtpvmbuybxs\.supabase\.co/);
 assert.match(app,/postFunction\("server-auth", \{ action: "request_otp"/);
+assert.doesNotMatch(app,/function normalizePhone/);
+assert.equal(normalizePhone("08012345678"), "+2348012345678");
+assert.equal(normalizePhone("8012345678"), "+2348012345678");
+assert.equal(normalizePhone("2348012345678"), "+2348012345678");
+assert.equal(normalizePhone("+2348012345678"), "+2348012345678");
+assert.equal(normalizePhone("+234 080-1234-5678"), "+2348012345678");
+assert.equal(normalizePhone("invalid-number"), "");
+assert.equal(normalizePhone("0801234567"), "");
 assert.match(app,/function normalizePhone/);
 assert.match(app,/postFunction\("server-auth", \{ action: "verify_otp"/);
 assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
