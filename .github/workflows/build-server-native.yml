@@ -69,7 +69,30 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 2
           disable-animations: true
           script: |
-            gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
+            set -euo pipefail
+            echo "Waiting for Android emulator ADB + boot completion"
+            READY=0
+            for attempt in $(seq 1 60); do
+              STATE=$(adb get-state 2>/dev/null || true)
+              BOOTED=""
+              if [ "$STATE" = "device" ]; then
+                BOOTED=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)
+              fi
+              if [ "$STATE" = "device" ] && [ "$BOOTED" = "1" ]; then
+                READY=1
+                break
+              fi
+              echo "ADB attempt $attempt/60: state=${STATE:-missing} boot_completed=${BOOTED:-unknown}"
+              adb reconnect offline >/dev/null 2>&1 || true
+              sleep 5
+            done
+            if [ "$READY" -ne 1 ]; then
+              adb devices -l || true
+              adb logcat -d -t 500 || true
+              exit 1
+            fi
+            adb devices -l
+            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
             adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
             REC_PID=$!
             sleep 2
