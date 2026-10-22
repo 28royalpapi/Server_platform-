@@ -108,7 +108,7 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity startCall --json > artifacts/rea-caller-start-call.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity preparePeer --json > artifacts/rea-caller-prepare-peer.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity handleSignal --json > artifacts/rea-caller-handle-signal.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity 'onIceConnectionChange$lambda$48' --json > artifacts/rea-caller-ice-state-sync.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" 'com.server.caller.MainActivity$onIceConnectionChange$1$1' invokeSuspend --json > artifacts/rea-caller-ice-state-sync.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" 'com.server.caller.MainActivity$onIceConnectionChange$1$1' invokeSuspend --json > artifacts/rea-caller-ice-state-sync-lambda.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
