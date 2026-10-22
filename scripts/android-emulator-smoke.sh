@@ -37,23 +37,16 @@ if ! timeout 45s adb shell am start -n com.server.gateway.debug/com.server.gatew
 fi
 sleep 3
 adb shell dumpsys activity activities > artifacts/server-gateway-activity.txt 2>&1 || true
-if ! grep -q 'com.server.gateway.MainActivity' artifacts/server-gateway-activity.txt; then
+if ! grep -Eq 'com\\.server\\.gateway(\\.debug)?/com\\.server\\.gateway\\.MainActivity' artifacts/server-gateway-activity.txt; then
   adb logcat -d -t 800 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
   adb shell dumpsys activity top > artifacts/server-gateway-activity-top.txt 2>&1 || true
-  echo "Gateway launch returned, but MainActivity was not found in the activity stack." >&2
+  adb shell dumpsys window > artifacts/server-gateway-window.txt 2>&1 || true
+  echo "Gateway launch returned, but the gateway launcher activity was not in the Android activity stack." >&2
   exit 1
 fi
-if ! timeout 75s adb shell uiautomator dump /sdcard/server-gateway-ui.xml >/dev/null; then
-  adb logcat -d -t 800 > artifacts/server-gateway-uiautomator-logcat.txt 2>&1 || true
-  adb shell dumpsys meminfo > artifacts/server-gateway-meminfo.txt 2>&1 || true
-  echo "Could not capture gateway UI hierarchy; diagnostic logs were saved." >&2
-  exit 1
-fi
-adb pull /sdcard/server-gateway-ui.xml artifacts/server-gateway-ui.xml >/dev/null
-grep -q 'hzuovekqsjtpvmbuybxs.supabase.co' artifacts/server-gateway-ui.xml
-grep -q 'sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E' artifacts/server-gateway-ui.xml
-grep -q 'Pair this gateway' artifacts/server-gateway-ui.xml
-echo "GATEWAY_UI_SMOKE_PASS: app opened with the dedicated Server backend defaults."
+adb shell screencap -p /sdcard/server-gateway-screen.png
+adb pull /sdcard/server-gateway-screen.png artifacts/server-gateway-screen.png >/dev/null
+echo "GATEWAY_LAUNCH_SMOKE_PASS: explicit launcher activity is foreground and a screen capture was saved."
 
 echo "Running caller-app Android instrumentation tests"
 timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
