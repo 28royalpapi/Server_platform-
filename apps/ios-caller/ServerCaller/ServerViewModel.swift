@@ -153,9 +153,9 @@ final class ServerViewModel: ObservableObject {
             UserDefaults.standard.set(expiresAt, forKey: "server.expiry")
             serverID = id; storedPhone = ""; UserDefaults.standard.removeObject(forKey: "server.phone"); UserDefaults.standard.set(id, forKey: "server.server_id")
             isSignedIn = true
-            update("Setup complete. Your Server ID is \\(id). iOS uses CallKit for native call screens; it cannot add Server as a cellular SIM line.")
+            update("Setup complete. Your Server ID is \(id). iOS uses CallKit for native call screens; it cannot add Server as a cellular SIM line.")
             startIncomingPolling()
-        } catch { update("Device-first setup failed: \\(error.localizedDescription)", error: true) }
+        } catch { update("Device-first setup failed: \(error.localizedDescription)", error: true) }
     }
     func requestOtp() async {
         guard isConfigured else { update("Supabase project URL and publishable key are not configured.", error: true); return }
@@ -188,7 +188,7 @@ final class ServerViewModel: ObservableObject {
         let target = targetPhone.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let payload: [String: Any]
         if target.range(of: #"^SVR-[0-9A-F]{10}$"#, options: .regularExpression) != nil { payload = ["to_server_id": target] }
-        else if target.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil { payload = ["to_phone": target] }
+        else if target.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil { payload = ["to_phone": target] }
         else { update("Enter a Server ID (SVR- plus 10 characters) or a full number with country code.", error: true); return }
         isBusy = true; defer { isBusy = false }
         do {
