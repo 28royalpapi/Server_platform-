@@ -14,18 +14,15 @@ const headers = {
 };
 Deno.serve((req: Request) => {
  if(req.method==="OPTIONS") return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-methods":"GET,HEAD,OPTIONS","access-control-allow-headers":"content-type"}});
- if(req.method!=="GET"&&req.method!=="HEAD") return new Response("Method not allowed",{status:405,headers:{"allow":"GET, HEAD, OPTIONS"}});
+ if(req.method!=="GET"&&req.method!=="HEAD") return new Response("Method not allowed",{status:405,headers:{"allow":"GET, HEAD, OPTIONS","content-type":"text/plain; charset=utf-8"}});
  const url=new URL(req.url);
  const view=url.searchParams.get("view");
  const token=url.searchParams.get("token");
- const base="https://cdn.jsdelivr.net/gh/28royalpapi/Server_platform-@1905b39b2a8c8687f08d9384d6813ecbc1c28f4b/web/";
- let destination=base+"index.html";
- if(token) destination=base+"guest.html#token="+encodeURIComponent(token);
- else if(view==="terms") destination=base+"terms.html";
- else if(view==="privacy") destination=base+"privacy.html";
- const response=new Response(null,{status:302});
- response.headers.set("location",destination);
- response.headers.set("cache-control","no-store, max-age=0");
- response.headers.set("referrer-policy","no-referrer");
- return response;
+ if(token) {
+  const base="https://cdn.jsdelivr.net/gh/28royalpapi/Server_platform-@1905b39b2a8c8687f08d9384d6813ecbc1c28f4b/web/";
+  const response=new Response(null,{status:302,headers:{"location":base+"guest.html#token="+encodeURIComponent(token),"cache-control":"no-store, max-age=0","referrer-policy":"no-referrer","x-content-type-options":"nosniff"}});
+  return response;
+ }
+ const page=view==="terms"?pages.terms:view==="privacy"?pages.privacy:view==="guest"?pages.guest:pages.home;
+ return new Response(req.method==="HEAD"?null:page,{status:200,headers});
 });
