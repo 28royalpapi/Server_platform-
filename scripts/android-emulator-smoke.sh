@@ -37,7 +37,7 @@ if ! timeout 45s adb shell am start -n com.server.gateway.debug/com.server.gatew
 fi
 sleep 3
 adb shell dumpsys activity activities > artifacts/server-gateway-activity.txt 2>&1 || true
-if ! grep -Eq 'com\\.server\\.gateway(\\.debug)?/com\\.server\\.gateway\\.MainActivity' artifacts/server-gateway-activity.txt; then
+if ! grep -Fq 'com.server.gateway.MainActivity' artifacts/server-gateway-activity.txt; then
   adb logcat -d -t 800 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
   adb shell dumpsys activity top > artifacts/server-gateway-activity-top.txt 2>&1 || true
   adb shell dumpsys window > artifacts/server-gateway-window.txt 2>&1 || true
