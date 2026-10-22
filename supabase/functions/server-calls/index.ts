@@ -17,8 +17,8 @@ Deno.serve(async(req:Request)=>{
  const sessionHash=await sha(auth);
  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
- const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,phone_e164,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
- if(profileError||!profile||!profile.phone_verified_at)return out({error:"VERIFIED_PROFILE_REQUIRED"},401);
+ const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
+ if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
  await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
@@ -35,30 +35,66 @@ Deno.serve(async(req:Request)=>{
    if(error||!data)return out({error:"PREFERENCES_SAVE_FAILED"},503); return out({ok:true,profile:data});
   }
   if(action==="start"){
-   const to=phone(b.to_phone),caller=phone(profile.phone_e164);
-   if(!to||!caller)return out({error:"VERIFIED_PHONE_REQUIRED"},400);
-   if(to===caller)return out({error:"CANNOT_CALL_SELF"},400);
-   const {data:callee}=await db.from("server_profiles").select("user_id,phone_e164").eq("phone_e164",to).maybeSingle();
-   const route=callee?"server":"guest";
+   const serverTarget=typeof b.to_server_id==="string"?b.to_server_id.trim().toUpperCase():"";
+   const to=phone(b.to_phone);
+   if(!serverTarget&&!to)return out({error:"RECIPIENT_REQUIRED"},400);
+   let callee:any=null;
+   let route:"server"|"guest"="guest";
+   let recipientPhone:string|null=to;
+   if(serverTarget){
+    if(!/^SVR-[0-9A-F]{10}$/.test(serverTarget))return out({error:"INVALID_SERVER_ID"},400);
+    const {data:found,error:lookupError}=await db.from("server_profiles")
+      .select("user_id,server_id,phone_e164,phone_verified_at").eq("server_id",serverTarget).maybeSingle();
+    if(lookupError)return out({error:"SERVER_LOOKUP_FAILED"},503);
+    if(!found)return out({error:"SERVER_ID_NOT_FOUND"},404);
+    if(found.user_id===uid)return out({error:"CANNOT_CALL_SELF"},400);
+    callee=found;route="server";recipientPhone=phone(found.phone_e164);
+   }else{
+    if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
+    if(profile.phone_verified_at&&phone(profile.phone_e164)===to)return out({error:"CANNOT_CALL_SELF"},400);
+    const {data:found,error:lookupError}=await db.from("server_profiles")
+      .select("user_id,server_id,phone_e164,phone_verified_at")
+      .eq("phone_e164",to).maybeSingle();
+    if(lookupError)return out({error:"SERVER_LOOKUP_FAILED"},503);
+    callee=found&&found.phone_verified_at?found:null;
+    route=callee?"server":"guest";
+   }
    const now=new Date().toISOString();
-   const {data:call,error:ce}=await db.from("server_calls").insert({caller_user_id:uid,callee_user_id:callee?.user_id||null,callee_phone_e164:to,route,state:"ringing",created_at:now,updated_at:now}).select("id,state,route,created_at,callee_phone_e164,callee_user_id").single();
+   const {data:call,error:ce}=await db.from("server_calls").insert({
+    caller_user_id:uid,callee_user_id:callee?.user_id||null,callee_phone_e164:recipientPhone,
+    route,state:"ringing",created_at:now,updated_at:now
+   }).select("id,state,route,created_at,callee_phone_e164,callee_user_id").single();
    if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
-   await db.from("server_call_members").upsert([{call_id:call.id,user_id:uid,member_role:"caller"},{...(callee?{call_id:call.id,user_id:callee.user_id,member_role:"callee"}:{})}].filter(x=>!!x.user_id),{onConflict:"call_id,user_id"});
+   await db.from("server_call_members").upsert([
+    {call_id:call.id,user_id:uid,member_role:"caller"},
+    ...(callee?[{call_id:call.id,user_id:callee.user_id,member_role:"callee"}]:[])
+   ],{onConflict:"call_id,user_id"});
    if(route==="guest"){
+    if(!to){await db.from("server_calls").delete().eq("id",call.id);return out({error:"RECIPIENT_PHONE_REQUIRED"},400);}
     const callerKey=await sha("guest-caller:"+uid),targetKey=await sha("guest-target:"+to);
-    const [callerLimit,targetLimit]=await Promise.all([db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_caller",p_key_hash:callerKey,p_window_seconds:3600,p_max_hits:10}),db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_target",p_key_hash:targetKey,p_window_seconds:3600,p_max_hits:5})]);
-    if(callerLimit.error||targetLimit.error||callerLimit.data!==true||targetLimit.data!==true){await db.from("server_calls").delete().eq("id",call.id);return out({error:"GUEST_INVITE_RATE_LIMITED"},429);}
-    const {data:gateway}=await db.from("server_gateway_devices").select("id").eq("enabled",true).gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();
+    const [callerLimit,targetLimit]=await Promise.all([
+      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_caller",p_key_hash:callerKey,p_window_seconds:3600,p_max_hits:10}),
+      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_target",p_key_hash:targetKey,p_window_seconds:3600,p_max_hits:5})
+    ]);
+    if(callerLimit.error||targetLimit.error||callerLimit.data!==true||targetLimit.data!==true){
+      await db.from("server_calls").delete().eq("id",call.id);return out({error:"GUEST_INVITE_RATE_LIMITED"},429);
+    }
+    const {data:gateway}=await db.from("server_gateway_devices").select("id").eq("enabled",true)
+      .gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();
     if(!gateway){await db.from("server_calls").delete().eq("id",call.id);return out({error:"SMS_GATEWAY_OFFLINE"},503);}
     const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
-    const tokenHash=await sha(token);const expires=new Date(Date.now()+20*60*1000).toISOString();
-    const {data:invite,error:ie}=await db.from("server_guest_invites").insert({call_id:call.id,phone_e164:to,token_hash:tokenHash,expires_at:expires}).select("id").single();
+    const tokenHash=await sha(token),expires=new Date(Date.now()+20*60*1000).toISOString();
+    const {data:invite,error:ie}=await db.from("server_guest_invites").insert({
+      call_id:call.id,phone_e164:to,token_hash:tokenHash,expires_at:expires
+    }).select("id").single();
     if(ie||!invite){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503);}
     const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
     const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
-    const {error:qe}=await db.from("server_sms_jobs").insert({category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"});
+    const {error:qe}=await db.from("server_sms_jobs").insert({
+      category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"
+    });
     if(qe){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_SMS_QUEUE_FAILED"},503);}
-    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call:{id:call.id,state:call.state,route,created_at:call.created_at},invite_expires_at:expires});
+    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,invite_expires_at:expires});
    }
    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call});
   }
@@ -66,9 +102,12 @@ Deno.serve(async(req:Request)=>{
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
-   const {data:profiles}=ids.length?await db.from("server_profiles").select("user_id,phone_e164").in("user_id",ids):{data:[]};
-   const phones=new Map((profiles||[]).map((p:any)=>[p.user_id,p.phone_e164]));
-   return out({calls:(incoming||[]).map((c:any)=>({id:c.id,state:c.state,route:c.route,caller_phone_e164:phones.get(c.caller_user_id)||"Server caller",created_at:c.created_at,updated_at:c.updated_at}))});
+   const {data:profiles}=ids.length?await db.from("server_profiles").select("user_id,phone_e164,server_id").in("user_id",ids):{data:[]};
+   const rows=new Map((profiles||[]).map((p:any)=>[p.user_id,p]));
+   return out({calls:(incoming||[]).map((c:any)=>{
+    const caller:any=rows.get(c.caller_user_id)||{};
+    return {id:c.id,state:c.state,route:c.route,caller_phone_e164:caller.phone_e164||"Server caller",caller_server_id:caller.server_id||"",created_at:c.created_at,updated_at:c.updated_at};
+   })});
   }
   if(action==="poll"){
    const callId=typeof b.call_id==="string"?b.call_id:"";
