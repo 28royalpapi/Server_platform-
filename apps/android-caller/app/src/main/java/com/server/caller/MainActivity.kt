@@ -118,6 +118,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     else renderSimChoices()
     handleTelecomIntent(intent)
     handleAppLink(intent)
+    // When Android's Phone app launches us as a Telecom call provider, process the
+    // call command and immediately yield the visible surface back to the system dialer.
+    // The native caller must not replace the user's normal phone/call UI.
+    yieldToSystemPhoneUi(intent)
     // Ask for SIM and microphone permissions only after an explicit user action.
   }
 
@@ -256,6 +260,16 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     setIntent(intent)
     handleTelecomIntent(intent)
     handleAppLink(intent)
+    yieldToSystemPhoneUi(intent)
+  }
+
+  private fun yieldToSystemPhoneUi(incoming: Intent?) {
+    val action = incoming?.getStringExtra("server_action") ?: return
+    if (action !in setOf("dial", "incoming", "answer", "decline", "hangup")) return
+    // Call commands run in lifecycleScope and remain alive while the Activity is
+    // backgrounded. Keep the activity available as the current call engine, but
+    // do not leave Server's app screen on top of Android's Phone UI.
+    root.post { if (!isFinishing && !isDestroyed) moveTaskToBack(true) }
   }
 
   private fun handleAppLink(incoming: Intent?) {
