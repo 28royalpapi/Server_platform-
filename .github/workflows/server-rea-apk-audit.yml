@@ -103,7 +103,18 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity startCall --json > artifacts/rea-caller-start-call.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity preparePeer --json > artifacts/rea-caller-prepare-peer.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity handleSignal --json > artifacts/rea-caller-handle-signal.json
-          echo 'REA inspected the compiled caller entry point, WebRTC setup, offer/answer handling, and ICE state callback source.'
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity onIceConnectionChange --json > artifacts/rea-caller-ice-state-sync.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const input = JSON.parse(fs.readFileSync('artifacts/rea-caller-ice-state-sync.json', 'utf8'));
+          const source = input?.normalized_result?.source?.text || '';
+          if (!source.includes('set_active')) {
+            console.error('REA did not find the active-call state sync in the compiled ICE state callback.');
+            process.exit(1);
+          }
+          console.log('REA_CALL_ACTIVE_STATE_AUDIT_PASS: the compiled ICE-connected callback requests server active-state sync.');
+          NODE
+          echo 'REA inspected the compiled caller entry point, WebRTC setup, offer/answer handling, and ICE-connected call-state sync.'
 
       - name: Upload REA evidence and inspected APKs
         if: always()
@@ -119,6 +130,7 @@ jobs:
             artifacts/rea-caller-start-call.json
             artifacts/rea-caller-prepare-peer.json
             artifacts/rea-caller-handle-signal.json
+            artifacts/rea-caller-ice-state-sync.json
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
