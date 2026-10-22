@@ -154,6 +154,10 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     window.ServerAndroid.openCallingSettings();
   });
   document.querySelector("#open-phone-dialer")?.addEventListener("click", () => {
+    if (!window.ServerAndroid.isCallingAccountEnabled()) {
+      showStatus("Server is not enabled yet. Open phone settings, enable Server under calling accounts, then return here.");
+      return;
+    }
     window.ServerAndroid.openPhoneDialer();
   });
 
