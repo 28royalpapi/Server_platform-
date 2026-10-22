@@ -4,7 +4,7 @@ set -euo pipefail
 mkdir -p artifacts
 echo "Waiting for the Android emulator to be online and fully booted"
 READY=0
-for attempt in $(seq 1 60); do
+for attempt in $(seq 1 240); do
   STATE="$(adb get-state 2>/dev/null || true)"
   BOOTED=""
   if [[ "$STATE" == "device" ]]; then
@@ -14,9 +14,9 @@ for attempt in $(seq 1 60); do
     READY=1
     break
   fi
-  echo "ADB attempt $attempt/60: state=${STATE:-missing} boot_completed=${BOOTED:-unknown}"
+  echo "ADB attempt $attempt/240: state=${STATE:-missing} boot_completed=${BOOTED:-unknown}"
   adb reconnect offline >/dev/null 2>&1 || true
-  sleep 5
+  sleep 3
 done
 
 if [[ "$READY" -ne 1 ]]; then
