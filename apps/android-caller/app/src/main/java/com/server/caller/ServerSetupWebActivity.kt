@@ -245,6 +245,9 @@ class ServerSetupWebActivity : Activity() {
       }
     }
 
+    @JavascriptInterface fun isCallingAccountEnabled(): Boolean =
+      try { ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity) } catch (_: Exception) { false }
+
     @JavascriptInterface fun openPhoneDialer() {
       runOnUiThread {
         startActivity(Intent(Intent.ACTION_DIAL))
