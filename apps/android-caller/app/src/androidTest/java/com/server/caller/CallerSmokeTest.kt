@@ -1,6 +1,7 @@
 package com.server.caller
 
 import android.content.Context
+import android.net.Uri
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import androidx.test.core.app.ActivityScenario
@@ -9,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,18 +36,30 @@ class CallerSmokeTest {
     }
   }
 
-  @Test fun serverRegistersAsSystemManagedPhoneAccountNotAsAnEsim() {
+  @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val handle = ServerTelecomRegistry.handle(context)
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val previousNumber = prefs.getString("selected_sim_phone", null)
 
-    ServerTelecomRegistry.register(context)
-    val account = telecom.getPhoneAccount(handle)
+    try {
+      prefs.edit().putString("selected_sim_phone", "+2348012345678").commit()
+      ServerTelecomRegistry.register(context)
+      val account = telecom.getPhoneAccount(handle)
 
-    assertNotNull("Android Telecom did not register the Server calling account", account)
-    assertTrue("Server account is not a call-provider account",
-      (account!!.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
-    assertTrue("Server must be a system-managed call provider, not self-managed",
-      (account.capabilities and PhoneAccount.CAPABILITY_SELF_MANAGED) == 0)
+      assertNotNull("Android Telecom did not register the Server calling account", account)
+      assertTrue("Server account is not a call-provider account",
+        (account!!.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
+      assertTrue("Server must be a system-managed call provider, not self-managed",
+        (account.capabilities and PhoneAccount.CAPABILITY_SELF_MANAGED) == 0)
+      assertEquals("The selected SIM number must be carried as account metadata",
+        Uri.parse("tel:+2348012345678"), account.address)
+    } finally {
+      val edit = prefs.edit()
+      if (previousNumber == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousNumber)
+      edit.commit()
+      ServerTelecomRegistry.register(context)
+    }
   }
 }
