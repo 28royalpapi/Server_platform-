@@ -43,11 +43,16 @@ if ! grep -q 'com.server.gateway.MainActivity' artifacts/server-gateway-activity
   echo "Gateway launch returned, but MainActivity was not found in the activity stack." >&2
   exit 1
 fi
-# Capture pixels without the memory-heavy uiautomator hierarchy service.
-adb shell screencap -p /sdcard/server-gateway-ui.png
-adb pull /sdcard/server-gateway-ui.png artifacts/server-gateway-ui.png >/dev/null
-test -s artifacts/server-gateway-ui.png
-echo "GATEWAY_UI_SMOKE_PASS: MainActivity is foregrounded and a non-empty startup screenshot was captured."
+# Stream pixels directly over ADB. Writing under /sdcard can break if the
+# emulator's emulated-storage mount drops its transport during startup.
+if ! timeout 30s adb exec-out screencap -p > artifacts/server-gateway-screen.png; then
+  adb logcat -d -t 1000 > artifacts/server-gateway-screencap-logcat.txt 2>&1 || true
+  adb shell dumpsys meminfo > artifacts/server-gateway-screencap-meminfo.txt 2>&1 || true
+  echo "Gateway launch was requested, but screenshot capture failed; diagnostics were saved." >&2
+  exit 1
+fi
+test -s artifacts/server-gateway-screen.png
+echo "GATEWAY_LAUNCH_SMOKE_PASS: explicit launcher activity is in the activity stack and a screenshot was streamed over ADB."
 
 echo "Running caller-app Android instrumentation tests"
 timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
