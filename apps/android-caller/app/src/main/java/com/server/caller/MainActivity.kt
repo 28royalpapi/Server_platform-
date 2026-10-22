@@ -115,10 +115,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     buildUi()
     if (!configured()) setStatus("Add the Server Supabase URL and publishable key to the build configuration.", true)
     else if (!accessToken.isNullOrBlank()) showSignedIn()
-    else ensureSimPermissions()
+    else renderSimChoices()
     handleTelecomIntent(intent)
     handleAppLink(intent)
-    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) askMic.launch(Manifest.permission.RECORD_AUDIO)
+    // Ask for SIM and microphone permissions only after an explicit user action.
   }
 
   private fun configured(): Boolean = BuildConfig.SUPABASE_URL.startsWith("https://") &&
@@ -265,7 +265,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       authPanel.visibility = View.VISIBLE
       callPanel.visibility = View.GONE
       renderSimChoices()
-      ensureSimPermissions()
+      setStatus("Tap Detect SIM cards / grant permission to choose a mobile SIM. Server setup does not require SMS OTP.")
       return
     }
     if (uri.host != "setup") return
@@ -343,6 +343,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun renderSimChoices() {
     if (!::simChoices.isInitialized) return
     simChoices.removeAllViews()
+    val savedSubscriptionId = selectedSimSubscriptionId
+    val savedSlot = selectedSimSlot
+    val savedCarrier = selectedSimCarrier
     selectedSimSubscriptionId = -1
     selectedSimSlot = null
     selectedSimCarrier = ""
@@ -350,13 +353,19 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     val permissions = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
       checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
     if (!permissions) {
-      simSetupHint.text = "SIM access was not granted. Tap Detect SIM cards to try again, or use Server ID only if the device has no SIM access."
-      continueSetupButton.isEnabled = termsCheck.isChecked && !hasActiveSimChoices
+      simSetupHint.text = "SIM access has not been granted yet. Tap Detect SIM cards / grant permission to see your SIM slots, carriers and any number Android exposes."
+      continueSetupButton.text = "Create Server ID — internet calling only"
+      continueSetupButton.isEnabled = termsCheck.isChecked
       return
     }
     val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
     val subscriptions = try { manager.activeSubscriptionInfoList.orEmpty() } catch (_: SecurityException) { emptyList() }
     hasActiveSimChoices = subscriptions.isNotEmpty()
+    if (subscriptions.any { it.subscriptionId == savedSubscriptionId } && savedSlot != null) {
+      selectedSimSubscriptionId = savedSubscriptionId
+      selectedSimSlot = savedSlot
+      selectedSimCarrier = savedCarrier
+    }
     if (subscriptions.isEmpty()) {
       simSetupHint.text = "No active SIM was exposed by Android. You can still create a Server ID for internet calls."
       continueSetupButton.text = "Create Server ID — internet calling only"
