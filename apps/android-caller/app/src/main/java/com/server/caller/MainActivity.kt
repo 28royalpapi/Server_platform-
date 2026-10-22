@@ -219,7 +219,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun showSignedIn() {
     authPanel.visibility = View.GONE
     callPanel.visibility = View.VISIBLE
-    targetInput.setText("+234")
+    targetInput.setText("")
     if (incomingJob?.isActive != true) incomingJob = lifecycleScope.launch { incomingLoop() }
     val id = currentServerId.ifBlank { "Server ID loading" }
     setStatus("Your Server ID is $id. This is your internet-calling identity; the selected mobile number remains on your carrier SIM.")
