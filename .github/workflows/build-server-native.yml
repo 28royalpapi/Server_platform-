@@ -122,21 +122,39 @@ jobs:
           xcodebuild -resolvePackageDependencies -project apps/ios-caller/ServerCaller.xcodeproj -scheme ServerCaller
           xcodebuild -project apps/ios-caller/ServerCaller.xcodeproj -scheme ServerCaller -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tee /tmp/server-ios-build.log
       - name: Launch in iOS Simulator and record startup screen
+        shell: bash
         run: |
+          set -euo pipefail
           SIM_UDID=$(xcrun simctl list devices available | awk '/iPhone/ { if (match($0, /\([0-9A-F-]+\)/)) {print substr($0,RSTART+1,RLENGTH-2); exit}}')
           if [ -z "$SIM_UDID" ]; then echo 'No iPhone Simulator device was available.'; exit 1; fi
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -path '*/Build/Products/Debug-iphonesimulator/ServerCaller.app' -print -quit)
-          test -d "$APP_PATH"
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then echo "Built ServerCaller.app not found."; find ~/Library/Developer/Xcode/DerivedData -path '*ServerCaller.app' -maxdepth 12 -print || true; exit 1; fi
           xcrun simctl boot "$SIM_UDID" || true
           xcrun simctl bootstatus "$SIM_UDID" -b
           xcrun simctl install "$SIM_UDID" "$APP_PATH"
           mkdir -p artifacts
           xcrun simctl io "$SIM_UDID" recordVideo artifacts/server-ios-startup.mp4 & REC_PID=$!
+          cleanup_recorder() { kill -INT "$REC_PID" 2>/dev/null || true; wait "$REC_PID" 2>/dev/null || true; }
+          trap cleanup_recorder EXIT
           sleep 2
-          xcrun simctl launch "$SIM_UDID" com.server.caller
-          sleep 15
-          kill -INT "$REC_PID" || true
-          wait "$REC_PID" || true
+          if ! LAUNCH_OUTPUT=$(xcrun simctl launch --terminate-running-process "$SIM_UDID" com.server.caller 2>&1); then
+            echo "ERROR: ServerCaller failed to launch:"
+            echo "$LAUNCH_OUTPUT"
+            xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "ServerCaller" OR eventMessage CONTAINS[c] "com.server.caller"' || true
+            find ~/Library/Logs/DiagnosticReports -maxdepth 1 -type f -mmin -10 -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "$LAUNCH_OUTPUT"
+          if ! echo "$LAUNCH_OUTPUT" | grep -Eq 'com\.server\.caller: [0-9]+'; then
+            echo "ERROR: simctl did not confirm a running ServerCaller process."
+            xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "ServerCaller" OR eventMessage CONTAINS[c] "com.server.caller"' || true
+            exit 1
+          fi
+          sleep 8
+          xcrun simctl io "$SIM_UDID" screenshot artifacts/server-ios-startup.png
+          xcrun simctl spawn "$SIM_UDID" launchctl list | grep -i 'com.server.caller' || true
+          cleanup_recorder
+          trap - EXIT
       - uses: actions/upload-artifact@v4
         if: always()
         with:
