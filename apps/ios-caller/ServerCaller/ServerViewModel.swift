@@ -4,6 +4,7 @@ import Combine
 import Foundation
 import Security
 import SwiftUI
+import UIKit
 import WebRTC
 
 private enum ServerBuildConfig {
@@ -154,6 +155,20 @@ final class ServerViewModel: ObservableObject {
             UserDefaults.standard.set(expiresAt, forKey: "server.expiry")
             isSignedIn = true; otp = ""; update("Phone ownership verified and a private Server session created."); startIncomingPolling()
         } catch { update(error.localizedDescription, error: true) }
+    }
+
+    func dialUsingCellularNetwork() {
+        let target = targetPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard target.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil else {
+            update("Enter the recipient's full number with country code first.", error: true)
+            return
+        }
+        guard let url = URL(string: "tel:\(target)") else {
+            update("Could not construct the carrier dialer link.", error: true)
+            return
+        }
+        UIApplication.shared.open(url)
+        update("Opening the normal phone dialer. This uses your SIM and carrier voice plan, not Server internet calling.")
     }
 
     func startCall() async {
