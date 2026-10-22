@@ -28,6 +28,70 @@ Deno.serve(async(req:Request)=>{
  let db:any;try{db=client();}catch{return out({error:"SERVER_AUTH_NOT_CONFIGURED"},500);}
  const action=typeof b.action==="string"?b.action:"";
  try{
+
+  if(action==="register_device"){
+   const installationId=typeof b.installation_id==="string"?b.installation_id.trim().toLowerCase():"";
+   const deviceSecret=typeof b.device_secret==="string"?b.device_secret.trim().toLowerCase():"";
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(installationId)||!/^[0-9a-f]{64}$/.test(deviceSecret)){
+    return out({error:"INVALID_DEVICE_CREDENTIALS"},400);
+   }
+   const slot=Number.isInteger(b.selected_sim_slot)&&Number(b.selected_sim_slot)>=0?Number(b.selected_sim_slot):null;
+   const carrier=typeof b.selected_sim_carrier==="string"?b.selected_sim_carrier.trim().slice(0,80)||null:null;
+   const secretHash=await sha(deviceSecret);
+   let identity:any=null;
+   const {data:existing,error:existingError}=await db.from("server_device_identities").select("installation_id,secret_hash,user_id,revoked_at").eq("installation_id",installationId).maybeSingle();
+   if(existingError)return out({error:"DEVICE_LOOKUP_FAILED"},503);
+   if(existing){
+    if(existing.revoked_at||existing.secret_hash!==secretHash)return out({error:"DEVICE_CREDENTIALS_REJECTED"},401);
+    identity=existing;
+    const {error:updateError}=await db.from("server_device_identities").update({
+      last_seen_at:new Date().toISOString(),
+      selected_sim_slot:slot,
+      selected_sim_carrier:carrier
+    }).eq("installation_id",installationId);
+    if(updateError)return out({error:"DEVICE_UPDATE_FAILED"},503);
+   }else{
+    const {data:limitData,error:limitError}=await db.rpc("server_rate_limit_allow",{
+      p_scope:"device-bootstrap",
+      p_key_hash:await ipHash(req),
+      p_window_seconds:3600,
+      p_max_hits:20
+    });
+    if(limitError)return out({error:"DEVICE_REGISTRATION_UNAVAILABLE"},503);
+    if(limitData!==true)return out({error:"DEVICE_REGISTRATION_RATE_LIMITED"},429);
+    const {data:profile,error:profileError}=await db.from("server_profiles")
+      .insert({phone_e164:null})
+      .select("user_id,server_id,phone_e164,phone_verified_at")
+      .single();
+    if(profileError||!profile)return out({error:"DEVICE_PROFILE_CREATE_FAILED"},503);
+    const {data:created,error:createError}=await db.from("server_device_identities").insert({
+      installation_id:installationId,
+      secret_hash:secretHash,
+      user_id:profile.user_id,
+      selected_sim_slot:slot,
+      selected_sim_carrier:carrier
+    }).select("installation_id,secret_hash,user_id,revoked_at").single();
+    if(createError||!created){
+      await db.from("server_profiles").delete().eq("user_id",profile.user_id);
+      return out({error:"DEVICE_REGISTRATION_FAILED"},503);
+    }
+    identity=created;
+   }
+   const {data:profile,error:profileError}=await db.from("server_profiles")
+    .select("user_id,server_id,phone_e164,phone_verified_at")
+    .eq("user_id",identity.user_id).maybeSingle();
+   if(profileError||!profile)return out({error:"DEVICE_PROFILE_LOOKUP_FAILED"},503);
+   const access=newToken(),validUntil=expiry();
+   const {error:sessionError}=await db.from("server_sessions").insert({
+    user_id:profile.user_id,token_hash:await sha(access),expires_at:validUntil,
+    user_agent:(req.headers.get("user-agent")||"").slice(0,300)||null
+   });
+   if(sessionError)return out({error:"SESSION_CREATE_FAILED"},503);
+   return out({
+    ok:true,access_token:access,token_type:"Bearer",expires_at:validUntil,
+    user:{id:profile.user_id,server_id:profile.server_id,phone:profile.phone_e164,phone_verified_at:profile.phone_verified_at}
+   });
+  }
   if(action==="request_otp"){
    const to=phone(b.phone);if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
    const rawCode=crypto.getRandomValues(new Uint32Array(1))[0]%1000000;
