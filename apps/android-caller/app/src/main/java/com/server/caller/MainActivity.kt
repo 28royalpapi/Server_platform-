@@ -344,6 +344,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (!::simChoices.isInitialized) return
     simChoices.removeAllViews()
     selectedSimSubscriptionId = -1
+    selectedSimSlot = null
+    selectedSimCarrier = ""
     hasActiveSimChoices = false
     val permissions = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
       checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
@@ -408,6 +410,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         .put("action", "register_device")
         .put("installation_id", installationId)
         .put("device_secret", deviceSecret)
+        .put("accepted_terms", true)
+        .put("terms_version", "server-terms-1.0")
+        .put("privacy_version", "server-privacy-1.0")
       selectedSimSlot?.let { payload.put("selected_sim_slot", it) }
       if (selectedSimCarrier.isNotBlank()) payload.put("selected_sim_carrier", selectedSimCarrier)
       val result = authRequest("/functions/v1/server-auth", payload, false)
