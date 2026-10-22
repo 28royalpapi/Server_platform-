@@ -5,6 +5,21 @@ const statusEl = document.querySelector("#status");
 const forms = { phone: document.querySelector("#phone-form"), verify: document.querySelector("#verify-form"), consent: document.querySelector("#consent-form"), preferences: document.querySelector("#preferences-form"), done: document.querySelector("#done-step") };
 let sessionToken = sessionStorage.getItem("server_session_token") || "";
 let pendingPhone = "";
+function normalizePhone(value) {
+ const clean = value.trim().replace(/[\\s().-]/g, "");
+ if (/^\\+2340[0-9]{10}$/.test(clean)) {
+  const normalized = "+234" + clean.slice(5);
+  return /^\\+[1-9][0-9]{7,14}$/.test(normalized) ? normalized : "";
+ }
+ const digits = clean.replace(/\\D/g, "");
+ if (/^0[0-9]{10}$/.test(digits)) {
+  const normalized = "+234" + digits.slice(1);
+  return /^\\+[1-9][0-9]{7,14}$/.test(normalized) ? normalized : "";
+ }
+ if (/^234[0-9]{10}$/.test(digits)) return "+" + digits;
+ if (/^[789][0-9]{9}$/.test(digits)) return "+234" + digits;
+ return /^\\+[1-9][0-9]{7,14}$/.test(clean) ? clean : "";
+}
 function showStatus(message, ok = false) { statusEl.textContent = message; statusEl.classList.remove("hidden", "ok"); if (ok) statusEl.classList.add("ok"); }
 function clearStatus() { statusEl.classList.add("hidden"); statusEl.textContent = ""; }
 function setStep(name) { Object.entries(forms).forEach(([key, el]) => el.classList.toggle("hidden", key !== name)); document.querySelectorAll("[data-step-label]").forEach((el) => { el.classList.toggle("active", ["phone","verify","consent","preferences"].indexOf(el.dataset.stepLabel) <= ["phone","verify","consent","preferences"].indexOf(name)); }); clearStatus(); }
@@ -20,9 +35,10 @@ async function postFunction(name, body, token = "") {
 }
 forms.phone.addEventListener("submit", async (event) => {
  event.preventDefault(); clearStatus();
- const phone = document.querySelector("#phone").value.trim().replace(/[\s().-]/g, "");
+ const phone = normalizePhone(document.querySelector("#phone").value);
  if (!configured) return showStatus("Server is not configured with its Supabase project.");
- if (!/^\+[1-9][0-9]{7,14}$/.test(phone)) return showStatus("Enter the full number with country code, for example +2348012345678.");
+ if (!phone) return showStatus("Enter a valid number, e.g. 08012345678 or +2348012345678.");
+ document.querySelector("#phone").value = phone;
  const button = document.querySelector("#send-otp"); setBusy(button, true);
  try {
   const result = await postFunction("server-auth", { action: "request_otp", phone });
