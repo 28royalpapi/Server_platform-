@@ -35,12 +35,16 @@ const record = (name, ok, detail) => {
   record("server-auth input validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
-// A syntactically valid OTP request must fail closed when no physical SIM gateway is online.
-// It must not claim success, generate an OTP challenge, or create an SMS job in this state.
+// Never trigger a carrier SMS from CI. A malformed verification code must be rejected
+// before the database is touched, regardless of whether a real SIM gateway is online.
 {
-  const r = await request("server-auth", "POST", { action: "request_otp", phone: "+19995550101" });
-  const ok = r.response.status === 503 && r.data.error === "SMS_GATEWAY_OFFLINE";
-  record("server-auth OTP delivery requires live SIM gateway", ok,
+  const r = await request("server-auth", "POST", {
+    action: "verify_otp",
+    phone: "+19995550101",
+    code: "not-a-code"
+  });
+  const ok = r.response.status === 400 && r.data.error === "INVALID_CODE_FORMAT";
+  record("server-auth rejects malformed OTP without sending SMS", ok,
     "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
