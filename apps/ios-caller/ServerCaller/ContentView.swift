@@ -27,6 +27,13 @@ struct ContentView: View {
                                 Button { Task { await model.startCall() } } label: {
                                     Label("Call with Server", systemImage: "phone.fill").frame(maxWidth: .infinity)
                                 }.buttonStyle(.borderedProminent).tint(.green).disabled(model.isBusy || model.callId != nil)
+                                if model.callId == nil {
+                                    Button { model.dialUsingCellularNetwork() } label: {
+                                        Label("Use normal phone call (no data)", systemImage: "phone.arrow.up.right").frame(maxWidth: .infinity)
+                                    }.buttonStyle(.bordered)
+                                    Text("Fallback uses your existing SIM and carrier voice service. Mobile data is not required, but voice coverage and airtime are.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                                 if model.callId != nil {
                                     Button(role: .destructive) { Task { await model.endCall() } } label: {
                                         Label("End call", systemImage: "phone.down.fill").frame(maxWidth: .infinity)
