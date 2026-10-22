@@ -1,3 +1,4 @@
+import { normalizePhone } from "./phone-number.js";
 const config = window.SERVER_CONFIG || {};
 const configured = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(config.supabaseUrl || "") &&
   typeof config.publishableKey === "string" && config.publishableKey.length > 20 && !config.publishableKey.includes("YOUR_");
@@ -5,21 +6,6 @@ const statusEl = document.querySelector("#status");
 const forms = { phone: document.querySelector("#phone-form"), verify: document.querySelector("#verify-form"), consent: document.querySelector("#consent-form"), preferences: document.querySelector("#preferences-form"), done: document.querySelector("#done-step") };
 let sessionToken = sessionStorage.getItem("server_session_token") || "";
 let pendingPhone = "";
-function normalizePhone(value) {
- const clean = value.trim().replace(/[\s().-]/g, "");
- if (/^\+2340[0-9]{10}$/.test(clean)) {
-  const normalized = "+234" + clean.slice(5);
-  return /^\+[1-9][0-9]{7,14}$/.test(normalized) ? normalized : "";
- }
- const digits = clean.replace(/\D/g, "");
- if (/^0[0-9]{10}$/.test(digits)) {
-  const normalized = "+234" + digits.slice(1);
-  return /^\+[1-9][0-9]{7,14}$/.test(normalized) ? normalized : "";
- }
- if (/^234[0-9]{10}$/.test(digits)) return "+" + digits;
- if (/^[789][0-9]{9}$/.test(digits)) return "+234" + digits;
- return /^\+[1-9][0-9]{7,14}$/.test(clean) ? clean : "";
-}
 function showStatus(message, ok = false) { statusEl.textContent = message; statusEl.classList.remove("hidden", "ok"); if (ok) statusEl.classList.add("ok"); }
 function clearStatus() { statusEl.classList.add("hidden"); statusEl.textContent = ""; }
 function setStep(name) { Object.entries(forms).forEach(([key, el]) => el.classList.toggle("hidden", key !== name)); document.querySelectorAll("[data-step-label]").forEach((el) => { el.classList.toggle("active", ["phone","verify","consent","preferences"].indexOf(el.dataset.stepLabel) <= ["phone","verify","consent","preferences"].indexOf(name)); }); clearStatus(); }
