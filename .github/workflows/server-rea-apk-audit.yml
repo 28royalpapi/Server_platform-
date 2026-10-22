@@ -84,14 +84,31 @@ jobs:
           console.log('REA_APK_COMPONENT_AUDIT_PASS: decoded APK includes the explicit gateway activity, SMS service, and delivery receiver.');
           NODE
 
-      - name: Inspect OTP pairing and real SIM SMS methods with REA
+      - name: Inspect gateway startup, OTP pairing and SIM SMS methods with REA
         shell: bash
         run: |
           set -euo pipefail
           APK="$GITHUB_WORKSPACE/apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk"
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity onCreate --json > artifacts/rea-gateway-startup-method.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity pairGateway --json > artifacts/rea-gateway-pairing-method.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.SmsGatewayService sendJob --json > artifacts/rea-gateway-sms-method.json
-          echo 'REA inspected the compiled pairing method and the SIM SMS send/status callback method.'
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const input = JSON.parse(fs.readFileSync('artifacts/rea-gateway-startup-method.json', 'utf8'));
+          const text = JSON.stringify(input.normalized_result?.source?.text || '');
+          const required = [
+            'https://hzuovekqsjtpvmbuybxs.supabase.co',
+            'sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E',
+            'Pair this gateway'
+          ];
+          const missing = required.filter(value => !text.includes(value));
+          if (missing.length) {
+            console.error('REA did not recover the expected Server defaults from the compiled gateway startup method:', missing.join(', '));
+            process.exit(1);
+          }
+          console.log('REA_GATEWAY_STARTUP_CONFIG_PASS: backend URL, public key and pairing control are present in the compiled startup method.');
+          NODE
+          echo 'REA inspected the compiled startup, pairing and SIM SMS-send methods.'
 
       - name: Inspect the compiled caller and WebRTC methods with REA
         shell: bash
@@ -123,6 +140,7 @@ jobs:
           name: server-rea-mobile-audit
           path: |
             artifacts/rea-gateway-package.json
+            artifacts/rea-gateway-startup-method.json
             artifacts/rea-gateway-pairing-method.json
             artifacts/rea-gateway-sms-method.json
             artifacts/rea-caller-package.json
