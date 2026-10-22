@@ -66,8 +66,15 @@ const record = (name, ok, detail) => {
 // Public onboarding page must actually be served by the deployed edge function.
 {
   const r = await request("server-web", "GET");
-  const ok = r.response.status === 200 && /Server/i.test(r.text) && /text\/html/i.test(r.response.headers.get("content-type") || "");
-  record("server-web live page", ok, "HTTP " + r.response.status + ", content-type " + (r.response.headers.get("content-type") || "missing") + ", body " + r.text.length + " bytes");
+  const finalHost = (() => { try { return new URL(r.response.url).hostname; } catch { return ""; } })();
+  const ok = r.response.status === 200 &&
+    finalHost === "server-onboarding-ochre.vercel.app" &&
+    /Server/i.test(r.text) &&
+    /text\/html/i.test(r.response.headers.get("content-type") || "");
+  record("server-web live page redirect and HTML", ok,
+    "HTTP " + r.response.status + ", final host " + (finalHost || "missing") +
+    ", content-type " + (r.response.headers.get("content-type") || "missing") +
+    ", body " + r.text.length + " bytes");
 }
 
 const failed = checks.filter((x) => !x.ok);
