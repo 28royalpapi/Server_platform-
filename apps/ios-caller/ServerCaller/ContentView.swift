@@ -21,7 +21,7 @@ struct ContentView: View {
                         GroupBox("Call a number") {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("Signed in as \(model.maskedPhone)").font(.caption).foregroundStyle(.secondary)
-                                TextField("+2348012345678", text: $model.targetPhone)
+                                TextField("SVR-0123456789 or +2348012345678", text: $model.targetPhone)
                                     .keyboardType(.phonePad).textInputAutocapitalization(.never)
                                     .padding(12).background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
                                 Button { Task { await model.startCall() } } label: {
@@ -48,27 +48,28 @@ struct ContentView: View {
                             }
                         }
                     } else {
-                        GroupBox("Verify your phone") {
+                        GroupBox("Set up Server on this iPhone") {
                             VStack(alignment: .leading, spacing: 12) {
-                                TextField("+2348012345678", text: $model.phone)
-                                    .keyboardType(.phonePad).textInputAutocapitalization(.never)
-                                    .padding(12).background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-                                Button { Task { await model.requestOtp() } } label: {
+                                Text("Create a device-bound Server ID without an SMS OTP. iOS does not allow ordinary apps to enumerate SIM slots or read SIM phone numbers; your mobile number stays with your carrier.")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                                Toggle(isOn: $model.acceptedTerms) {
+                                    Text("I accept the Terms of Service and acknowledge the Privacy Notice.")
+                                }.tint(.green)
+                                HStack {
+                                    Link("Terms of Service", destination: URL(string: "https://server-onboarding-ochre.vercel.app/terms.html")!)
+                                    Spacer()
+                                    Link("Privacy Notice", destination: URL(string: "https://server-onboarding-ochre.vercel.app/privacy.html")!)
+                                }.font(.caption)
+                                Button { Task { await model.registerDevice() } } label: {
                                     if model.isBusy { ProgressView().frame(maxWidth: .infinity) }
-                                    else { Label("Send real SMS code", systemImage: "message.fill").frame(maxWidth: .infinity) }
-                                }.buttonStyle(.borderedProminent).tint(.green).disabled(model.isBusy || !model.isConfigured)
-                                TextField("Code received by SMS", text: $model.otp).keyboardType(.numberPad)
-                                    .padding(12).background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-                                Button("Verify phone") { Task { await model.verifyOtp() } }
-                                    .buttonStyle(.bordered).disabled(model.isBusy || model.otp.isEmpty)
-                                Text("No code is invented by this app. Delivery requires the deployed Supabase SMS hook and an online, paired SIM gateway.")
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    else { Label("Create Server ID — no SMS OTP", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity) }
+                                }.buttonStyle(.borderedProminent).tint(.green).disabled(model.isBusy || !model.isConfigured || !model.acceptedTerms)
                             }.padding(.vertical, 6)
                         }
                     }
                     if !model.status.isEmpty { notice(model.status, warning: model.isError) }
                     GroupBox("How Server calls work") {
-                        Text("Server users connect by WebRTC. A non-Server number receives a guest link by SMS and must open it with internet and microphone access. Server is a calling service, not a third SIM; an ordinary cellular call without data requires a carrier voice connection.")
+                        Text("Call another Server user with their Server ID (for example SVR-0123456789). A non-Server number still needs a guest invitation and internet to join; SMS invitations require a paired gateway. Server is an internet-calling service, not a copied SIM or a cellular line.")
                             .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
                     }
                 }.padding(.horizontal, 16).padding(.bottom, 28)
