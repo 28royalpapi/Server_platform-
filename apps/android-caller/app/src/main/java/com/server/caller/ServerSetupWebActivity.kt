@@ -57,7 +57,26 @@ class ServerSetupWebActivity : Activity() {
       }
     }
     setContentView(FrameLayout(this).apply { addView(web, FrameLayout.LayoutParams(-1, -1)) })
-    web.loadUrl("https://$HOST/?native=android")
+    loadBundledOnboarding()
+  }
+
+  /**
+   * The phone's first-party site may still be on an older deployment. Bundle the
+   * current HTML/CSS/JS in the APK so the SIM flow works immediately after the
+   * website's "Open Server" hand-off, without depending on deployment propagation.
+   */
+  private fun loadBundledOnboarding() {
+    val html = assets.open("server-web/index.html").bufferedReader().use { it.readText() }
+    val css = assets.open("server-web/styles.css").bufferedReader().use { it.readText() }
+    val js = assets.open("server-web/app.js").bufferedReader().use { it.readText() }
+    var page = html
+      .replace("""<link rel="stylesheet" href="styles.css">""", "<style>\\n$css\\n</style>")
+      .replace("""<script defer src="app.js"></script>""", "<script>\\n$js\\n</script>")
+      .replace("""target="_blank" rel="noopener"""", """target="_self"""")
+    check(page.contains("id=\\"native-setup\\"") && page.contains("window.ServerAndroid")) {
+      "Bundled Server onboarding HTML is missing the SIM-first bridge UI."
+    }
+    web.loadDataWithBaseURL("https://$HOST/", page, "text/html", "UTF-8", null)
   }
 
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
