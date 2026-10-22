@@ -41,3 +41,16 @@ dependencies {
   androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
   androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }
+
+
+// Bundle the same web onboarding interface into the Android companion as a reliable
+// fallback when the production website has not yet deployed the latest web commit.
+val copyServerOnboardingAssets by tasks.registering(Copy::class) {
+  from(rootProject.projectDir.resolve("../../web")) {
+    include("index.html", "app.js", "styles.css", "terms.html", "privacy.html")
+  }
+  into(layout.projectDirectory.dir("src/main/assets/server-web"))
+}
+tasks.named("preBuild").configure {
+  dependsOn(copyServerOnboardingAssets)
+}
