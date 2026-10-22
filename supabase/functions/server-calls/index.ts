@@ -54,7 +54,7 @@ Deno.serve(async(req:Request)=>{
     const tokenHash=await sha(token);const expires=new Date(Date.now()+20*60*1000).toISOString();
     const {data:invite,error:ie}=await db.from("server_guest_invites").insert({call_id:call.id,phone_e164:to,token_hash:tokenHash,expires_at:expires}).select("id").single();
     if(ie||!invite){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503);}
-    const guestUrl=(Deno.env.get("SERVER_GUEST_BASE_URL")||"https://server-onboarding-ochre.vercel.app/guest.html").replace(/\/$/,"");
+    const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
     const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
     const {error:qe}=await db.from("server_sms_jobs").insert({category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"});
     if(qe){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_SMS_QUEUE_FAILED"},503);}
