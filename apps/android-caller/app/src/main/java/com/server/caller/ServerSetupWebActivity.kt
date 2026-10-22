@@ -70,10 +70,10 @@ class ServerSetupWebActivity : Activity() {
     val css = assets.open("server-web/styles.css").bufferedReader().use { it.readText() }
     val js = assets.open("server-web/app.js").bufferedReader().use { it.readText() }
     var page = html
-      .replace("""<link rel="stylesheet" href="styles.css">""", "<style>\\n$css\\n</style>")
-      .replace("""<script defer src="app.js"></script>""", "<script>\\n$js\\n</script>")
-      .replace("""target="_blank" rel="noopener"""", """target="_self"""")
-    check(page.contains("id=\\"native-setup\\"") && page.contains("window.ServerAndroid")) {
+      .replace("""<link rel="stylesheet" href="styles.css">""", "<style>\n$css\n</style>")
+      .replace("""<script defer src="app.js"></script>""", "<script>\n$js\n</script>")
+      .replace("target=\"_blank\" rel=\"noopener\"", "target=\"_self\"")
+    check(page.contains("native-setup") && page.contains("ServerAndroid")) {
       "Bundled Server onboarding HTML is missing the SIM-first bridge UI."
     }
     web.loadDataWithBaseURL("https://$HOST/", page, "text/html", "UTF-8", null)
