@@ -14,14 +14,18 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @get:Rule val microphone = GrantPermissionRule.grant(Manifest.permission.RECORD_AUDIO)
+  @get:Rule val permissions = GrantPermissionRule.grant(
+    Manifest.permission.RECORD_AUDIO,
+    Manifest.permission.READ_PHONE_STATE,
+    Manifest.permission.READ_PHONE_NUMBERS
+  )
 
-  @Test fun firstLaunchShowsPhoneVerificationAndNoFakeCode() {
+  @Test fun firstLaunchShowsDeviceFirstSetupAndNoOtpForm() {
     ActivityScenario.launch(MainActivity::class.java).use {
       onView(withText("SERVER")).check(matches(isDisplayed()))
-      onView(withId(R.id.server_phone)).check(matches(isDisplayed()))
-      onView(withId(R.id.server_send_otp)).check(matches(withText("Send real SMS code")))
-      onView(withText(containsString("No code is invented by this app"))).check(matches(isDisplayed()))
+      onView(withText("Choose the SIM you want Server to use")).check(matches(isDisplayed()))
+      onView(withText(containsString("does not clone its number"))).check(matches(isDisplayed()))
+      onView(withText(containsString("no SMS OTP"))).check(matches(isDisplayed()))
     }
   }
 }
