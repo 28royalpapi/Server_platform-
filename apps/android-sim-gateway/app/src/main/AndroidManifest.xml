@@ -11,14 +11,14 @@
       android:label="Server SIM Gateway"
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="false">
-    <activity android:name=".MainActivity" android:exported="true">
+    <activity android:name="com.server.gateway.MainActivity" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
     <service
-        android:name=".SmsGatewayService"
+        android:name="com.server.gateway.SmsGatewayService"
         android:enabled="true"
         android:exported="false"
         android:foregroundServiceType="specialUse">
@@ -26,6 +26,6 @@
           android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
           android:value="Operate an operator-configured SMS gateway that sends authentication codes through its installed SIM while the user can see its persistent notification." />
     </service>
-    <receiver android:name=".SmsStatusReceiver" android:enabled="true" android:exported="false" />
+    <receiver android:name="com.server.gateway.SmsStatusReceiver" android:enabled="true" android:exported="false" />
   </application>
 </manifest>
