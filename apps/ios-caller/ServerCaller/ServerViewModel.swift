@@ -18,9 +18,11 @@ struct IncomingCall: Identifiable {
 
 @MainActor
 final class ServerViewModel: ObservableObject {
-    @Published var phone = "+234"
+    @Published var phone = ""
+    @Published var acceptedTerms = false
+    @Published var serverID = UserDefaults.standard.string(forKey: "server.server_id") ?? ""
     @Published var otp = ""
-    @Published var targetPhone = "+234"
+    @Published var targetPhone = ""
     @Published var status = ""
     @Published var isError = false
     @Published var isBusy = false
@@ -69,10 +71,12 @@ final class ServerViewModel: ObservableObject {
         ServerBuildConfig.url.hasPrefix("https://") && !ServerBuildConfig.url.contains("YOUR_PROJECT") &&
         ServerBuildConfig.key.count > 20 && !ServerBuildConfig.key.contains("YOUR_")
     }
-    var maskedPhone: String { storedPhone.count > 6 ? String(storedPhone.prefix(4)) + "••••" + String(storedPhone.suffix(3)) : storedPhone }
+    var maskedPhone: String { if !storedPhone.isEmpty { return storedPhone.count > 6 ? String(storedPhone.prefix(4)) + "••••" + String(storedPhone.suffix(3)) : storedPhone }; return serverID.isEmpty ? "Server ID pending" : serverID }
 
     func handleAppHandoff(_ url: URL) async {
-        guard url.scheme == "server", url.host == "setup" else { return }
+        guard url.scheme == "server" else { return }
+        if url.host == "sim-setup" { update("Continue setup here. iOS does not expose SIM-slot numbers to ordinary apps; Server will create a separate Server ID."); return }
+        guard url.host == "setup" else { return }
         guard let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "handoff" })?.value,
               code.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
@@ -114,6 +118,45 @@ final class ServerViewModel: ObservableObject {
         }
     }
 
+    func registerDevice() async {
+        guard isConfigured else { update("Supabase project URL and publishable key are not configured.", error: true); return }
+        guard acceptedTerms else { update("Please accept the Terms and acknowledge the Privacy Notice.", error: true); return }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let installationID: String
+            if let saved = Keychain.read("server.installation"), !saved.isEmpty {
+                installationID = saved
+            } else {
+                installationID = UUID().uuidString.lowercased()
+                Keychain.save(installationID, key: "server.installation")
+            }
+            let deviceSecret: String
+            if let saved = Keychain.read("server.device.secret"), saved.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil {
+                deviceSecret = saved
+            } else {
+                var bytes = [UInt8](repeating: 0, count: 32)
+                guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw ServerError.message("Could not create a secure device key.") }
+                deviceSecret = bytes.map { String(format: "%02x", $0) }.joined()
+                Keychain.save(deviceSecret, key: "server.device.secret")
+            }
+            let result = try await request("/functions/v1/server-auth", body: [
+                "action": "register_device", "installation_id": installationID, "device_secret": deviceSecret,
+                "accepted_terms": true, "terms_version": "server-terms-1.0", "privacy_version": "server-privacy-1.0"
+            ], authorized: false)
+            guard let access = result["access_token"] as? String, access.count == 64 else { throw ServerError.message("Server did not create a device session.") }
+            let user = result["user"] as? [String: Any] ?? [:]
+            guard let id = user["server_id"] as? String, id.range(of: "^SVR-[0-9A-F]{10}$", options: .regularExpression) != nil else { throw ServerError.message("Server did not return a valid Server ID.") }
+            accessToken = access; refreshToken = nil
+            Keychain.save(access, key: "server.access"); Keychain.delete("server.refresh")
+            expiresAt = Self.parseExpiry(result["expires_at"] as? String) ?? Date().timeIntervalSince1970 + 30 * 24 * 60 * 60
+            UserDefaults.standard.set(expiresAt, forKey: "server.expiry")
+            serverID = id; storedPhone = ""; UserDefaults.standard.removeObject(forKey: "server.phone"); UserDefaults.standard.set(id, forKey: "server.server_id")
+            isSignedIn = true
+            update("Setup complete. Your Server ID is \\(id). iOS uses CallKit for native call screens; it cannot add Server as a cellular SIM line.")
+            startIncomingPolling()
+        } catch { update("Device-first setup failed: \\(error.localizedDescription)", error: true) }
+    }
     func requestOtp() async {
         guard isConfigured else { update("Supabase project URL and publishable key are not configured.", error: true); return }
         let clean = phone.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -142,11 +185,14 @@ final class ServerViewModel: ObservableObject {
     }
 
     func startCall() async {
-        let target = targetPhone.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard target.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil else { update("Enter the recipient's full number with country code.", error: true); return }
+        let target = targetPhone.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let payload: [String: Any]
+        if target.range(of: #"^SVR-[0-9A-F]{10}$"#, options: .regularExpression) != nil { payload = ["to_server_id": target] }
+        else if target.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil { payload = ["to_phone": target] }
+        else { update("Enter a Server ID (SVR- plus 10 characters) or a full number with country code.", error: true); return }
         isBusy = true; defer { isBusy = false }
         do {
-            let result = try await api("start", body: ["to_phone": target])
+            let result = try await api("start", body: payload)
             guard let id = result["call_id"] as? String else { throw ServerError.message("Backend did not return a call ID.") }
             callId = id; route = result["route"] as? String ?? "server"; afterSeq = 0
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
@@ -191,7 +237,7 @@ final class ServerViewModel: ObservableObject {
     func signOut() {
         pollingTask?.cancel(); incomingTask?.cancel(); callId = nil; accessToken = nil; refreshToken = nil; isSignedIn = false
         Keychain.delete("server.access"); Keychain.delete("server.refresh"); UserDefaults.standard.removeObject(forKey: "server.expiry")
-        update("Signed out.")
+        update("Server session cleared. This device can register again with its existing device key.")
     }
 
     private func startIncomingPolling() {
@@ -203,7 +249,7 @@ final class ServerViewModel: ObservableObject {
                     let result = try await self.api("incoming", body: [:])
                     if let rows = result["calls"] as? [[String: Any]], let first = rows.first,
                        let id = first["id"] as? String, self.callId == nil {
-                        let from = first["caller_phone_e164"] as? String ?? "Server user"
+                        let from = first["caller_server_id"] as? String ?? first["caller_phone_e164"] as? String ?? "Server user"
                         if self.incomingCall?.id != id {
                             self.incomingCall = IncomingCall(id: id, phone: from)
                             try? await self.callKit.reportIncoming(id: id, handle: from)
@@ -304,9 +350,9 @@ final class ServerViewModel: ObservableObject {
 
     private func refreshIfNeeded() async throws {
         if expiresAt > Date().timeIntervalSince1970 + 90 { return }
-        guard accessToken != nil else { throw ServerError.message("Verify your phone first.") }
+        guard accessToken != nil else { throw ServerError.message("Create a Server ID on this device first.") }
         let result = try await request("/functions/v1/server-auth", body: ["action": "refresh"], authorized: true, refresh: false)
-        guard let access = result["access_token"] as? String else { throw ServerError.message("Session refresh failed; verify your number again.") }
+        guard let access = result["access_token"] as? String else { throw ServerError.message("Session refresh failed; register this device again.") }
         accessToken = access
         expiresAt = Self.parseExpiry(result["expires_at"] as? String) ?? Date().timeIntervalSince1970 + 30 * 24 * 60 * 60
         Keychain.save(access, key: "server.access"); Keychain.delete("server.refresh")
