@@ -28,6 +28,21 @@ const record = (name, ok, detail) => {
   console.log((ok ? "PASS" : "FAIL") + " " + name + " — " + detail);
 };
 
+// Device-first signup must reject missing legal acceptance before touching the database.
+{
+  const r = await request("server-auth", "POST", {
+    action: "register_device",
+    installation_id: "7b5becc2-1ac4-47ef-80b6-13a61df78f26",
+    device_secret: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    accepted_terms: false,
+    terms_version: "server-terms-1.0",
+    privacy_version: "server-privacy-1.0"
+  });
+  const ok = r.response.status === 400 && r.data.error === "LEGAL_ACCEPTANCE_REQUIRED";
+  record("server-auth device-first consent guard", ok,
+    "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
 // Invalid phone input must be rejected before any OTP is generated or queued.
 {
   const r = await request("server-auth", "POST", { action: "request_otp", phone: "not-a-real-number" });
