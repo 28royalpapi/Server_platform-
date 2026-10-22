@@ -149,7 +149,7 @@ Deno.serve(async(req:Request)=>{
    return out({ok:true,access_token:session.token,token_type:"Bearer",expires_at:validUntil});
   }
   if(action==="me"){
-   const {data:profile,error}=await db.from("server_profiles").select("user_id,phone_e164,phone_verified_at,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
+   const {data:profile,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
    if(error||!profile)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
    return out({ok:true,user:profile});
