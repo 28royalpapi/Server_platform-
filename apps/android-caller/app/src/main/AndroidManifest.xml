@@ -10,7 +10,7 @@
     android:label="Server Calling"
     android:theme="@style/ServerTheme"
     android:usesCleartextTraffic="false">
-    <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden">
+    <activity android:name="com.server.caller.MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
@@ -23,7 +23,7 @@
       </intent-filter>
     </activity>
     <service
-      android:name=".ServerConnectionService"
+      android:name="com.server.caller.ServerConnectionService"
       android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
       android:exported="true">
       <intent-filter><action android:name="android.telecom.ConnectionService" /></intent-filter>
