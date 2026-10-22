@@ -41,8 +41,8 @@ class MainActivity : ComponentActivity() {
 
     root.addView(TextView(this).apply { text = "SERVER SIM GATEWAY"; textSize = 23f; setTextColor(0xff155f3d.toInt()) })
     root.addView(TextView(this).apply { text = "A dedicated Android handset uses its real SIM to send Server OTPs and guest-call invitations. SMS may incur normal carrier charges."; textSize = 14f; setPadding(0, 10, 0, 22) })
-    endpoint = edit(root, "Supabase project URL (https://PROJECT.supabase.co", SecureStore.getText(this, "url"))
-    publishableKey = edit(root, "Supabase publishable / anon key", SecureStore.getText(this, "key"))
+    endpoint = edit(root, "Supabase project URL", SecureStore.getText(this, "url").ifBlank { DEFAULT_SUPABASE_URL })
+    publishableKey = edit(root, "Supabase publishable key", SecureStore.getText(this, "key").ifBlank { DEFAULT_PUBLISHABLE_KEY })
     pairingCode = edit(root, "One-time pairing code", "")
     deviceLabel = edit(root, "Gateway device label", "Server SIM Gateway")
     root.addView(button("Pair this gateway") { pairGateway() })
@@ -132,6 +132,9 @@ class MainActivity : ComponentActivity() {
   private fun setStatus(message: String) { if (::status.isInitialized) status.text = message }
 
   companion object {
+    private const val DEFAULT_SUPABASE_URL = "https://hzuovekqsjtpvmbuybxs.supabase.co"
+    private const val DEFAULT_PUBLISHABLE_KEY = "sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E"
+
     fun postGateway(context: android.content.Context, action: JSONObject): JSONObject {
       val base = SecureStore.getText(context, "url")
       val key = SecureStore.getText(context, "key")
