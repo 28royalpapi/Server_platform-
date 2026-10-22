@@ -26,10 +26,20 @@ object ServerTelecomRegistry {
     val app = context.applicationContext
     val telecom = app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val handle = handle(app)
-    val account = PhoneAccount.builder(handle, "Server internet calling")
+    // Reuse the number Android exposed for the user-selected SIM as the calling
+    // account address when available. This affects the account metadata shown by
+    // the dialer; it does not provision or clone a carrier subscription.
+    val observedNumber = app.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+      .getString("selected_sim_phone", "")
+      .orEmpty()
+      .filter { it.isDigit() || it == '+' }
+    val accountBuilder = PhoneAccount.builder(handle, "Server")
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
-      .setShortDescription("Internet calls over Server; not a cellular SIM")
-      .build()
+      .setShortDescription("Server internet calling account; not a cellular SIM")
+    if (observedNumber.isNotBlank()) {
+      accountBuilder.setAddress(Uri.fromParts("tel", observedNumber, null))
+    }
+    val account = accountBuilder.build()
     telecom.registerPhoneAccount(account)
     return telecom.getPhoneAccount(handle)?.isEnabled == true
   }
