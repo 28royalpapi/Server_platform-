@@ -151,11 +151,12 @@ jobs:
           let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
           print("iOS simulator visible-screen OCR:\n\(recognized)")
           let hasBrand = recognized.localizedCaseInsensitiveContains("SERVER")
-          let hasOnboarding = recognized.localizedCaseInsensitiveContains("Verify your phone")
+          let hasDeviceFirstSetup = recognized.localizedCaseInsensitiveContains("Set up Server on this iPhone")
+              || recognized.localizedCaseInsensitiveContains("Create Server ID")
+          let showsLegacyOtp = recognized.localizedCaseInsensitiveContains("Verify your phone")
               || recognized.localizedCaseInsensitiveContains("Send real SMS code")
-              || recognized.localizedCaseInsensitiveContains("Calling, made natural")
-          guard hasBrand && hasOnboarding else {
-              fail("ServerCaller was not visibly rendered; required Server header and onboarding/calling UI were not detected.")
+          guard hasBrand && hasDeviceFirstSetup && !showsLegacyOtp else {
+              fail("ServerCaller did not show the device-first, no-SMS-OTP onboarding UI.")
           }
           print("IOS_UI_SMOKE_PASS: ServerCaller rendered visible app UI.")
           SWIFT
