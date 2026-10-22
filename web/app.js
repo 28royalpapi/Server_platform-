@@ -111,6 +111,17 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     grantCalls.disabled = !terms.checked;
   });
 
+  grantCalls?.addEventListener("click", () => {
+    if (!terms?.checked) {
+      showStatus("Accept the Terms of Service and acknowledge the Privacy Notice before continuing.");
+      return;
+    }
+    grantCalls.disabled = true;
+    grantCalls.textContent = "Waiting for Android permissions…";
+    showStatus("Android will request microphone permission and, where available, notification permission.");
+    window.ServerAndroid.requestCallPermissions();
+  });
+
   window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted) => {
     grantCalls.disabled = false;
     grantCalls.textContent = "Create Server identity and grant permissions →";
