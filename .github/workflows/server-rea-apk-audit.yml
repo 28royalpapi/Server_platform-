@@ -92,23 +92,69 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity onCreate --json > artifacts/rea-gateway-startup-method.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity pairGateway --json > artifacts/rea-gateway-pairing-method.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.SmsGatewayService sendJob --json > artifacts/rea-gateway-sms-method.json
+          # REA verifies the compiled call paths; DEX string-pool inspection verifies
+          # the configuration constants, which Kotlin may inline into generated lambdas.
+          : > artifacts/rea-gateway-dex-strings.txt
+          while IFS= read -r dex; do
+            unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-gateway-dex-strings.txt
+          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\\.dex
+
+      - name: Inspect the compiled caller and WebRTC methods with REA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-debug.apk"
+          npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-caller-package.json
+          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.MainActivity --json > artifacts/rea-caller-main-class.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity startCall --json > artifacts/rea-caller-start-call.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity preparePeer --json > artifacts/rea-caller-prepare-peer.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity handleSignal --json > artifacts/rea-caller-handle-signal.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity onIceConnectionChange --json > artifacts/rea-caller-ice-state-sync.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const input = JSON.parse(fs.readFileSync('artifacts/rea-gateway-startup-method.json', 'utf8'));
-          const text = JSON.stringify(input.normalized_result?.source?.text || '');
-          const required = [
-            'https://hzuovekqsjtpvmbuybxs.supabase.co',
-            'sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E',
-            'Pair this gateway'
-          ];
-          const missing = required.filter(value => !text.includes(value));
-          if (missing.length) {
-            console.error('REA did not recover the expected Server defaults from the compiled gateway startup method:', missing.join(', '));
+          const input = JSON.parse(fs.readFileSync('artifacts/rea-caller-ice-state-sync.json', 'utf8'));
+          const source = input?.normalized_result?.source?.text || '';
+          if (!source.includes('set_active')) {
+            console.error('REA did not find the active-call state sync in the compiled ICE state callback.');
             process.exit(1);
           }
-          console.log('REA_GATEWAY_STARTUP_CONFIG_PASS: backend URL, public key and pairing control are present in the compiled startup method.');
+          console.log('REA_CALL_ACTIVE_STATE_AUDIT_PASS: the compiled ICE-connected callback requests server active-state sync.');
           NODE
-          echo 'REA inspected the compiled startup, pairing and SIM SMS-send methods.'
+          echo 'REA inspected the compiled caller entry point, WebRTC setup, offer/answer handling, and ICE-connected call-state sync.'
+
+      - name: Upload REA evidence and inspected APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-rea-mobile-audit
+          path: |
+            artifacts/rea-gateway-package.json
+            artifacts/rea-gateway-startup-method.json
+            artifacts/rea-gateway-dex-strings.txt
+            artifacts/rea-gateway-pairing-method.json
+            artifacts/rea-gateway-sms-method.json
+            artifacts/rea-caller-package.json
+            artifacts/rea-caller-main-class.json
+            artifacts/rea-caller-start-call.json
+            artifacts/rea-caller-prepare-peer.json
+            artifacts/rea-caller-handle-signal.json
+            artifacts/rea-caller-ice-state-sync.json
+            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+)
+          required=(
+            'https://hzuovekqsjtpvmbuybxs.supabase.co'
+            'sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E'
+            'Pair this gateway'
+          )
+          for value in "${required[@]}"; do
+            if ! grep -Fq "$value" artifacts/rea-gateway-dex-strings.txt; then
+              echo "Compiled gateway DEX does not contain expected startup constant: $value" >&2
+              exit 1
+            fi
+          done
+          echo 'REA_GATEWAY_STARTUP_CONFIG_PASS: REA inspected startup/pairing/SMS methods and the compiled DEX contains the expected backend URL, public key and pairing button text.'
 
       - name: Inspect the compiled caller and WebRTC methods with REA
         shell: bash
