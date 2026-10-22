@@ -2,10 +2,12 @@ package com.server.caller
 
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.*
-import org.hamcrest.Matchers.containsString
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -13,11 +15,19 @@ import org.junit.runner.RunWith
 class CallerSmokeTest {
   @Test fun firstLaunchShowsDeviceFirstSetupAndNoOtpForm() {
     ActivityScenario.launch(MainActivity::class.java).use {
-      onView(withText("SERVER")).check(matches(isDisplayed()))
-      onView(withText("Choose the SIM you want Server to use")).check(matches(isDisplayed()))
-      onView(withText(containsString("does not clone its number"))).check(matches(isDisplayed()))
-      onView(withText("Detect SIM cards / grant permission")).check(matches(isDisplayed()))
-      onView(withText("Create Server ID — internet calling only")).check(matches(isDisplayed()))
+      val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+      device.waitForIdle()
+
+      assertTrue("Server onboarding brand is not visible",
+        device.wait(Until.hasObject(By.text("SERVER")), 10_000))
+      assertTrue("SIM-selection step is not visible",
+        device.wait(Until.hasObject(By.text("Choose the SIM you want Server to use")), 10_000))
+      assertNotNull("No-OTP number-cloning warning is not visible",
+        device.findObject(By.textContains("does not clone its number")))
+      assertNotNull("Explicit SIM-permission step is not visible",
+        device.findObject(By.text("Detect SIM cards / grant permission")))
+      assertNotNull("No-OTP registration action is not visible",
+        device.findObject(By.text("Create Server ID — internet calling only")))
     }
   }
 }
