@@ -37,6 +37,9 @@ Deno.serve(async(req:Request)=>{
    }
    const slot=Number.isInteger(b.selected_sim_slot)&&Number(b.selected_sim_slot)>=0?Number(b.selected_sim_slot):null;
    const carrier=typeof b.selected_sim_carrier==="string"?b.selected_sim_carrier.trim().slice(0,80)||null:null;
+   if(b.accepted_terms!==true||b.terms_version!=="server-terms-1.0"||b.privacy_version!=="server-privacy-1.0"){
+    return out({error:"LEGAL_ACCEPTANCE_REQUIRED"},400);
+   }
    const secretHash=await sha(deviceSecret);
    let identity:any=null;
    const {data:existing,error:existingError}=await db.from("server_device_identities").select("installation_id,secret_hash,user_id,revoked_at").eq("installation_id",installationId).maybeSingle();
@@ -81,6 +84,13 @@ Deno.serve(async(req:Request)=>{
     .select("user_id,server_id,phone_e164,phone_verified_at")
     .eq("user_id",identity.user_id).maybeSingle();
    if(profileError||!profile)return out({error:"DEVICE_PROFILE_LOOKUP_FAILED"},503);
+   const {error:legalError}=await db.from("server_profiles").update({
+    accepted_terms_version:"server-terms-1.0",
+    accepted_privacy_version:"server-privacy-1.0",
+    accepted_legal_at:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+   }).eq("user_id",profile.user_id);
+   if(legalError)return out({error:"LEGAL_ACCEPTANCE_SAVE_FAILED"},503);
    const access=newToken(),validUntil=expiry();
    const {error:sessionError}=await db.from("server_sessions").insert({
     user_id:profile.user_id,token_hash:await sha(access),expires_at:validUntil,
