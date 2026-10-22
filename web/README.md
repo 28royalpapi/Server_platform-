@@ -1,9 +1,9 @@
 # Server web setup
 
-The web surface supports existing-number verification, consent/preferences and the browser guest invitation page. Ordinary calls belong in the installed native client; this setup site is not the normal dialer.
+The website is a launch point, not a SIM reader or dialer. It opens `server://sim-setup` in the installed native app. Android SIM enumeration requires user permission inside the Android app. iOS does not expose SIM-slot number data to ordinary apps; iOS uses a separate Server ID and CallKit.
 
-`config.js` points to the Server Backend Supabase project and contains only the public publishable key. The primary OTP flow calls `server-auth`, which rate-limits issuance, uses a five-minute HMAC-protected code and queues the real SMS to a paired Android SIM gateway. Supabase Auth phone-provider settings and the optional `server-send-sms` hook are **not** prerequisites for this custom flow.
+Device onboarding creates a random installation-bound Server identity and session through `server-auth?action=register_device`. This path does not send SMS OTPs and does not claim to verify the selected SIM's phone number. The device secret is stored locally and only its SHA-256 hash is stored by the backend.
 
-An OTP request deliberately returns `SMS_GATEWAY_OFFLINE` until a paired gateway has checked in within the last 90 seconds. Install the Android SIM gateway on a device with a working SIM, configure this project URL and public key, claim an unexpired one-time pairing code, and keep the gateway's foreground service online. Carrier SMS fees may apply.
+Server-to-Server calls can be addressed by a Server ID such as `SVR-0123456789`. Calls to non-Server phone numbers still require a guest invitation route; SMS delivery to those recipients requires a paired Android SIM gateway (or a separately configured SMS provider), and the recipient needs internet access and microphone permission to use the guest browser call. WebRTC cannot reach an offline recipient through the cellular voice network by itself.
 
-Guest links open `guest.html?token=...` and require HTTPS, internet access, a supported browser, microphone permission, and the remote caller to remain online. A web invitation cannot initiate a normal cellular call or reach a guest without data. Only STUN is configured; calls behind restrictive NAT may require TURN infrastructure.
+The native Android SIM picker uses Android's subscription APIs. Reported phone numbers may be blank or inaccurate and are never used to authenticate a user. Server is an internet-calling provider, not a cloned SIM/eSIM.
