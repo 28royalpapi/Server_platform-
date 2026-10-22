@@ -152,7 +152,41 @@ jobs:
           fi
           sleep 8
           xcrun simctl io "$SIM_UDID" screenshot artifacts/server-ios-startup.png
-          xcrun simctl spawn "$SIM_UDID" launchctl list | grep -i 'com.server.caller' || true
+          cat > /tmp/check-server-ios-screen.swift <<'SWIFT'
+          import AppKit
+          import Foundation
+          import Vision
+
+          func fail(_ message: String) -> Never {
+              fputs("IOS_UI_SMOKE_FAIL: \\(message)\\n", stderr)
+              exit(1)
+          }
+
+          let imageURL = URL(fileURLWithPath: CommandLine.arguments[1])
+          guard let image = NSImage(contentsOf: imageURL) else { fail("Cannot open simulator screenshot.") }
+          var proposed = CGRect(origin: .zero, size: image.size)
+          guard let cgImage = image.cgImage(forProposedRect: &proposed, context: nil, hints: nil) else {
+              fail("Cannot decode simulator screenshot.")
+          }
+          let request = VNRecognizeTextRequest()
+          request.recognitionLevel = .accurate
+          do {
+              try VNImageRequestHandler(cgImage: cgImage).perform([request])
+          } catch {
+              fail("Vision OCR failed: \\(error)")
+          }
+          let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\\n")
+          print("iOS simulator visible-screen OCR:\\n\\(recognized)")
+          let hasBrand = recognized.localizedCaseInsensitiveContains("SERVER")
+          let hasOnboarding = recognized.localizedCaseInsensitiveContains("Verify your phone")
+              || recognized.localizedCaseInsensitiveContains("Send real SMS code")
+              || recognized.localizedCaseInsensitiveContains("Calling, made natural")
+          guard hasBrand && hasOnboarding else {
+              fail("ServerCaller was not visibly rendered; required Server header and onboarding/calling UI were not detected.")
+          }
+          print("IOS_UI_SMOKE_PASS: ServerCaller rendered visible app UI.")
+          SWIFT
+          swift /tmp/check-server-ios-screen.swift artifacts/server-ios-startup.png
           cleanup_recorder
           trap - EXIT
       - uses: actions/upload-artifact@v4
