@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.media.AudioManager
 import android.os.Bundle
 import android.view.Gravity
@@ -77,6 +78,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private lateinit var sendOtpButton: Button
   private lateinit var verifyButton: Button
   private lateinit var callButton: Button
+  private lateinit var fallbackCallButton: Button
   private lateinit var hangupButton: Button
 
   private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -137,6 +139,12 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(targetInput, matchWrap())
     callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
+    fallbackCallButton = button("Use normal phone call (no data)") { dialUsingCellularNetwork() }
+    callPanel.addView(fallbackCallButton, matchWrap())
+    callPanel.addView(TextView(this).apply {
+      text = "Fallback uses your existing SIM and carrier voice service. Mobile data is not required, but voice coverage and airtime are."
+      textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(12))
+    }, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
     callPanel.addView(button("Enable Server in phone app") { enableCallingAccount() }, matchWrap())
@@ -334,6 +342,20 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).apply()
   }
 
+  private fun dialUsingCellularNetwork() {
+    if (callId != null) { setStatus("End the current Server call before switching to a carrier call.", true); return }
+    val target = targetInput.text.toString().trim().replace(" ", "")
+    if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(target)) {
+      setStatus("Enter the recipient's full number with country code first.", true); return
+    }
+    try {
+      startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$target")))
+      setStatus("Opened the normal phone dialer. This uses your SIM and carrier voice plan, not Server internet calling.")
+    } catch (e: Exception) {
+      setStatus("Could not open the phone dialer: ${e.message ?: "no dialer available"}", true)
+    }
+  }
+
   private fun startCall() = lifecycleScope.launch {
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { askMic.launch(Manifest.permission.RECORD_AUDIO); setStatus("Allow microphone access and tap Call with Server again.", true); return@launch }
     val target = targetInput.text.toString().trim().replace(" ", "")
@@ -346,11 +368,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
-      callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
+      callButton.visibility = View.GONE; fallbackCallButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       setStatus(if (currentRoute == "guest") "Guest invitation queued. Waiting for the recipient to open the SMS link, grant microphone access and connect to the internet." else "Calling another Server user… waiting for answer.")
       beginCallPolling()
     } catch (e: Exception) {
-      cleanPeer(); callId = null
+      cleanPeer(); callId = null; showCallIdle()
       setStatus(e.message ?: "Could not start call.", true)
     } finally { callButton.isEnabled = true }
   }
@@ -394,10 +416,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val accepted = api("accept", JSONObject().put("call_id", id))
       callIceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
-      callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
+      callButton.visibility = View.GONE; fallbackCallButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       setStatus("Incoming call accepted. Connecting audio…")
       beginCallPolling()
-    } catch (e: Exception) { callId = null; cleanPeer(); setStatus(e.message ?: "Could not answer call.", true) }
+    } catch (e: Exception) { callId = null; cleanPeer(); showCallIdle(); setStatus(e.message ?: "Could not answer call.", true) }
   }
 
   private suspend fun declineCall(id: String) {
@@ -525,7 +547,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (id != null) try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
     cleanPeer(); callId = null; showCallIdle(); setStatus("Call ended.")
   }
-  private fun showCallIdle() { runOnUiThread { callButton.visibility = View.VISIBLE; hangupButton.visibility = View.GONE } }
+  private fun showCallIdle() { runOnUiThread { callButton.visibility = View.VISIBLE; fallbackCallButton.visibility = View.VISIBLE; hangupButton.visibility = View.GONE } }
   private fun cleanPeer() {
     pollingJob?.cancel(); pollingJob = null
     activeStateSyncedFor = null
