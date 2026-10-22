@@ -69,7 +69,8 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 2
           disable-animations: true
           script: |
-            set -euo pipefail
+            # The emulator action invokes scripts with /bin/sh on Linux; use POSIX-compatible options.
+            set -eu
             echo "Waiting for Android emulator ADB + boot completion"
             READY=0
             for attempt in $(seq 1 60); do
@@ -141,13 +142,16 @@ jobs:
             echo "ERROR: ServerCaller failed to launch:"
             echo "$LAUNCH_OUTPUT"
             xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "ServerCaller" OR eventMessage CONTAINS[c] "com.server.caller"' || true
-            find ~/Library/Logs/DiagnosticReports -maxdepth 1 -type f -mmin -10 -print 2>/dev/null || true
+            CRASH_REPORT=$(find ~/Library/Logs/DiagnosticReports -maxdepth 1 -type f -name 'ServerCaller-*.ips' -mmin -15 -print 2>/dev/null | sort | tail -n 1 || true)
+            if [ -n "$CRASH_REPORT" ]; then cp "$CRASH_REPORT" artifacts/ServerCaller-crash.ips; fi
             exit 1
           fi
           echo "$LAUNCH_OUTPUT"
           if ! echo "$LAUNCH_OUTPUT" | grep -Eq 'com\.server\.caller: [0-9]+'; then
             echo "ERROR: simctl did not confirm a running ServerCaller process."
             xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "ServerCaller" OR eventMessage CONTAINS[c] "com.server.caller"' || true
+            CRASH_REPORT=$(find ~/Library/Logs/DiagnosticReports -maxdepth 1 -type f -name 'ServerCaller-*.ips' -mmin -15 -print 2>/dev/null | sort | tail -n 1 || true)
+            if [ -n "$CRASH_REPORT" ]; then cp "$CRASH_REPORT" artifacts/ServerCaller-crash.ips; fi
             exit 1
           fi
           sleep 8
@@ -194,6 +198,6 @@ jobs:
         with:
           name: server-ios-build-and-startup-recording
           path: |
-            artifacts/server-ios-startup.mp4
+            artifacts/**
             /tmp/server-ios-build.log
           if-no-files-found: warn
