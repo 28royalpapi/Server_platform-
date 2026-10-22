@@ -35,6 +35,15 @@ const record = (name, ok, detail) => {
   record("server-auth input validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
+// A syntactically valid OTP request must fail closed when no physical SIM gateway is online.
+// It must not claim success, generate an OTP challenge, or create an SMS job in this state.
+{
+  const r = await request("server-auth", "POST", { action: "request_otp", phone: "+19995550101" });
+  const ok = r.response.status === 503 && r.data.error === "SMS_GATEWAY_OFFLINE";
+  record("server-auth OTP delivery requires live SIM gateway", ok,
+    "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
 // Private call API must reject requests with no Server session token.
 {
   const r = await request("server-calls", "POST", { action: "poll" });
