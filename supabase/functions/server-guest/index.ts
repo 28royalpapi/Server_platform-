@@ -46,6 +46,7 @@ if(action==="signal"){
  const now=new Date().toISOString();
  if(kind==="hangup")await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",invite.call_id);
  else if(kind==="offer"||kind==="answer")await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",invite.call_id).in("state",["ringing","connecting"]);
+ else if(kind==="state"&&payload.state==="active")await db.from("server_calls").update({state:"active",updated_at:now}).eq("id",invite.call_id).in("state",["ringing","connecting"]);
  return out({ok:true,seq:signal.seq,created_at:signal.created_at});
 }
 if(action==="leave"){
