@@ -30,7 +30,14 @@ if ! grep -Fq 'com.server.gateway.MainActivity' artifacts/server-gateway-activit
   exit 1
 fi
 
-adb shell screencap -p /sdcard/server-gateway-screen.png
-adb pull /sdcard/server-gateway-screen.png artifacts/server-gateway-screen.png >/dev/null
+# Stream the screenshot directly over ADB instead of writing to the emulated
+# shared-storage mount, which has intermittently dropped its transport in CI.
+if ! timeout 30s adb exec-out screencap -p > artifacts/server-gateway-screen.png; then
+  adb logcat -d -t 1000 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
+  adb shell dumpsys meminfo > artifacts/server-gateway-meminfo.txt 2>&1 || true
+  echo "FAIL: gateway activity was present, but direct screenshot capture failed; diagnostics saved." >&2
+  exit 1
+fi
+test -s artifacts/server-gateway-screen.png
 adb logcat -d -t 500 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
-echo "GATEWAY_LAUNCH_SMOKE_PASS: package installed, launcher stayed in the foreground, screenshot captured."
+echo "GATEWAY_LAUNCH_SMOKE_PASS: package installed, launcher stayed in the foreground, screenshot captured over ADB."
