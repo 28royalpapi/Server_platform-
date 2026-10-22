@@ -141,7 +141,7 @@ class ServerSetupWebActivity : Activity() {
     if (prefs.getInt("selected_sim_subscription_id", -1) < 0) {
       return JSONObject().put("ok", false).put("error", "Choose an active SIM before continuing.")
     }
-    try {
+    return try {
       val installationId = prefs.getString("installation_id", null)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
       val deviceSecret = prefs.getString("device_secret", null)?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
         ?: ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
