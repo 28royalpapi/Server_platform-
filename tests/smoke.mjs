@@ -60,6 +60,7 @@ const configCode=config.split("\n").filter(line=>!line.trim().startsWith("//")).
 assert.doesNotMatch(configCode,/service[_-]?role|sb_secret/i,"browser config contains no privileged key");
 assert.match(config,/hzuovekqsjtpvmbuybxs\.supabase\.co/);
 assert.match(app,/postFunction\("server-auth", \{ action: "request_otp"/);
+assert.match(app,/function normalizePhone/);
 assert.match(app,/postFunction\("server-auth", \{ action: "verify_otp"/);
 assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
 assert.match(app,/create-gateway-pairing/);
