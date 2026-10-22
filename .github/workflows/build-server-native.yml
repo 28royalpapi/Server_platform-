@@ -32,7 +32,7 @@ jobs:
 
   android-build-and-emulator-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -59,11 +59,11 @@ jobs:
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
       - name: Run Android phone emulator UI smoke test
-        timeout-minutes: 15
+        timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 1500
           target: google_apis
           arch: x86_64
           profile: pixel_6
@@ -82,7 +82,7 @@ jobs:
           if-no-files-found: warn
 
   ios-simulator-build-and-preview:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Resolve WebRTC and build for iOS Simulator
@@ -112,7 +112,7 @@ jobs:
             echo "$LAUNCH_OUTPUT"
             xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "ServerCaller" OR eventMessage CONTAINS[c] "com.server.caller"' || true
             CRASH_REPORT=$(find ~/Library/Logs/DiagnosticReports -maxdepth 1 -type f -name 'ServerCaller-*.ips' -mmin -15 -print 2>/dev/null | sort | tail -n 1 || true)
-            if [ -n "$CRASH_REPORT" ]; then cp "$CRASH_REPORT" artifacts/ServerCaller-crash.ips; fi
+            if [ -n "$CRASH_REPORT" ]; then cp "$CRASH_REPORT" artifacts/ServerCaller-crash.ips; echo '--- ServerCaller crash report ---'; cat "$CRASH_REPORT"; fi
             exit 1
           fi
           echo "$LAUNCH_OUTPUT"
