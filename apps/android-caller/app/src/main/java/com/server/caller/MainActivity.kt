@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var selectedSimSubscriptionId = -1
   private var selectedSimSlot: Int? = null
   private var selectedSimCarrier = ""
+  private var selectedSimPhone = ""
   private var hasActiveSimChoices = false
 
   private val askSimPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -111,6 +112,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     currentServerId = prefs.getString("server_id", "") ?: ""
     selectedSimSlot = prefs.getInt("selected_sim_slot", -1).takeIf { it >= 0 }
     selectedSimCarrier = prefs.getString("selected_sim_carrier", "") ?: ""
+    selectedSimPhone = prefs.getString("selected_sim_phone", "") ?: ""
     selectedSimSubscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
     buildUi()
     if (!configured()) setStatus("Add the Server Supabase URL and publishable key to the build configuration.", true)
@@ -360,9 +362,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     val savedSubscriptionId = selectedSimSubscriptionId
     val savedSlot = selectedSimSlot
     val savedCarrier = selectedSimCarrier
+    val savedPhone = selectedSimPhone
     selectedSimSubscriptionId = -1
     selectedSimSlot = null
     selectedSimCarrier = ""
+    selectedSimPhone = ""
     hasActiveSimChoices = false
     val permissions = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
       checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
@@ -379,6 +383,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       selectedSimSubscriptionId = savedSubscriptionId
       selectedSimSlot = savedSlot
       selectedSimCarrier = savedCarrier
+      selectedSimPhone = savedPhone
     }
     if (subscriptions.isEmpty()) {
       simSetupHint.text = "No active SIM was exposed by Android. You can still create a Server ID for internet calls."
@@ -398,8 +403,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         selectedSimSubscriptionId = info.subscriptionId
         selectedSimSlot = slot
         selectedSimCarrier = carrier
+        selectedSimPhone = number
         prefs.edit().putInt("selected_sim_subscription_id", info.subscriptionId)
-          .putInt("selected_sim_slot", slot).putString("selected_sim_carrier", carrier).apply()
+          .putInt("selected_sim_slot", slot).putString("selected_sim_carrier", carrier)
+          .putString("selected_sim_phone", number).apply()
         continueSetupButton.text = "Continue with SIM ${slot + 1} — no SMS OTP"
         continueSetupButton.isEnabled = termsCheck.isChecked
         setStatus("Selected SIM ${slot + 1} ($carrier). Server will not clone or claim its number.")
