@@ -69,7 +69,7 @@ assert.equal(normalizePhone("+2348012345678"), "+2348012345678");
 assert.equal(normalizePhone("+234 080-1234-5678"), "+2348012345678");
 assert.equal(normalizePhone("invalid-number"), "");
 assert.equal(normalizePhone("0801234567"), "");
-assert.match(app,/function normalizePhone/);
+assert.match(app,/import \{ normalizePhone \} from "\.\/phone-number\.js"/);
 assert.match(app,/postFunction\("server-auth", \{ action: "verify_otp"/);
 assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
 assert.match(app,/create-gateway-pairing/);
