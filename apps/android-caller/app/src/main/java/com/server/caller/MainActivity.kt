@@ -6,6 +6,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
+import java.util.UUID
+import java.security.SecureRandom
+import android.widget.CheckBox
+import android.telephony.SubscriptionManager
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -51,6 +56,20 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var refreshToken: String? = null
   private var accessExpiry: Long = 0
   private var currentPhone = ""
+
+  private lateinit var simChoices: LinearLayout
+  private lateinit var termsCheck: CheckBox
+  private lateinit var continueSetupButton: Button
+  private lateinit var simSetupHint: TextView
+  private var currentServerId = ""
+  private var selectedSimSubscriptionId = -1
+  private var selectedSimSlot: Int? = null
+  private var selectedSimCarrier = ""
+  private var hasActiveSimChoices = false
+
+  private val askSimPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    renderSimChoices()
+  }
   private var callId: String? = null
   private var activeStateSyncedFor: String? = null
   private var pendingDialedNumber: String? = null
@@ -89,9 +108,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     refreshToken = prefs.getString("refresh_token", null)
     accessExpiry = prefs.getLong("access_expiry", 0L)
     currentPhone = prefs.getString("phone", "") ?: ""
+    currentServerId = prefs.getString("server_id", "") ?: ""
+    selectedSimSlot = prefs.getInt("selected_sim_slot", -1).takeIf { it >= 0 }
+    selectedSimCarrier = prefs.getString("selected_sim_carrier", "") ?: ""
+    selectedSimSubscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
     buildUi()
-    if (!configured()) setStatus("Add your new Supabase project URL and publishable key to the build configuration. No test OTP is used.", true)
+    if (!configured()) setStatus("Add the Server Supabase URL and publishable key to the build configuration.", true)
     else if (!accessToken.isNullOrBlank()) showSignedIn()
+    else ensureSimPermissions()
     handleTelecomIntent(intent)
     handleAppLink(intent)
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) askMic.launch(Manifest.permission.RECORD_AUDIO)
@@ -112,28 +136,47 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     setContentView(scroll)
     root.addView(TextView(this).apply { text = "SERVER"; textSize = 12f; setTextColor(0xFF18C879.toInt()); letterSpacing = .18f })
     root.addView(TextView(this).apply { text = "Calling, made natural"; textSize = 30f; setTextColor(0xFFF3F7FB.toInt()); setPadding(0, dp(6), 0, dp(4)) })
-    root.addView(TextView(this).apply { text = "A native calling client using your Server backend."; textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20)) })
+    root.addView(TextView(this).apply { text = "Choose a SIM. Create a Server identity. Call over the internet."; textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20)) })
 
     statusText = TextView(this).apply { textSize = 13f; setTextColor(0xFFFFDFA3.toInt()); setPadding(dp(13), dp(12), dp(13), dp(12)); visibility = View.GONE }
     root.addView(statusText, matchWrap())
 
     authPanel = panel()
     root.addView(authPanel, matchWrap())
-    authPanel.addView(label("Verify your phone"))
-    phoneInput = field("+2348012345678", currentPhone.ifBlank { "+234" }, false).apply { id = R.id.server_phone }
-    authPanel.addView(phoneInput, matchWrap())
-    sendOtpButton = button("Send real SMS code") { requestOtp() }.apply { id = R.id.server_send_otp }
-    authPanel.addView(sendOtpButton, matchWrap())
-    otpInput = field("Code from SMS", "", false).apply { id = R.id.server_otp }
-    authPanel.addView(otpInput, matchWrap())
-    verifyButton = button("Verify phone") { verifyOtp() }.apply { id = R.id.server_verify_otp }
-    authPanel.addView(verifyButton, matchWrap())
-    authPanel.addView(TextView(this).apply { text = "No code is invented by this app. SMS delivery requires an online, paired Android SIM gateway."; textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(12), 0, 0) })
+    authPanel.addView(label("Choose the SIM you want Server to use"))
+    authPanel.addView(TextView(this).apply {
+      text = "Server reads SIM details only inside this Android app, with your permission. Selecting a SIM does not clone its number or make a new cellular line; Server will create a separate internet-calling identity."
+      textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(12))
+    }, matchWrap())
+    simSetupHint = TextView(this).apply {
+      text = "Checking SIM options…"; textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(10))
+    }
+    authPanel.addView(simSetupHint, matchWrap())
+    simChoices = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    authPanel.addView(simChoices, matchWrap())
+    authPanel.addView(button("Detect SIM cards / grant permission") { ensureSimPermissions() }, matchWrap())
+    termsCheck = CheckBox(this).apply {
+      text = "I accept Server's Terms of Service and acknowledge its Privacy Notice."
+      setTextColor(0xFFE6EDF5.toInt())
+      buttonTintList = android.content.res.ColorStateList.valueOf(0xFF18C879.toInt())
+    }
+    authPanel.addView(termsCheck, matchWrap())
+    continueSetupButton = button("Continue with selected SIM — no SMS OTP") { registerDevice() }.apply {
+      isEnabled = false
+    }
+    authPanel.addView(continueSetupButton, matchWrap())
+    authPanel.addView(button("Read Terms and Privacy Notice") {
+      startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://server-onboarding-ochre.vercel.app/terms.html")))
+    }, matchWrap())
+    termsCheck.setOnCheckedChangeListener { _, checked ->
+      continueSetupButton.isEnabled = checked && (!hasActiveSimChoices || selectedSimSubscriptionId >= 0)
+      continueSetupButton.text = if (selectedSimSubscriptionId >= 0) "Continue with selected SIM — no SMS OTP" else "Create Server ID — internet calling only"
+    }
 
     callPanel = panel().apply { visibility = View.GONE }
     root.addView(callPanel, matchWrap())
     callPanel.addView(label("Call a number"))
-    targetInput = field("+234... recipient", "+234", false).apply { id = R.id.server_target }
+    targetInput = field("SVR-XXXXXXXXXX or +234...", "", false).apply { id = R.id.server_target }
     callPanel.addView(targetInput, matchWrap())
     callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
@@ -141,7 +184,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(hangupButton, matchWrap())
     callPanel.addView(button("Enable Server in phone app") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
-    callPanel.addView(TextView(this).apply { text = "Server users connect with WebRTC. Non-Server numbers receive an SMS guest link and must have internet to join in their browser. This is not a SIM and does not make no-data cellular calls."; textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0) })
+    callPanel.addView(TextView(this).apply { text = "Server-to-Server calls use a Server ID. Calling a non-Server number still needs a guest link and internet, and SMS invitations need an active gateway. Server is an internet-calling account, not a SIM/eSIM."; textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0) })
   }
 
   // Avoid relying on a UI framework; all UI widgets are native Android views.
@@ -178,7 +221,21 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.visibility = View.VISIBLE
     targetInput.setText("+234")
     if (incomingJob?.isActive != true) incomingJob = lifecycleScope.launch { incomingLoop() }
-    setStatus("Signed in as ${mask(currentPhone)}. Server calling is ready to connect to the deployed backend.")
+    val id = currentServerId.ifBlank { "Server ID loading" }
+    setStatus("Your Server ID is $id. This is your internet-calling identity; the selected mobile number remains on your carrier SIM.")
+    lifecycleScope.launch {
+      try {
+        val result = api("me")
+        val profile = result.optJSONObject("profile")
+        val serverId = profile?.optString("server_id").orEmpty()
+        if (serverId.matches(Regex("^SVR-[0-9A-F]{10}$"))) {
+          currentServerId = serverId
+          prefs.edit().putString("server_id", serverId).apply()
+          setStatus("Your Server ID is $serverId. Registering the calling account with Android Telecom.")
+        }
+      } catch (_: Exception) {}
+      try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
+    }
     pendingDialedNumber?.let { number ->
       pendingDialedNumber = null
       targetInput.setText(number)
@@ -189,7 +246,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun enableCallingAccount() {
     try {
       ServerTelecomRegistry.register(this)
-      setStatus("Server calling account registered. Enable it in the phone app's calling-account settings. It is an internet calling account, not a new SIM/eSIM.")
+      setStatus("Server internet-calling account registered. Android may show it as a calling option after you enable it in calling-account settings; it is not a SIM/eSIM.")
       startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS"))
     } catch (e: Exception) { setStatus("Could not register the Server calling account: ${e.message}", true) }
   }
@@ -203,7 +260,15 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private fun handleAppLink(incoming: Intent?) {
     val uri = incoming?.data ?: return
-    if (uri.scheme != "server" || uri.host != "setup") return
+    if (uri.scheme != "server") return
+    if (uri.host == "sim-setup") {
+      authPanel.visibility = View.VISIBLE
+      callPanel.visibility = View.GONE
+      renderSimChoices()
+      ensureSimPermissions()
+      return
+    }
+    if (uri.host != "setup") return
     val code = uri.getQueryParameter("handoff").orEmpty()
     if (!Regex("^[0-9a-f]{64}$").matches(code)) {
       setStatus("The setup link is invalid or expired. Return to the website and open Server again.", true)
@@ -266,6 +331,104 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private fun mask(value: String) = if (value.length > 6) value.take(4) + "••••" + value.takeLast(3) else value
+
+  private fun ensureSimPermissions() {
+    val needed = mutableListOf<String>()
+    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
+    if (checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_NUMBERS)
+    if (needed.isNotEmpty()) askSimPermissions.launch(needed.toTypedArray()) else renderSimChoices()
+  }
+
+  @Suppress("MissingPermission", "DEPRECATION")
+  private fun renderSimChoices() {
+    if (!::simChoices.isInitialized) return
+    simChoices.removeAllViews()
+    selectedSimSubscriptionId = -1
+    hasActiveSimChoices = false
+    val permissions = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
+      checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
+    if (!permissions) {
+      simSetupHint.text = "SIM access was not granted. Tap Detect SIM cards to try again, or use Server ID only if the device has no SIM access."
+      continueSetupButton.isEnabled = termsCheck.isChecked && !hasActiveSimChoices
+      return
+    }
+    val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+    val subscriptions = try { manager.activeSubscriptionInfoList.orEmpty() } catch (_: SecurityException) { emptyList() }
+    hasActiveSimChoices = subscriptions.isNotEmpty()
+    if (subscriptions.isEmpty()) {
+      simSetupHint.text = "No active SIM was exposed by Android. You can still create a Server ID for internet calls."
+      continueSetupButton.text = "Create Server ID — internet calling only"
+      continueSetupButton.isEnabled = termsCheck.isChecked
+      return
+    }
+    simSetupHint.text = "Choose one SIM explicitly. The number may be hidden by Android or your carrier; Server does not use it as proof of ownership."
+    for (info in subscriptions.sortedBy { it.simSlotIndex }) {
+      val carrier = info.carrierName?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "Unknown carrier"
+      val number = try {
+        if (Build.VERSION.SDK_INT >= 33) manager.getPhoneNumber(info.subscriptionId) else info.number
+      } catch (_: Exception) { "" }?.trim().orEmpty()
+      val slot = info.simSlotIndex
+      val labelText = "SIM ${slot + 1} · $carrier" + if (number.isNotBlank()) "\\n$number" else "\\nNumber not exposed by Android"
+      val choice = button(labelText) {
+        selectedSimSubscriptionId = info.subscriptionId
+        selectedSimSlot = slot
+        selectedSimCarrier = carrier
+        prefs.edit().putInt("selected_sim_subscription_id", info.subscriptionId)
+          .putInt("selected_sim_slot", slot).putString("selected_sim_carrier", carrier).apply()
+        continueSetupButton.text = "Continue with SIM ${slot + 1} — no SMS OTP"
+        continueSetupButton.isEnabled = termsCheck.isChecked
+        setStatus("Selected SIM ${slot + 1} ($carrier). Server will not clone or claim its number.")
+      }
+      choice.setBackgroundTintList(android.content.res.ColorStateList.valueOf(if (slot == selectedSimSlot) 0xFF0DAA62.toInt() else 0xFF18C879.toInt()))
+      simChoices.addView(choice, matchWrap())
+    }
+    continueSetupButton.text = if (selectedSimSlot != null) "Continue with selected SIM — no SMS OTP" else "Select a SIM to continue"
+    continueSetupButton.isEnabled = termsCheck.isChecked && selectedSimSlot != null
+  }
+
+  private fun deviceCredential(): Pair<String, String> {
+    val existingId = prefs.getString("installation_id", null)
+    val existingSecret = prefs.getString("device_secret", null)
+    if (!existingId.isNullOrBlank() && !existingSecret.isNullOrBlank()) return existingId to existingSecret
+    val id = UUID.randomUUID().toString()
+    val bytes = ByteArray(32)
+    SecureRandom().nextBytes(bytes)
+    val secret = bytes.joinToString("") { "%02x".format(it) }
+    prefs.edit().putString("installation_id", id).putString("device_secret", secret).apply()
+    return id to secret
+  }
+
+  private fun registerDevice() = lifecycleScope.launch {
+    if (!termsCheck.isChecked) { setStatus("Please accept the Terms and acknowledge the Privacy Notice.", true); return@launch }
+    if (hasActiveSimChoices && selectedSimSubscriptionId < 0) { setStatus("Select a SIM first. The website cannot make this selection for you.", true); return@launch }
+    continueSetupButton.isEnabled = false
+    try {
+      val (installationId, deviceSecret) = deviceCredential()
+      val payload = JSONObject()
+        .put("action", "register_device")
+        .put("installation_id", installationId)
+        .put("device_secret", deviceSecret)
+      selectedSimSlot?.let { payload.put("selected_sim_slot", it) }
+      if (selectedSimCarrier.isNotBlank()) payload.put("selected_sim_carrier", selectedSimCarrier)
+      val result = authRequest("/functions/v1/server-auth", payload, false)
+      accessToken = result.optString("access_token").takeIf { it.isNotBlank() }
+        ?: throw IllegalStateException("Server did not create a device session.")
+      val user = result.optJSONObject("user") ?: throw IllegalStateException("Server did not return your Server identity.")
+      currentServerId = user.optString("server_id")
+      if (!Regex("^SVR-[0-9A-F]{10}$").matches(currentServerId)) throw IllegalStateException("Server returned an invalid Server ID.")
+      currentPhone = ""
+      accessExpiry = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond }
+        catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
+      prefs.edit().putString("access_token", accessToken).remove("refresh_token")
+        .putLong("access_expiry", accessExpiry).putString("server_id", currentServerId).remove("phone").apply()
+      showSignedIn()
+      try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
+      setStatus("Setup complete. Your Server ID is $currentServerId. Server is registered as an internet-calling account, not a copied SIM line.")
+    } catch (e: Exception) {
+      setStatus(e.message ?: "Device-first setup failed.", true)
+      continueSetupButton.isEnabled = termsCheck.isChecked && (!hasActiveSimChoices || selectedSimSubscriptionId >= 0)
+    }
+  }
 
   private fun requestOtp() = lifecycleScope.launch {
     val phone = phoneInput.text.toString().trim().replace(" ", "")
@@ -336,11 +499,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private fun startCall() = lifecycleScope.launch {
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { askMic.launch(Manifest.permission.RECORD_AUDIO); setStatus("Allow microphone access and tap Call with Server again.", true); return@launch }
-    val target = targetInput.text.toString().trim().replace(" ", "")
-    if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(target)) { setStatus("Enter the recipient's full number with country code.", true); return@launch }
+    val target = targetInput.text.toString().trim().replace(" ", "").uppercase()
+    val payload = JSONObject()
+    if (Regex("^SVR-[0-9A-F]{10}$").matches(target)) payload.put("to_server_id", target)
+    else if (Regex("^\\+[1-9][0-9]{7,14}$").matches(target)) payload.put("to_phone", target)
+    else { setStatus("Enter a Server ID (SVR- plus 10 characters) or a full number with country code.", true); return@launch }
     callButton.isEnabled = false
     try {
-      val started = api("start", JSONObject().put("to_phone", target))
+      val started = api("start", payload)
       callId = started.getString("call_id"); activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
@@ -365,7 +531,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           val id = call.optString("id")
           if (id.isNotBlank() && id !in shownIncoming && id != callId) {
             shownIncoming.add(id)
-            val caller = call.optString("caller_phone_e164", "Server caller")
+            val caller = call.optString("caller_server_id").takeIf { it.isNotBlank() }
+              ?: call.optString("caller_phone_e164", "Server caller")
             if (ServerTelecomRegistry.isEnabled(this)) {
               try { ServerTelecomRegistry.reportIncoming(this, id, caller) }
               catch (_: Exception) { runOnUiThread { showIncomingDialog(id, caller) } }
@@ -544,8 +711,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun signOut() {
     cleanPeer(); callId = null; incomingJob?.cancel(); incomingJob = null
     accessToken = null; refreshToken = null; accessExpiry = 0
-    prefs.edit().clear().apply(); authPanel.visibility = View.VISIBLE; callPanel.visibility = View.GONE
-    setStatus("Signed out.")
+    prefs.edit().remove("access_token").remove("refresh_token").remove("access_expiry").apply()
+    authPanel.visibility = View.VISIBLE; callPanel.visibility = View.GONE
+    ensureSimPermissions()
+    setStatus("Server session cleared on this device.")
   }
 
   override fun onDestroy() { cleanPeer(); incomingJob?.cancel(); super.onDestroy() }
