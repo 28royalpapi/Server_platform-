@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var accessExpiry: Long = 0
   private var currentPhone = ""
   private var callId: String? = null
+  private var activeStateSyncedFor: String? = null
   private var pendingDialedNumber: String? = null
   private var currentRoute = "server"
   private var lastSeq = 0L
@@ -340,7 +341,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callButton.isEnabled = false
     try {
       val started = api("start", JSONObject().put("to_phone", target))
-      callId = started.getString("call_id"); currentRoute = started.optString("route", "server"); lastSeq = 0
+      callId = started.getString("call_id"); activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
@@ -389,7 +390,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private suspend fun acceptCall(id: String) {
     try {
-      callId = id; currentRoute = "server"; lastSeq = 0
+      callId = id; activeStateSyncedFor = null; currentRoute = "server"; lastSeq = 0
       val accepted = api("accept", JSONObject().put("call_id", id))
       callIceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
@@ -527,6 +528,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun showCallIdle() { runOnUiThread { callButton.visibility = View.VISIBLE; hangupButton.visibility = View.GONE } }
   private fun cleanPeer() {
     pollingJob?.cancel(); pollingJob = null
+    activeStateSyncedFor = null
     try { peer?.close() } catch (_: Exception) {}
     peer = null; audioTrack = null; pendingIce.clear()
     ServerTelecomRegistry.markEnded()
@@ -553,7 +555,23 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
     runOnUiThread {
       when (state) {
-        PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> { ServerTelecomRegistry.markConnected(); setStatus("Audio connection established.") }
+        PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
+          ServerTelecomRegistry.markConnected()
+          setStatus("Audio connection established.")
+          val connectedId = callId
+          if (connectedId != null && activeStateSyncedFor != connectedId) {
+            activeStateSyncedFor = connectedId
+            lifecycleScope.launch {
+              try {
+                api("set_active", JSONObject().put("call_id", connectedId))
+              } catch (_: Exception) {
+                if (callId == connectedId) {
+                  setStatus("Audio is connected, but the server could not sync the call state.", true)
+                }
+              }
+            }
+          }
+        }
         PeerConnection.IceConnectionState.FAILED -> setStatus("ICE failed. A TURN relay may be required on this network.", true)
         PeerConnection.IceConnectionState.DISCONNECTED -> setStatus("Connection lost. Trying to recover…", true)
         else -> Unit
