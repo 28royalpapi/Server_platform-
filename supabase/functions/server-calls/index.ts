@@ -23,7 +23,7 @@ Deno.serve(async(req:Request)=>{
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
   if(action==="me"){
-   const {data,error}=await db.from("server_profiles").select("user_id,phone_e164,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
+   const {data,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
    if(error)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    return out({profile:data||{user_id:uid,phone_e164:profile.phone_e164}});
   }
