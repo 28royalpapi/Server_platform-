@@ -18,7 +18,7 @@
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
       <h1>Choose on your phone.<br><span>Start without SMS OTP.</span></h1>
-      <p>The website cannot read SIM slots. Open the installed Server app so Android can ask your permission, show the active SIMs, and let you select one yourself.</p>
+      <p>On Android, Server opens this same web interface inside a small native bridge because browser pages cannot inspect SIM cards by themselves. You choose a SIM here, grant the calling permissions, then move to your normal phone dialer.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
@@ -28,7 +28,28 @@
         <p id="fallback" class="fine-print hidden">Server did not open. Install the native Server app first. SIM selection and registration cannot be completed in a browser alone.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Server does not clone a SIM or copy its number into a new cellular line. Your Server ID is a separate internet-calling identity. Android may expose a SIM number, but some carriers/devices hide it; the app will not treat it as proof of ownership.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-        <p class="fine-print">On iPhone, iOS does not give ordinary apps access to SIM-slot phone numbers. Server can still create a Server ID and use the native CallKit calling interface, but it cannot add itself as a cellular SIM line.</p>
+        <p class="fine-print">On iPhone, iOS does not expose SIM-slot phone numbers to ordinary apps. This SIM-selection bridge is Android-only.</p>
+      </div>
+      <div id="native-setup" class="hidden">
+        <div class="step-title"><span class="step-number">01</span><div><h2>Choose your SIM</h2><p>Android needs your permission to reveal the SIM list. After you grant it, choose SIM 1 or SIM 2 here. If the carrier hides the phone number, Server will show that clearly.</p></div></div>
+        <button class="primary full" id="detect-sims" type="button">Allow SIM access and detect SIMs <span aria-hidden="true">→</span></button>
+        <div id="sim-options" class="sim-options" aria-live="polite"></div>
+        <button class="primary full hidden" id="continue-permissions" type="button" disabled>Continue to calling permissions <span aria-hidden="true">→</span></button>
+        <div id="call-permission-step" class="hidden">
+          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Grant microphone access so Server calls have audio. Notification permission helps the phone show call-related alerts.</p></div></div>
+          <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
+          <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
+          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create Server identity and grant permissions <span aria-hidden="true">→</span></button>
+        </div>
+        <div id="finish-step" class="hidden centered">
+          <div class="success-mark" aria-hidden="true">✓</div>
+          <h2 class="done-title">Server identity created</h2>
+          <p id="server-id" class="pairing-result"></p>
+          <p class="done-text">Server is registered as a calling account in Android Telecom. It is not a carrier SIM/eSIM; the selected SIM number is account metadata when Android exposes it.</p>
+          <button class="secondary full" id="enable-calling-account" type="button">Enable Server in phone settings</button>
+          <button class="primary full" id="open-phone-dialer" type="button">Open my normal phone dialer <span aria-hidden="true">→</span></button>
+          <p class="fine-print">In phone settings, enable the Server calling account first. Then return and open your normal dialer. The dialer may display Server as a calling-account option; the exact layout depends on your phone's dialer.</p>
+        </div>
       </div>
     </section>
     <footer><span>SERVER · NATIVE SETUP</span><span>Device-bound identity · No SMS OTP</span></footer>
