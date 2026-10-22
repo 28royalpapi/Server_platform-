@@ -26,10 +26,17 @@ if [[ "$READY" -ne 1 ]]; then
 fi
 adb devices -l
 
+echo "Installing the SIM Gateway APK onto the emulator before launching it"
+timeout 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+adb shell pm path com.server.gateway.debug | grep -q 'package:'
 echo "Launching SIM Gateway UI and checking its project defaults"
-adb shell am start -n com.server.gateway.debug/com.server.gateway.MainActivity
+if ! timeout 45s adb shell am start -n com.server.gateway.debug/com.server.gateway.MainActivity; then
+  adb logcat -d -t 400 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
+  adb shell pm list packages | grep -E 'com\.server\.gateway|com\.server\.caller' > artifacts/server-installed-packages.txt || true
+  exit 1
+fi
 sleep 4
-adb shell uiautomator dump /sdcard/server-gateway-ui.xml >/dev/null
+timeout 45s adb shell uiautomator dump /sdcard/server-gateway-ui.xml >/dev/null
 adb pull /sdcard/server-gateway-ui.xml artifacts/server-gateway-ui.xml >/dev/null
 grep -q 'hzuovekqsjtpvmbuybxs.supabase.co' artifacts/server-gateway-ui.xml
 grep -q 'sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E' artifacts/server-gateway-ui.xml
