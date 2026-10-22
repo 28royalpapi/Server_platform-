@@ -33,6 +33,7 @@ final class ServerViewModel: ObservableObject {
     private var expiresAt: TimeInterval = UserDefaults.standard.double(forKey: "server.expiry")
     private var storedPhone = UserDefaults.standard.string(forKey: "server.phone") ?? ""
     private var route = "server"
+    private var activeStateSyncedFor: String?
     private var afterSeq = 0
     private var iceServers: [[String: Any]] = []
     private var pollingTask: Task<Void, Never>?
@@ -48,7 +49,21 @@ final class ServerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 switch state {
-                case .connected, .completed: self.update("Audio connection established.")
+                case .connected, .completed:
+                    self.update("Audio connection established.")
+                    if let id = self.callId, self.activeStateSyncedFor != id {
+                        self.activeStateSyncedFor = id
+                        Task { @MainActor [weak self] in
+                            guard let self, self.callId == id else { return }
+                            do {
+                                _ = try await self.api("set_active", body: ["call_id": id])
+                            } catch {
+                                if self.callId == id {
+                                    self.update("Audio is connected, but the server could not sync the call state.", error: true)
+                                }
+                            }
+                        }
+                    }
                 case .failed: self.update("WebRTC connection failed. This network may require a TURN relay.", error: true)
                 case .disconnected: self.update("Audio connection lost. Trying to recover…", error: true)
                 default: break
@@ -148,7 +163,7 @@ final class ServerViewModel: ObservableObject {
         do {
             let result = try await api("start", body: ["to_phone": target])
             guard let id = result["call_id"] as? String else { throw ServerError.message("Backend did not return a call ID.") }
-            callId = id; route = result["route"] as? String ?? "server"; afterSeq = 0
+            callId = id; activeStateSyncedFor = nil; route = result["route"] as? String ?? "server"; afterSeq = 0
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
             try await startMedia(servers: iceServers)
             let offer = try await rtc.makeDescription(offer: true)
@@ -166,7 +181,7 @@ final class ServerViewModel: ObservableObject {
 
     private func acceptFromSystem(_ incoming: IncomingCall) async {
         do {
-            callId = incoming.id; route = "server"; afterSeq = 0; incomingCall = nil
+            callId = incoming.id; activeStateSyncedFor = nil; route = "server"; afterSeq = 0; incomingCall = nil
             let result = try await api("accept", body: ["call_id": incoming.id])
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
             try await startMedia(servers: iceServers)
@@ -185,11 +200,11 @@ final class ServerViewModel: ObservableObject {
 
     func endCall() async {
         if let id = callId { do { _ = try await api("end", body: ["call_id": id]) } catch { } }
-        callId = nil; pollingTask?.cancel(); pollingTask = nil; await endMedia(); update("Call ended.")
+        callId = nil; activeStateSyncedFor = nil; pollingTask?.cancel(); pollingTask = nil; await endMedia(); update("Call ended.")
     }
 
     func signOut() {
-        pollingTask?.cancel(); incomingTask?.cancel(); callId = nil; accessToken = nil; refreshToken = nil; isSignedIn = false
+        pollingTask?.cancel(); incomingTask?.cancel(); callId = nil; activeStateSyncedFor = nil; accessToken = nil; refreshToken = nil; isSignedIn = false
         Keychain.delete("server.access"); Keychain.delete("server.refresh"); UserDefaults.standard.removeObject(forKey: "server.expiry")
         update("Signed out.")
     }
@@ -230,7 +245,7 @@ final class ServerViewModel: ObservableObject {
                     self.afterSeq = max(self.afterSeq, result["next_after_seq"] as? Int ?? 0)
                     let state = (result["call"] as? [String: Any])?["state"] as? String ?? ""
                     if ["ended", "failed", "missed"].contains(state) {
-                        self.callId = nil; await self.endMedia(); self.update("Call ended."); break
+                        self.callId = nil; self.activeStateSyncedFor = nil; await self.endMedia(); self.update("Call ended."); break
                     }
                 } catch { self.update(error.localizedDescription, error: true) }
                 try? await Task.sleep(for: .milliseconds(700))
@@ -250,7 +265,12 @@ final class ServerViewModel: ObservableObject {
         case "answer":
             try await rtc.setRemote(signal["payload"] as? [String: Any] ?? [:]); update("Call answered. Negotiating audio…")
         case "ice": try rtc.addIce(signal["payload"] as? [String: Any] ?? [:])
-        case "hangup": callId = nil; pollingTask?.cancel(); await endMedia(); update("The other person ended the call.")
+        case "hangup":
+            callId = nil; activeStateSyncedFor = nil; pollingTask?.cancel(); await endMedia(); update("The other person ended the call.")
+        case "state":
+            if let payload = signal["payload"] as? [String: Any], payload["state"] as? String == "active" {
+                update("Audio connection active.")
+            }
         default: break
         }
     }
