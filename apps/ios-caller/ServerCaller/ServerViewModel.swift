@@ -23,6 +23,7 @@ final class ServerViewModel: ObservableObject {
     @Published var serverID = UserDefaults.standard.string(forKey: "server.server_id") ?? ""
     @Published var otp = ""
     @Published var targetPhone = ""
+    @Published var guestInviteMessage = ""
     @Published var status = ""
     @Published var isError = false
     @Published var isBusy = false
@@ -184,25 +185,48 @@ final class ServerViewModel: ObservableObject {
         } catch { update(error.localizedDescription, error: true) }
     }
 
+    private func normalizePhoneForServer(_ raw: String) -> String? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digits = value.filter { $0.isNumber }
+        let candidate: String
+        if value.hasPrefix("+") { candidate = "+" + digits }
+        else if value.hasPrefix("00") { candidate = "+" + String(digits.dropFirst(2)) }
+        else if digits.hasPrefix("234") && digits.count == 13 { candidate = "+" + digits }
+        else if digits.count == 11 && digits.hasPrefix("0") { candidate = "+234" + String(digits.dropFirst()) }
+        else if digits.count == 10, let first = digits.first, ["7", "8", "9"].contains(String(first)) { candidate = "+234" + digits }
+        else { return nil }
+        return candidate.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? candidate : nil
+    }
+
     func startCall() async {
-        let target = targetPhone.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let rawTarget = targetPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typedServerID = rawTarget.uppercased()
+        let isServerID = typedServerID.range(of: #"^SVR-[0-9A-F]{10}$"#, options: .regularExpression) != nil
+        let normalizedPhone = isServerID ? nil : normalizePhoneForServer(rawTarget)
         let payload: [String: Any]
-        if target.range(of: #"^SVR-[0-9A-F]{10}$"#, options: .regularExpression) != nil { payload = ["to_server_id": target] }
-        else if target.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil { payload = ["to_phone": target] }
-        else { update("Enter a Server ID (SVR- plus 10 characters) or a full number with country code.", error: true); return }
+        if isServerID { payload = ["to_server_id": typedServerID] }
+        else if let normalizedPhone { payload = ["to_phone": normalizedPhone] }
+        else { update("Enter a Server ID or a valid number, e.g. 08012345678 or +2348012345678.", error: true); return }
+        guestInviteMessage = ""
         isBusy = true; defer { isBusy = false }
         do {
             let result = try await api("start", body: payload)
             guard let id = result["call_id"] as? String else { throw ServerError.message("Backend did not return a call ID.") }
             callId = id; route = result["route"] as? String ?? "server"; afterSeq = 0
+            guestInviteMessage = route == "guest" && (result["delivery_mode"] as? String) == "manual_sms"
+                ? (result["sms_body"] as? String ?? "") : ""
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
             try await startMedia(servers: iceServers)
             let offer = try await rtc.makeDescription(offer: true)
             _ = try await api("signal", body: ["call_id": id, "kind": "offer", "payload": offer])
-            try await callKit.reportOutgoingStart(id: id, handle: target)
-            update(route == "guest" ? "Guest invitation queued. Waiting for the recipient to open the SMS link with internet and microphone access." : "Calling another Server user…")
+            try await callKit.reportOutgoingStart(id: id, handle: normalizedPhone ?? typedServerID)
+            if !guestInviteMessage.isEmpty {
+                update("No SMS gateway is connected. Tap Share guest invitation and choose Messages to send it to the recipient. They must open it with internet access.")
+            } else {
+                update(route == "guest" ? "Guest invitation queued for SMS delivery. The recipient needs internet and microphone access." : "Calling another Server user…")
+            }
             startCallPolling()
-        } catch { await endMedia(); callId = nil; update(error.localizedDescription, error: true) }
+        } catch { await endMedia(); callId = nil; guestInviteMessage = ""; update(error.localizedDescription, error: true) }
     }
 
     func accept(_ incoming: IncomingCall) async {
