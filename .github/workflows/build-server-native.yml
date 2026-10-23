@@ -75,8 +75,8 @@ jobs:
               rm -rf "$ANDROID_HOME/.temp"
               case "$package" in
                 emulator) rm -rf "$ANDROID_HOME/emulator" ;;
-                system-images\\;android-30\\;default\\;x86_64) rm -rf "$ANDROID_HOME/system-images/android-30/default/x86_64" ;;
-                platforms\\;android-30) rm -rf "$ANDROID_HOME/platforms/android-30" ;;
+                *system-images*) rm -rf "$ANDROID_HOME/system-images/android-30/default/x86_64" ;;
+                *platforms*) rm -rf "$ANDROID_HOME/platforms/android-30" ;;
               esac
               sleep 8
             done
@@ -101,7 +101,7 @@ jobs:
             STATE="$(adb -s emulator-5554 get-state 2>/dev/null || true)"
             BOOTED=""
             if [[ "$STATE" == "device" ]]; then
-              BOOTED="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' || true)"
+              BOOTED="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
             fi
             if [[ "$STATE" == "device" && "$BOOTED" == "1" ]]; then READY=1; break; fi
             sleep 2
