@@ -10,6 +10,7 @@ on:
       - 'supabase/**'
       - 'web/**'
       - 'scripts/**'
+      - 'tests/**'
 concurrency:
   group: server-native-${{ github.ref }}
   cancel-in-progress: true
