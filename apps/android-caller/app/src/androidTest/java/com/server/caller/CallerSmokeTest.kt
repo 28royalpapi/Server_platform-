@@ -18,25 +18,25 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @Test fun firstLaunchShowsDeviceFirstSetupAndNoOtpForm() {
-    ActivityScenario.launch(MainActivity::class.java).use {
-      val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-      device.waitForIdle()
+  @Test fun launcherOpensWebOnboardingInsteadOfNativeNumberEntryScreen() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+    assertNotNull("Server does not expose a launcher entry", launchIntent)
+    assertEquals("The launcher must open the web onboarding bridge",
+      ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
 
-      assertTrue("Server onboarding brand is not visible",
-        device.wait(Until.hasObject(By.text("SERVER")), 10_000))
-      assertTrue("SIM-selection step is not visible",
-        device.wait(Until.hasObject(By.text("Choose the SIM you want Server to use")), 10_000))
-      assertNotNull("No-OTP number-cloning warning is not visible",
-        device.findObject(By.textContains("does not clone its number")))
-      assertNotNull("Explicit SIM-permission step is not visible",
-        device.findObject(By.text("Detect SIM cards / grant permission")))
-      val blockedWithoutSim = device.findObject(By.text("SIM required — cannot continue"))
-      assertNotNull("Registration must explicitly require SIM selection", blockedWithoutSim)
-      assertTrue("Registration must be disabled until a SIM is selected", !blockedWithoutSim.isEnabled)
+    ActivityScenario.launch(launchIntent).use {
+      val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+      assertTrue("Web onboarding brand is not visible",
+        device.wait(Until.hasObject(By.text("SERVER")), 20_000))
+      assertTrue("SIM-first web onboarding step is not visible",
+        device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
+      assertTrue("SIM permission action is not visible",
+        device.wait(Until.hasObject(By.textContains("Allow SIM access and detect SIMs")), 10_000))
+      assertTrue("The old native number-entry caller screen appeared",
+        !device.hasObject(By.text("Call a number")))
     }
   }
-
   @Test fun websiteEntryOpensSimSelectionInsideNativeBridge() {
     val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     ActivityScenario.launch(ServerSetupWebActivity::class.java).use {
