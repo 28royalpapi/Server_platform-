@@ -36,6 +36,16 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun websiteEntryOpensSimSelectionInsideNativeBridge() {
+    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    ActivityScenario.launch(ServerSetupWebActivity::class.java).use {
+      assertTrue("Website did not switch into the SIM-first setup in the native bridge",
+        device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
+      assertTrue("Native website bridge did not expose the SIM permission action",
+        device.wait(Until.hasObject(By.textContains("Allow SIM access and detect SIMs")), 10_000))
+    }
+  }
+
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
