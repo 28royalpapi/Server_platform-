@@ -26,6 +26,31 @@ if [[ "$READY" -ne 1 ]]; then
 fi
 adb devices -l
 
+echo "Unlocking and foregrounding the Android emulator before instrumentation tests"
+adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+adb shell input keyevent 82 >/dev/null 2>&1 || true
+adb shell input keyevent 3 >/dev/null 2>&1 || true
+sleep 2
+adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
+
+echo "Running caller-app Android instrumentation tests"
+timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
+
+echo "Recording the caller app screen"
+adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
+REC_PID=$!
+cleanup_recorder() {
+  kill -INT "$REC_PID" 2>/dev/null || true
+  wait "$REC_PID" 2>/dev/null || true
+}
+trap cleanup_recorder EXIT
+sleep 2
+adb shell am start -n com.server.caller.debug/com.server.caller.MainActivity
+wait "$REC_PID" || true
+trap - EXIT
+adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 >/dev/null
+echo "ANDROID_UI_SMOKE_PASS: caller instrumentation tests passed and startup recording captured."
+
 echo "Installing the SIM Gateway APK onto the emulator before launching it"
 timeout 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
 adb shell pm path com.server.gateway.debug | grep -q 'package:'
@@ -58,27 +83,3 @@ fi
 test -s artifacts/server-gateway-screen.png
 echo "GATEWAY_LAUNCH_SMOKE_PASS: explicit launcher activity is in the activity stack and a screenshot was streamed over ADB."
 
-echo "Unlocking and foregrounding the Android emulator before instrumentation tests"
-adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
-adb shell input keyevent 82 >/dev/null 2>&1 || true
-adb shell input keyevent 3 >/dev/null 2>&1 || true
-sleep 2
-adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
-
-echo "Running caller-app Android instrumentation tests"
-timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
-
-echo "Recording the caller app screen"
-adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
-REC_PID=$!
-cleanup_recorder() {
-  kill -INT "$REC_PID" 2>/dev/null || true
-  wait "$REC_PID" 2>/dev/null || true
-}
-trap cleanup_recorder EXIT
-sleep 2
-adb shell am start -n com.server.caller.debug/com.server.caller.MainActivity
-wait "$REC_PID" || true
-trap - EXIT
-adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 >/dev/null
-echo "ANDROID_UI_SMOKE_PASS: caller instrumentation tests passed and startup recording captured."
