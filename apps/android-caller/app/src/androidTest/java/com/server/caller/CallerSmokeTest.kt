@@ -76,12 +76,13 @@ class CallerSmokeTest {
     context.startActivity(settings)
 
     val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    val serverEntry = device.wait(Until.findObject(By.text("Server")), 15_000)
-    assertNotNull("Android calling-account settings did not show Server", serverEntry)
+    assertTrue("Android calling-account settings did not show Server",
+      device.wait(Until.hasObject(By.text("Server")), 15_000))
+    val serverEntry = device.findObject(By.text("Server"))
     // Exercise the real system consent toggle instead of treating registration or
     // APK installation as proof that the calling account is available.
     if (!ServerTelecomRegistry.isEnabled(context)) {
-      serverEntry!!.click()
+      serverEntry.click()
       val deadline = System.currentTimeMillis() + 10_000
       while (System.currentTimeMillis() < deadline && !ServerTelecomRegistry.isEnabled(context)) {
         Thread.sleep(250)
