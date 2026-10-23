@@ -31,7 +31,10 @@ jobs:
         run: npm run check:live
 
   android-build-and-emulator-smoke:
-    runs-on: ubuntu-latest
+    # Ubuntu 26 hosted runners currently launch this x86_64 emulator without KVM,
+    # causing the system image to remain offline until the boot timeout. Pin to the
+    # known-compatible Ubuntu 24.04 runner so Android's emulator has KVM support.
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
