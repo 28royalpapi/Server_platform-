@@ -635,6 +635,15 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       setStatus("Enter a Server ID (SVR- plus 10 characters) or a valid phone number, e.g. 08012345678 or +2348012345678.", true)
       return@launch
     }
+    // Debug builds record that Telecom's system-originated tel: request reached
+    // the actual call engine. Instrumentation uses a deliberately invalid token,
+    // so this check does not create a backend call or send SMS.
+    if (BuildConfig.DEBUG) {
+      prefs.edit()
+        .putLong("debug_last_call_engine_entered_at", System.currentTimeMillis())
+        .putString("debug_last_call_target_kind", if (isServerId) "server_id" else "phone")
+        .apply()
+    }
     val payload = JSONObject()
     if (isServerId) payload.put("to_server_id", serverId) else payload.put("to_phone", normalizedPhone)
     callButton.isEnabled = false
@@ -826,15 +835,31 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           lastSeq = maxOf(lastSeq, result.optLong("next_after_seq", lastSeq))
           val state = result.optJSONObject("call")?.optString("state") ?: ""
           val fallbackPhone = carrierFallbackPhone
-          if (currentRoute == "server" && state == "ringing" && fallbackPhone != null &&
+          // A non-Server recipient cannot receive WebRTC while offline. If the
+          // call remains in ringing state, offer a user-confirmed carrier fallback
+          // for both Server users and guest invitees; never place it automatically.
+          if (state == "ringing" && fallbackPhone != null &&
               System.currentTimeMillis() - callStartedAt >= 30_000 && carrierFallbackOfferedFor != id) {
             carrierFallbackOfferedFor = id
-            notifyCarrierFallback(fallbackPhone, "The Server user has not connected. They may be offline.")
+            val guestRecipient = currentRoute == "guest"
+            val reason = if (guestRecipient) {
+              "The guest recipient has not joined the internet call."
+            } else {
+              "The Server user has not connected. They may be offline."
+            }
+            notifyCarrierFallback(fallbackPhone, reason)
             try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
             callId = null
             cleanPeer()
             showCallIdle()
-            setStatus("Server did not connect. A notification offers a regular carrier call instead; no carrier call was placed automatically.", true)
+            setStatus(
+              if (guestRecipient) {
+                "Guest has not joined. A notification offers a regular carrier call instead; no carrier call was placed automatically."
+              } else {
+                "Server did not connect. A notification offers a regular carrier call instead; no carrier call was placed automatically."
+              },
+              true
+            )
             break
           }
           if (state in listOf("ended", "failed", "missed")) { cleanPeer(); callId = null; carrierFallbackPhone = null; showCallIdle(); setStatus("Call ended."); break }

@@ -16,7 +16,6 @@
   <key>SERVER_SUPABASE_URL</key><string>$(SERVER_SUPABASE_URL)</string>
   <key>SERVER_SUPABASE_PUBLISHABLE_KEY</key><string>$(SERVER_SUPABASE_PUBLISHABLE_KEY)</string>
   <key>UILaunchScreen</key><dict/>
-  <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
   <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
   <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
 </dict></plist>

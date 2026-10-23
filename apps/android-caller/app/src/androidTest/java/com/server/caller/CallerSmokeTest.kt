@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import androidx.test.core.app.ActivityScenario
@@ -32,7 +33,7 @@ class CallerSmokeTest {
     assertEquals("The launcher must open the web onboarding bridge",
       ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
 
-    ActivityScenario.launch(launchIntent).use {
+    ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
       val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
       assertTrue("Web onboarding brand is not visible",
         device.wait(Until.hasObject(By.text("SERVER")), 20_000))
@@ -68,29 +69,102 @@ class CallerSmokeTest {
   }
 
 
-  @Test fun registeredServerAccountAppearsInSystemCallingAccountSettings() {
-    val context = InstrumentationRegistry.getInstrumentation().targetContext
+  private fun ensureServerCallingAccountEnabled(context: Context, device: UiDevice) {
     ServerTelecomRegistry.register(context)
-    val settings = Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
-      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    context.startActivity(settings)
+    if (ServerTelecomRegistry.isEnabled(context)) return
 
-    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     assertTrue("Android calling-account settings did not show Server",
       device.wait(Until.hasObject(By.text("Server")), 15_000))
-    val serverEntry = device.findObject(By.text("Server"))
-    // Exercise the real system consent toggle instead of treating registration or
-    // APK installation as proof that the calling account is available.
-    if (!ServerTelecomRegistry.isEnabled(context)) {
-      serverEntry.click()
-      val deadline = System.currentTimeMillis() + 10_000
-      while (System.currentTimeMillis() < deadline && !ServerTelecomRegistry.isEnabled(context)) {
-        Thread.sleep(250)
-      }
+    device.findObject(By.text("Server")).click()
+
+    // Android builds vary: some expose an inline switch, others open an account
+    // detail page. Try the detail-page switch if clicking the row did not enable it.
+    val deadline = System.currentTimeMillis() + 10_000
+    while (System.currentTimeMillis() < deadline && !ServerTelecomRegistry.isEnabled(context)) {
+      val toggle = device.findObject(By.clazz("android.widget.Switch"))
+        ?: device.findObject(By.clazz("androidx.appcompat.widget.SwitchCompat"))
+      if (toggle != null && !toggle.isChecked) toggle.click()
+      Thread.sleep(250)
     }
+    device.pressBack()
     assertTrue("Server is listed but has not been enabled in Android calling-account settings",
       ServerTelecomRegistry.isEnabled(context))
-    device.pressBack()
+  }
+
+  @Test fun registeredServerAccountAppearsInSystemCallingAccountSettings() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    ensureServerCallingAccountEnabled(context, device)
+  }
+
+  @Test fun systemOriginatedOutgoingTelCallReachesServerCallEngine() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val previousToken = prefs.getString("access_token", null)
+    val previousExpiry = prefs.getLong("access_expiry", 0L)
+    val previousPhone = prefs.getString("phone", null)
+    val previousSelectedPhone = prefs.getString("selected_sim_phone", null)
+    val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
+    val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
+    val device = UiDevice.getInstance(instrumentation)
+
+    try {
+      try {
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
+      } catch (_: Exception) {}
+      // This intentionally invalid access token causes the backend to reject the
+      // request before creating a call. No SMS, recipient notification or real
+      // carrier call can be produced by this test.
+      prefs.edit()
+        .putString("access_token", "0".repeat(64))
+        .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
+        .putString("phone", "+15550001001")
+        .putString("selected_sim_phone", "+15550001001")
+        .remove("debug_last_call_engine_entered_at")
+        .remove("debug_last_call_target_kind")
+        .commit()
+      ServerTelecomRegistry.register(context)
+      ensureServerCallingAccountEnabled(context, device)
+
+      val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+      val extras = Bundle().apply {
+        putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, ServerTelecomRegistry.handle(context))
+      }
+      instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.CALL_PHONE)
+      try {
+        telecom.placeCall(Uri.parse("tel:+15550001001"), extras)
+      } finally {
+        instrumentation.uiAutomation.dropShellPermissionIdentity()
+      }
+
+      val deadline = System.currentTimeMillis() + 20_000
+      while (System.currentTimeMillis() < deadline &&
+        prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) {
+        Thread.sleep(200)
+      }
+      assertTrue(
+        "Android Telecom did not route a system-originated tel: call into Server's call engine",
+        prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L
+      )
+      assertEquals("A normal telephone URI must reach the phone-number call path",
+        "phone", prefs.getString("debug_last_call_target_kind", null))
+    } finally {
+      val edit = prefs.edit()
+      if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
+      edit.putLong("access_expiry", previousExpiry)
+      if (previousPhone == null) edit.remove("phone") else edit.putString("phone", previousPhone)
+      if (previousSelectedPhone == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousSelectedPhone)
+      if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
+      if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
+      edit.commit()
+      ServerTelecomRegistry.register(context)
+      // The test intentionally uses an invalid session. Stop the transient call
+      // engine activity so its background polling cannot leak into other tests.
+      device.executeShellCommand("am force-stop " + context.packageName)
+    }
   }
 
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
