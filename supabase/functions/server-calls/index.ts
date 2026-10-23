@@ -79,9 +79,6 @@ Deno.serve(async(req:Request)=>{
     if(callerLimit.error||targetLimit.error||callerLimit.data!==true||targetLimit.data!==true){
       await db.from("server_calls").delete().eq("id",call.id);return out({error:"GUEST_INVITE_RATE_LIMITED"},429);
     }
-    const {data:gateway}=await db.from("server_gateway_devices").select("id").eq("enabled",true)
-      .gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();
-    if(!gateway){await db.from("server_calls").delete().eq("id",call.id);return out({error:"SMS_GATEWAY_OFFLINE"},503);}
     const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
     const tokenHash=await sha(token),expires=new Date(Date.now()+20*60*1000).toISOString();
     const {data:invite,error:ie}=await db.from("server_guest_invites").insert({
@@ -90,13 +87,26 @@ Deno.serve(async(req:Request)=>{
     if(ie||!invite){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503);}
     const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
     const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
+    const manualDelivery=(reason:string)=>out({
+      ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,
+      invite_expires_at:expires,delivery_mode:"manual_sms",guest_invite_url:guestUrl,
+      sms_body:smsBody,delivery_message:reason
+    });
+    // Do not make the entire call depend on a separately paired SMS gateway. If there
+    // is no live gateway (or queue insertion fails), the caller can send this invite
+    // through the phone's own Messages app without another API provider or SMS key.
+    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices").select("id").eq("enabled",true)
+      .gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();
+    if(gatewayError||!gateway){
+      return manualDelivery("No live Server SMS gateway is connected. Send the prepared invitation from your phone's messaging app.");
+    }
     const {error:qe}=await db.from("server_sms_jobs").insert({
       category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"
     });
-    if(qe){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_SMS_QUEUE_FAILED"},503);}
-    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,invite_expires_at:expires});
-   }
-   return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call});
+    if(qe){
+      return manualDelivery("Automatic SMS delivery is unavailable. Send the prepared invitation from your phone's messaging app.");
+    }
+    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,invite_expires_at:expires,delivery_mode:"gateway_sms"});
   }
   if(action==="incoming"){
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
