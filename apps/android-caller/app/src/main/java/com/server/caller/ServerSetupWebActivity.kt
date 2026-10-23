@@ -32,6 +32,35 @@ class ServerSetupWebActivity : Activity() {
   private lateinit var web: WebView
   private val prefs by lazy { getSharedPreferences("server-session", Context.MODE_PRIVATE) }
 
+  override fun onResume() {
+    super.onResume()
+    if (!::web.isInitialized || !prefs.getBoolean("server_open_dialer_after_account_enable", false)) return
+
+    // The system Calling accounts screen is a mandatory user-consent boundary for a
+    // system-managed ConnectionService. Once the user enables Server and returns,
+    // continue directly to the ordinary dialer; never try to bypass the system toggle.
+    val enabled = try { ServerTelecomRegistry.isEnabled(this) } catch (_: Exception) { false }
+    if (enabled) {
+      prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()
+      web.post {
+        if (isFinishing || isDestroyed) return@post
+        web.evaluateJavascript("window.onServerCallingAccountStatus && window.onServerCallingAccountStatus(true)", null)
+        web.postDelayed({
+          if (!isFinishing && !isDestroyed) {
+            startActivity(Intent(Intent.ACTION_DIAL))
+            finish()
+          }
+        }, 250)
+      }
+    } else {
+      web.post {
+        if (!isFinishing && !isDestroyed) {
+          web.evaluateJavascript("window.onServerCallingAccountStatus && window.onServerCallingAccountStatus(false)", null)
+        }
+      }
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     web = WebView(this).apply {
@@ -259,8 +288,19 @@ class ServerSetupWebActivity : Activity() {
 
     @JavascriptInterface fun openCallingSettings() {
       runOnUiThread {
-        try { startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")) }
-        catch (_: Exception) { runJs("window.onServerSettingsError && window.onServerSettingsError()") }
+        try {
+          if (ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity)) {
+            prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()
+            startActivity(Intent(Intent.ACTION_DIAL))
+            finish()
+            return@runOnUiThread
+          }
+          prefs.edit().putBoolean("server_open_dialer_after_account_enable", true).apply()
+          startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS"))
+        } catch (_: Exception) {
+          prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()
+          runJs("window.onServerSettingsError && window.onServerSettingsError()")
+        }
       }
     }
 
