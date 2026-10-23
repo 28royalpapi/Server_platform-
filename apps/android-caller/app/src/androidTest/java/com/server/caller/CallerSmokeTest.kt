@@ -99,10 +99,44 @@ class CallerSmokeTest {
     ensureServerCallingAccountEnabled(context, device)
   }
 
-  @Test fun systemOriginatedOutgoingTelCallReachesServerCallEngine() {
+  private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
+    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+    return telecom.getPhoneAccount(handle)?.isEnabled == true
+  }
+
+  private fun ensureAccountEnabled(
+    context: Context,
+    device: UiDevice,
+    handle: android.telecom.PhoneAccountHandle,
+    label: String
+  ) {
+    if (accountEnabled(context, handle)) return
+    context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    assertTrue("Android calling-account settings did not show $label",
+      device.wait(Until.hasObject(By.text(label)), 15_000))
+    device.findObject(By.text(label)).click()
+    val deadline = System.currentTimeMillis() + 10_000
+    while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) {
+      val toggle = device.findObject(By.clazz("android.widget.Switch"))
+        ?: device.findObject(By.clazz("androidx.appcompat.widget.SwitchCompat"))
+      if (toggle != null && !toggle.isChecked) toggle.click()
+      Thread.sleep(250)
+    }
+    device.pressBack()
+    assertTrue("Android shows $label but has not enabled it", accountEnabled(context, handle))
+  }
+
+  @Test fun systemDialerOffersServerBesideTestOnlySimAndRoutesCallToEngine() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+    val serverHandle = ServerTelecomRegistry.handle(context)
+    val mockSimHandle = android.telecom.PhoneAccountHandle(
+      android.content.ComponentName(context, ServerConnectionService::class.java),
+      "server-emulator-test-sim-1"
+    )
     val previousToken = prefs.getString("access_token", null)
     val previousExpiry = prefs.getLong("access_expiry", 0L)
     val previousPhone = prefs.getString("phone", null)
@@ -110,14 +144,14 @@ class CallerSmokeTest {
     val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
     val device = UiDevice.getInstance(instrumentation)
+    var mockSimRegistered = false
 
     try {
       try {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
       } catch (_: Exception) {}
-      // This intentionally invalid access token causes the backend to reject the
-      // request before creating a call. No SMS, recipient notification or real
-      // carrier call can be produced by this test.
+      // This deliberately invalid token makes the backend reject the attempt before
+      // it can create a call or send an SMS. The OS chooser and native routing still run.
       prefs.edit()
         .putString("access_token", "0".repeat(64))
         .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
@@ -126,19 +160,53 @@ class CallerSmokeTest {
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_call_target_kind")
         .commit()
-      ServerTelecomRegistry.register(context)
-      ensureServerCallingAccountEnabled(context, device)
 
-      val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-      val extras = Bundle().apply {
-        putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, ServerTelecomRegistry.handle(context))
-      }
+      ServerTelecomRegistry.register(context)
+      ensureAccountEnabled(context, device, serverHandle, "Server")
+
+      // The stock Android emulator has no carrier-backed SubscriptionInfo, so a
+      // clearly labelled mock calling account exercises the OS account chooser.
+      // It is not a real SIM or cellular subscription.
+      val mockAccount = PhoneAccount.builder(mockSimHandle, "Test SIM 1 (mock)")
+        .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
+        .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
+        .setShortDescription("Test-only simulated SIM account; not a carrier line")
+        .setAddress(Uri.parse("tel:+15550001001"))
+        .build()
+      telecom.registerPhoneAccount(mockAccount)
+      mockSimRegistered = true
+      ensureAccountEnabled(context, device, mockSimHandle, "Test SIM 1 (mock)")
+
+      val callCapable = telecom.callCapablePhoneAccounts
+      assertTrue("Server is not a call-capable account in Android Telecom",
+        callCapable.any { it == serverHandle })
+      assertTrue("The test-only SIM account is missing from Android Telecom",
+        callCapable.any { it == mockSimHandle })
+
+      device.pressHome()
+      Thread.sleep(500)
+      // Deliberately omit EXTRA_PHONE_ACCOUNT_HANDLE so Android must offer the
+      // available accounts instead of routing directly to Server by test instruction.
       instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.CALL_PHONE)
       try {
-        telecom.placeCall(Uri.parse("tel:+15550001001"), extras)
+        telecom.placeCall(Uri.parse("tel:+15550001001"), Bundle())
       } finally {
         instrumentation.uiAutomation.dropShellPermissionIdentity()
       }
+
+      val chooserDeadline = System.currentTimeMillis() + 12_000
+      var serverChoice: androidx.test.uiautomator.UiObject2? = null
+      var mockChoice: androidx.test.uiautomator.UiObject2? = null
+      while (System.currentTimeMillis() < chooserDeadline && (serverChoice == null || mockChoice == null)) {
+        serverChoice = device.findObject(By.text("Server"))
+        mockChoice = device.findObject(By.text("Test SIM 1 (mock)"))
+        Thread.sleep(200)
+      }
+      assertNotNull("Android did not show Server as an option in the system calling-account chooser", serverChoice)
+      assertNotNull("Android did not show the test-only SIM beside Server", mockChoice)
+      serverChoice!!.click()
+      val justOnce = device.wait(Until.findObject(By.textContains("Just once")), 2_000)
+      if (justOnce != null) justOnce.click()
 
       val deadline = System.currentTimeMillis() + 20_000
       while (System.currentTimeMillis() < deadline &&
@@ -146,7 +214,7 @@ class CallerSmokeTest {
         Thread.sleep(200)
       }
       assertTrue(
-        "Android Telecom did not route a system-originated tel: call into Server's call engine",
+        "Choosing Server in the system account chooser did not reach Server's call engine",
         prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L
       )
       assertEquals("A normal telephone URI must reach the phone-number call path",
@@ -160,9 +228,10 @@ class CallerSmokeTest {
       if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
       if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
       edit.commit()
+      if (mockSimRegistered) {
+        try { telecom.unregisterPhoneAccount(mockSimHandle) } catch (_: Exception) {}
+      }
       ServerTelecomRegistry.register(context)
-      // The test intentionally uses an invalid session. Stop the transient call
-      // engine activity so its background polling cannot leak into other tests.
       device.executeShellCommand("am force-stop " + context.packageName)
     }
   }

@@ -2,6 +2,16 @@
 set -euo pipefail
 
 mkdir -p artifacts
+# macOS provides GNU timeout as gtimeout when coreutils is installed; Linux uses timeout.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_BIN=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_BIN=gtimeout
+else
+  echo "Neither timeout nor gtimeout is installed; refusing to run unbounded tests." >&2
+  exit 1
+fi
+
 echo "Waiting for the Android emulator to be online and fully booted"
 READY=0
 for attempt in $(seq 1 240); do
@@ -36,11 +46,11 @@ adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
 echo "Configuring the emulator's simulated cellular modem and test phone number"
 adb emu gsm voice on >/dev/null 2>&1 || true
 adb emu gsm data on >/dev/null 2>&1 || true
-adb emu phonenumber +15550001001 >/dev/null 2>&1 || true
+adb emu phonenumber 15550001001 >/dev/null 2>&1 || true
 adb shell dumpsys isub > artifacts/server-emulator-subscriptions.txt 2>&1 || true
 
 echo "Running web-first caller onboarding Android instrumentation tests"
-timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
+$TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
 
 echo "Recording the website-based Server onboarding screen"
 adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
@@ -58,13 +68,13 @@ adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 
 echo "ANDROID_UI_SMOKE_PASS: website-first SIM-selection flow tests passed and onboarding recording captured."
 
 echo "Installing the SIM Gateway APK onto the emulator before launching it"
-timeout 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+$TIMEOUT_BIN 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
 adb shell pm path com.server.gateway.debug | grep -q 'package:'
 echo "Launching SIM Gateway UI and checking its project defaults"
 # Resolve the installed launchable activity through Android rather than hard-coding
 # the applicationId/class pairing. The debug applicationId suffix can make an
 # explicit component name fail even when the APK is installed and its manifest is valid.
-if ! timeout 45s adb shell monkey -p com.server.gateway.debug -c android.intent.category.LAUNCHER 1; then
+if ! $TIMEOUT_BIN 45s adb shell monkey -p com.server.gateway.debug -c android.intent.category.LAUNCHER 1; then
   adb logcat -d -t 400 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
   adb shell pm list packages | grep -E 'com\.server\.gateway|com\.server\.caller' > artifacts/server-installed-packages.txt || true
   exit 1
@@ -80,7 +90,7 @@ if ! grep -Fq 'com.server.gateway' artifacts/server-gateway-activity.txt; then
 fi
 # Stream pixels directly over ADB. Writing under /sdcard can break if the
 # emulator's emulated-storage mount drops its transport during startup.
-if ! timeout 30s adb exec-out screencap -p > artifacts/server-gateway-screen.png; then
+if ! $TIMEOUT_BIN 30s adb exec-out screencap -p > artifacts/server-gateway-screen.png; then
   adb logcat -d -t 1000 > artifacts/server-gateway-screencap-logcat.txt 2>&1 || true
   adb shell dumpsys meminfo > artifacts/server-gateway-screencap-meminfo.txt 2>&1 || true
   echo "Gateway launch was requested, but screenshot capture failed; diagnostics were saved." >&2
