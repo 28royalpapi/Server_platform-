@@ -13,6 +13,8 @@ const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
 const iosModel=read("apps/ios-caller/ServerCaller/ServerViewModel.swift");
+const iosProject=read("apps/ios-caller/ServerCaller.xcodeproj/project.pbxproj");
+const iosEntitlements=read("apps/ios-caller/ServerCaller.entitlements");
 const iosView=read("apps/ios-caller/ServerCaller/ContentView.swift");
 const auth=read("supabase/functions/server-auth/index.ts");
 const hook=read("supabase/functions/server-send-sms/index.ts");
@@ -75,6 +77,12 @@ assert.ok(androidMain.includes("private fun notifyCarrierFallback"),"Android exp
 assert.ok(androidMain.includes("30_000"),"Android offers the carrier fallback after an unanswered ring");
 assert.ok(androidMain.includes("EXTRA_PHONE_ACCOUNT_HANDLE"),"Android tries to preserve the selected SIM for carrier fallback");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
+assert.match(iosEntitlements,/<key>com\.apple\.developer\.calling-app<\/key>\s*<true\/>/,"iOS declares Apple's default-calling-app capability");
+assert.match(iosProject,/CODE_SIGN_ENTITLEMENTS = ServerCaller\.entitlements/,"iOS target uses the default calling app entitlements file");
+assert.match(iosInfo,/<string>voip<\/string>/,"iOS declares the VoIP background mode required by Apple's calling-app guidelines");
+assert.match(iosApp,/onContinueUserActivity\("INStartCallIntent"\)/,"iOS consumes system-originated Contacts call intents");
+assert.match(iosModel,/startCallFromSystemHandle/,"iOS forwards the system call handle into the existing Server call engine");
+assert.match(app,/iOS cannot add Server as a third SIM/,"the website explains the iOS default-calling-app route is not a third SIM");
 assert.match(androidMain,/deliveryMode == "manual_sms"/);
 assert.match(iosModel,/guestInviteMessage/);
 assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));

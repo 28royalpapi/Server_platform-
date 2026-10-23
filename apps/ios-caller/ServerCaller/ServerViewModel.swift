@@ -229,6 +229,26 @@ final class ServerViewModel: ObservableObject {
         } catch { await endMedia(); callId = nil; guestInviteMessage = ""; update(error.localizedDescription, error: true) }
     }
 
+    /// Receives a telephone number forwarded by iOS when Server is the
+    /// device's default calling app. This is not a third carrier-SIM choice.
+    func startCallFromSystemHandle(_ rawHandle: String) async {
+        let handle = rawHandle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !handle.isEmpty else {
+            update("iOS opened Server without a telephone number. Return to Contacts and try again.", error: true)
+            return
+        }
+        targetPhone = handle
+        guard isSignedIn else {
+            update("Set up Server on this device first. On iOS 18.2+, an entitled build can be selected as the default calling app; iOS does not add it beside SIM 1 and SIM 2.", error: true)
+            return
+        }
+        await startCall()
+    }
+
+    func explainDefaultCallingAppRequiresIOS182() {
+        update("System calling from Contacts requires iOS 18.2 or later and Apple's Default Calling App entitlement. Server cannot appear as a third cellular SIM.", error: true)
+    }
+
     func accept(_ incoming: IncomingCall) async {
         do { try await callKit.requestAnswer(id: incoming.id) }
         catch { update(error.localizedDescription, error: true) }

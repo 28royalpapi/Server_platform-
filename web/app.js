@@ -193,8 +193,18 @@ button?.addEventListener("click", () => {
     button.disabled = false;
     button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
     if (isIOS) {
-      fallback.textContent = "iPhone does not expose SIM slots to websites. Server needs an installed calling integration with Apple's calling-app entitlement before the system dialer can route calls to Server. This website cannot enable that by itself.";
-      showStatus("The web onboarding is available, but iPhone requires native calling integration for system-dialer setup.");
+      showStatus("Opening Server's iPhone calling integration. iOS cannot add Server as a third SIM; supported iPhones can use Server as the default calling app after Apple's entitlement is present.", true);
+      const started = Date.now();
+      window.location.href = "server://sim-setup";
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
+          fallback?.classList.remove("hidden");
+          fallback.textContent = "iPhone does not expose SIM slots to websites and cannot show Server beside SIM 1 / SIM 2. The supported route is an installed Server build with Apple's Default Calling App entitlement, selected as the default calling app on iOS/iPadOS 18.2 or later. This is not a third SIM, and this browser cannot grant the entitlement or select the default app.";
+          showStatus("The iPhone calling integration did not open. Install the entitled Server build and select it in iOS Default Apps > Calling; a simulator launch alone does not prove this setting works.");
+        }
+        button.disabled = false;
+        button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
+      }, 1800);
     } else {
       fallback.textContent = "Open this website on your Android phone to run the SIM-selection flow. Desktop browsers cannot access phone SIMs or register calling accounts.";
       showStatus("Phone SIM selection is supported only through the operating system's mobile integration.");

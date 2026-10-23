@@ -14,6 +14,11 @@ struct ContentView: View {
                             Text("Calling, made natural").font(.title2.bold())
                         }
                     }.padding(.top, 12)
+                    GroupBox("iPhone calling support") {
+                        Text("iOS does not allow Server to appear beside SIM 1 and SIM 2 as a third carrier line. On iOS/iPadOS 18.2 or later, an app build with Apple's Default Calling App entitlement can be selected as the default handler for calls from Contacts. This source includes the integration code; the entitlement must be available in the signed provisioning profile and the default-app route still needs device testing.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                     if !model.isConfigured {
                         notice("Connect Server to the new Supabase project by setting its URL and publishable key in the app build configuration.", warning: true)
                     }
