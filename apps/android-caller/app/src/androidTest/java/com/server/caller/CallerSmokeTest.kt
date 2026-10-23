@@ -31,8 +31,9 @@ class CallerSmokeTest {
         device.findObject(By.textContains("does not clone its number")))
       assertNotNull("Explicit SIM-permission step is not visible",
         device.findObject(By.text("Detect SIM cards / grant permission")))
-      assertNotNull("No-OTP registration action is not visible",
-        device.findObject(By.text("Create Server ID — internet calling only")))
+      val blockedWithoutSim = device.findObject(By.text("SIM required — cannot continue"))
+      assertNotNull("Registration must explicitly require SIM selection", blockedWithoutSim)
+      assertTrue("Registration must be disabled until a SIM is selected", !blockedWithoutSim.isEnabled)
     }
   }
 
