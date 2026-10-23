@@ -9,14 +9,10 @@
   <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
   <application
     android:allowBackup="false"
-    android:label="Server Calling"
+    android:label="Server"
     android:theme="@style/ServerTheme"
     android:usesCleartextTraffic="false">
     <activity android:name="com.server.caller.MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden">
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN" />
-        <category android:name="android.intent.category.LAUNCHER" />
-      </intent-filter>
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
@@ -29,6 +25,10 @@
       android:exported="true"
       android:launchMode="singleTop"
       android:configChanges="orientation|screenSize|keyboardHidden">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
