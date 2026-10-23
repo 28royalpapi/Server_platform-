@@ -175,8 +175,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://server-onboarding-ochre.vercel.app/terms.html")))
     }, matchWrap())
     termsCheck.setOnCheckedChangeListener { _, checked ->
-      continueSetupButton.isEnabled = checked && (!hasActiveSimChoices || selectedSimSubscriptionId >= 0)
-      continueSetupButton.text = if (selectedSimSubscriptionId >= 0) "Continue with selected SIM — no SMS OTP" else "Create Server ID — internet calling only"
+      continueSetupButton.isEnabled = checked && selectedSimSubscriptionId >= 0
+      continueSetupButton.text = if (selectedSimSubscriptionId >= 0) "Continue with selected SIM — no SMS OTP" else "SIM required — cannot continue"
     }
 
     callPanel = panel().apply { visibility = View.GONE }
@@ -372,8 +372,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
     if (!permissions) {
       simSetupHint.text = "SIM access has not been granted yet. Tap Detect SIM cards / grant permission to see your SIM slots, carriers and any number Android exposes."
-      continueSetupButton.text = "Create Server ID — internet calling only"
-      continueSetupButton.isEnabled = termsCheck.isChecked
+      continueSetupButton.text = "SIM required — cannot continue"
+      continueSetupButton.isEnabled = false
       return
     }
     val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
@@ -386,9 +386,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       selectedSimPhone = savedPhone
     }
     if (subscriptions.isEmpty()) {
-      simSetupHint.text = "No active SIM was exposed by Android. You can still create a Server ID for internet calls."
-      continueSetupButton.text = "Create Server ID — internet calling only"
-      continueSetupButton.isEnabled = termsCheck.isChecked
+      simSetupHint.text = "No active SIM was exposed by Android. Insert or activate a SIM, then detect SIMs again. Server setup cannot continue without selecting one."
+      continueSetupButton.text = "SIM required — cannot continue"
+      continueSetupButton.isEnabled = false
       return
     }
     simSetupHint.text = "Choose one SIM explicitly. The number may be hidden by Android or your carrier; Server does not use it as proof of ownership."
@@ -432,7 +432,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private fun registerDevice() = lifecycleScope.launch {
     if (!termsCheck.isChecked) { setStatus("Please accept the Terms and acknowledge the Privacy Notice.", true); return@launch }
-    if (hasActiveSimChoices && selectedSimSubscriptionId < 0) { setStatus("Select a SIM first. The website cannot make this selection for you.", true); return@launch }
+    if (selectedSimSubscriptionId < 0) { setStatus("Select an active SIM before creating your Server identity.", true); return@launch }
     continueSetupButton.isEnabled = false
     try {
       val (installationId, deviceSecret) = deviceCredential()
@@ -461,7 +461,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       setStatus("Setup complete. Your Server ID is $currentServerId. Server is registered as an internet-calling account, not a copied SIM line.")
     } catch (e: Exception) {
       setStatus(e.message ?: "Device-first setup failed.", true)
-      continueSetupButton.isEnabled = termsCheck.isChecked && (!hasActiveSimChoices || selectedSimSubscriptionId >= 0)
+      continueSetupButton.isEnabled = termsCheck.isChecked && selectedSimSubscriptionId >= 0
     }
   }
 
