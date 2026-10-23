@@ -62,6 +62,20 @@ class CallerSmokeTest {
     }
   }
 
+
+  @Test fun registeredServerAccountAppearsInSystemCallingAccountSettings() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    ServerTelecomRegistry.register(context)
+    val settings = Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(settings)
+
+    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    assertTrue("Android calling-account settings did not show Server",
+      device.wait(Until.hasObject(By.text("Server")), 15_000))
+    device.pressBack()
+  }
+
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
