@@ -18,17 +18,17 @@
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
       <h1>Choose on your phone.<br><span>Start without SMS OTP.</span></h1>
-      <p>On Android, Server opens this same web interface inside a small native bridge because browser pages cannot inspect SIM cards by themselves. You choose a SIM here, grant the calling permissions, then move to your normal phone dialer.</p>
+      <p>This website is Server’s onboarding experience. On Android, the phone must hand SIM and system-calling tasks to a small native integration component; it opens this same web flow, then returns you to the normal dialer. A website alone cannot read SIM slots or register a system calling account.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Continue in Server</h2><p>No verification text is needed to create a device-bound Server ID.</p></div></div>
-        <button class="primary full" id="open-server-app" type="button">Open Server on this phone <span aria-hidden="true">→</span></button>
-        <p id="fallback" class="fine-print hidden">Server did not open. Install the native Server app first. SIM selection and registration cannot be completed in a browser alone.</p>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Set up once here, then use your normal phone dialer. No SMS OTP is needed for a device-bound Server ID.</p></div></div>
+        <button class="primary full" id="open-server-app" type="button">Continue setup on this phone <span aria-hidden="true">→</span></button>
+        <p id="fallback" class="fine-print hidden">The phone integration did not open. A regular website cannot access SIM subscriptions or register an account with the system dialer by itself; the native integration component is required for those OS-controlled steps.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Server does not clone a SIM or copy its number into a new cellular line. Your Server ID is a separate internet-calling identity. Android may expose a SIM number, but some carriers/devices hide it; the app will not treat it as proof of ownership.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-        <p class="fine-print">On iPhone, iOS does not expose SIM-slot phone numbers to ordinary apps. This SIM-selection bridge is Android-only.</p>
+        <p class="fine-print">On iPhone, a website cannot inspect SIM slots or register a default calling app. iOS requires an installed, entitled calling integration; the website cannot perform those system steps alone.</p>
       </div>
       <div id="native-setup" class="hidden">
         <div class="step-title"><span class="step-number">01</span><div><h2>Choose your SIM</h2><p>Android needs your permission to reveal the SIM list. After you grant it, choose SIM 1 or SIM 2 here. If the carrier hides the phone number, Server will show that clearly.</p></div></div>
