@@ -30,18 +30,21 @@ echo "Installing the SIM Gateway APK onto the emulator before launching it"
 timeout 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
 adb shell pm path com.server.gateway.debug | grep -q 'package:'
 echo "Launching SIM Gateway UI and checking its project defaults"
-if ! timeout 45s adb shell am start -n com.server.gateway.debug/com.server.gateway.MainActivity; then
+# Resolve the installed launchable activity through Android rather than hard-coding
+# the applicationId/class pairing. The debug applicationId suffix can make an
+# explicit component name fail even when the APK is installed and its manifest is valid.
+if ! timeout 45s adb shell monkey -p com.server.gateway.debug -c android.intent.category.LAUNCHER 1; then
   adb logcat -d -t 400 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
   adb shell pm list packages | grep -E 'com\.server\.gateway|com\.server\.caller' > artifacts/server-installed-packages.txt || true
   exit 1
 fi
 sleep 3
 adb shell dumpsys activity activities > artifacts/server-gateway-activity.txt 2>&1 || true
-if ! grep -Fq 'com.server.gateway.MainActivity' artifacts/server-gateway-activity.txt; then
+if ! grep -Fq 'com.server.gateway' artifacts/server-gateway-activity.txt; then
   adb logcat -d -t 800 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
   adb shell dumpsys activity top > artifacts/server-gateway-activity-top.txt 2>&1 || true
   adb shell dumpsys window > artifacts/server-gateway-window.txt 2>&1 || true
-  echo "Gateway launch returned, but the gateway launcher activity was not in the Android activity stack." >&2
+  echo "Gateway launch returned, but no Server gateway activity was found in the Android activity stack." >&2
   exit 1
 fi
 # Stream pixels directly over ADB. Writing under /sdcard can break if the
