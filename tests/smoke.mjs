@@ -41,7 +41,7 @@ assert.match(androidMain,/READ_PHONE_NUMBERS/);
 assert.match(androidMain,/SubscriptionManager/);
 assert.match(androidMain,/registerDevice\(\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
-assert.match(iosView,/Create Server ID — no SMS OTP/);
+assert.match(iosView,/ServerOnboardingWebView/,"iOS onboarding is hosted in the website view");
 assert.match(iosModel,/to_server_id/);
 assert.match(handoff,/HANDOFF_EXPIRED_OR_ALREADY_USED/);
 assert.match(handoff,/server_sessions/);
@@ -85,7 +85,7 @@ assert.match(iosModel,/startCallFromSystemHandle/,"iOS forwards the system call 
 assert.match(app,/iOS cannot add Server as a third SIM/,"the website explains the iOS default-calling-app route is not a third SIM");
 assert.match(androidMain,/deliveryMode == "manual_sms"/);
 assert.match(iosModel,/guestInviteMessage/);
-assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
+assert.doesNotMatch(iosView,/Call with Server|Call a number/,"iOS does not expose a separate native calling form");
 assert.match(iosView,/WKWebView/,"iOS companion hosts the website onboarding instead of a native calling dial pad");
 assert.match(iosView,/loadFileURL/,"iOS onboarding loads the bundled website assets");
 assert.match(iosProject,/\.\.\/\.\.\/web\/index\.html/,"Xcode bundles the same website HTML used on Android");
