@@ -73,7 +73,8 @@ jobs:
         with:
           api-level: 35
           target: google_apis
-          arch: x86_64
+          # macos-14 runners are Apple Silicon (aarch64); use a matching AVD image.
+          arch: arm64-v8a
           profile: pixel_2
           ram-size: 2048M
           cores: 2
