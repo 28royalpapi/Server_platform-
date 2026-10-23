@@ -1,97 +1,169 @@
+import AVFoundation
 import SwiftUI
+import UIKit
+import WebKit
 
+/// The iOS companion hosts the same website onboarding instead of exposing a
+/// second native dial pad. The bridge only grants microphone access and creates
+/// the device-bound Server identity; iOS does not expose SIM-slot selection.
 struct ContentView: View {
     @EnvironmentObject private var model: ServerViewModel
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 13).fill(Color.green).frame(width: 48, height: 48)
-                            .overlay(Image(systemName: "phone.fill").foregroundStyle(Color(red: 0.02, green: 0.12, blue: 0.08)).font(.title2))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("SERVER").font(.headline).tracking(1.5).foregroundStyle(.green)
-                            Text("Calling, made natural").font(.title2.bold())
-                        }
-                    }.padding(.top, 12)
-                    GroupBox("iPhone calling support") {
-                        Text("iOS does not allow Server to appear beside SIM 1 and SIM 2 as a third carrier line. On iOS/iPadOS 18.2 or later, an app build with Apple's Default Calling App entitlement can be selected as the default handler for calls from Contacts. This source includes the integration code; the entitlement must be available in the signed provisioning profile and the default-app route still needs device testing.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !model.isConfigured {
-                        notice("Connect Server to the new Supabase project by setting its URL and publishable key in the app build configuration.", warning: true)
-                    }
-                    if model.isSignedIn {
-                        GroupBox("Call a number") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Signed in as \(model.maskedPhone)").font(.caption).foregroundStyle(.secondary)
-                                TextField("SVR-0123456789 or +2348012345678", text: $model.targetPhone)
-                                    .keyboardType(.phonePad).textInputAutocapitalization(.never)
-                                    .padding(12).background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-                                Button { Task { await model.startCall() } } label: {
-                                    Label("Call with Server", systemImage: "phone.fill").frame(maxWidth: .infinity)
-                                }.buttonStyle(.borderedProminent).tint(.green).disabled(model.isBusy || model.callId != nil)
-                                if !model.guestInviteMessage.isEmpty {
-                                    ShareLink(item: model.guestInviteMessage) {
-                                        Label("Share guest invitation", systemImage: "message.fill").frame(maxWidth: .infinity)
-                                    }.buttonStyle(.borderedProminent).tint(.blue)
-                                }
-                                if model.callId != nil {
-                                    Button(role: .destructive) { Task { await model.endCall() } } label: {
-                                        Label("End call", systemImage: "phone.down.fill").frame(maxWidth: .infinity)
-                                    }.buttonStyle(.bordered)
-                                }
-                                Button("Sign out", role: .destructive) { model.signOut() }.frame(maxWidth: .infinity, alignment: .trailing)
-                            }.padding(.vertical, 6)
-                        }
-                        if let incoming = model.incomingCall {
-                            GroupBox("Incoming Server call") {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Call from \(incoming.phone)")
-                                    HStack {
-                                        Button("Decline", role: .destructive) { Task { await model.decline(incoming.id) } }.buttonStyle(.bordered)
-                                        Button { Task { await model.accept(incoming) } } label: { Label("Answer", systemImage: "phone.fill") }
-                                            .buttonStyle(.borderedProminent).tint(.green)
-                                    }
-                                }.padding(.vertical, 6)
-                            }
-                        }
-                    } else {
-                        GroupBox("Set up Server on this iPhone") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Create a device-bound Server ID without an SMS OTP. iOS does not allow ordinary apps to enumerate SIM slots or read SIM phone numbers; your mobile number stays with your carrier.")
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                                Toggle(isOn: $model.acceptedTerms) {
-                                    Text("I accept the Terms of Service and acknowledge the Privacy Notice.")
-                                }.tint(.green)
-                                HStack {
-                                    Link("Terms of Service", destination: URL(string: "https://server-onboarding-ochre.vercel.app/terms.html")!)
-                                    Spacer()
-                                    Link("Privacy Notice", destination: URL(string: "https://server-onboarding-ochre.vercel.app/privacy.html")!)
-                                }.font(.caption)
-                                Button { Task { await model.registerDevice() } } label: {
-                                    if model.isBusy { ProgressView().frame(maxWidth: .infinity) }
-                                    else { Label("Create Server ID — no SMS OTP", systemImage: "person.crop.circle.badge.checkmark").frame(maxWidth: .infinity) }
-                                }.buttonStyle(.borderedProminent).tint(.green).disabled(model.isBusy || !model.isConfigured || !model.acceptedTerms)
-                            }.padding(.vertical, 6)
-                        }
-                    }
-                    if !model.status.isEmpty { notice(model.status, warning: model.isError) }
-                    GroupBox("How Server calls work") {
-                        Text("Call another Server user with their Server ID (for example SVR-0123456789). A non-Server number still needs a guest invitation and internet to join; SMS invitations require a paired gateway. Server is an internet-calling service, not a copied SIM or a cellular line.")
-                            .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
-                    }
-                }.padding(.horizontal, 16).padding(.bottom, 28)
-            }
-            .background(Color(red: 0.03, green: 0.07, blue: 0.12))
-            .navigationBarHidden(true)
-        }
+        ServerOnboardingWebView(model: model)
+            .ignoresSafeArea()
+    }
+}
+
+private struct ServerOnboardingWebView: UIViewRepresentable {
+    let model: ServerViewModel
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(model: model)
     }
 
-    private func notice(_ text: String, warning: Bool) -> some View {
-        Text(text).font(.footnote).foregroundStyle(warning ? .orange : .green)
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background((warning ? Color.orange : Color.green).opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let controller = WKUserContentController()
+        controller.add(context.coordinator, name: "serverIOS")
+        let bridgeScript = """
+        (function () {
+          window.ServerIOS = {
+            requestCallPermissions: function () {
+              window.webkit.messageHandlers.serverIOS.postMessage({method: "requestCallPermissions"});
+            },
+            completeSetup: function (acceptedTerms) {
+              window.webkit.messageHandlers.serverIOS.postMessage({
+                method: "completeSetup",
+                acceptedTerms: !!acceptedTerms
+              });
+            }
+          };
+        })();
+        """
+        controller.addUserScript(WKUserScript(
+            source: bridgeScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        ))
+        configuration.userContentController = controller
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        context.coordinator.webView = webView
+        webView.navigationDelegate = context.coordinator
+
+        if let indexURL = Bundle.main.url(forResource: "index", withExtension: "html") {
+            webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())
+        } else {
+            webView.loadHTMLString(
+                "<main style='font-family: system-ui; padding: 24px'><h1>Server</h1><p>Onboarding files were not included in this build. Rebuild Server from the repository.</p></main>",
+                baseURL: nil
+            )
+        }
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {}
+
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        private let model: ServerViewModel
+        weak var webView: WKWebView?
+
+        init(model: ServerViewModel) {
+            self.model = model
+        }
+
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard message.name == "serverIOS",
+                  message.frameInfo.isMainFrame,
+                  let body = message.body as? [String: Any],
+                  let method = body["method"] as? String else { return }
+
+            switch method {
+            case "requestCallPermissions":
+                AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
+                    self?.evaluateJavaScript(
+                        "window.onServerCallPermissionResult && window.onServerCallPermissionResult(\(granted ? "true" : "false"), true);"
+                    )
+                }
+
+            case "completeSetup":
+                let acceptedTerms = body["acceptedTerms"] as? Bool ?? false
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.model.acceptedTerms = acceptedTerms
+                    await self.model.registerDevice()
+                    if self.model.isSignedIn {
+                        self.deliverSetupResult(["ok": true, "serverId": self.model.serverID])
+                    } else {
+                        self.deliverSetupResult([
+                            "ok": false,
+                            "error": self.model.status.isEmpty ? "Server setup failed. Please try again." : self.model.status
+                        ])
+                    }
+                }
+
+            default:
+                break
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+            if url.isFileURL {
+                decisionHandler(.allow)
+                return
+            }
+            if url.scheme == "server" && url.host == "sim-setup" {
+                decisionHandler(.cancel)
+                Task { @MainActor in await model.handleAppHandoff(url) }
+                return
+            }
+            if url.scheme == "https" && url.host == "server-onboarding-ochre.vercel.app" {
+                decisionHandler(.cancel)
+                if navigationAction.navigationType == .linkActivated {
+                    UIApplication.shared.open(url)
+                } else {
+                    webView.load(URLRequest(url: url))
+                }
+                return
+            }
+            decisionHandler(.cancel)
+            if navigationAction.navigationType == .linkActivated {
+                UIApplication.shared.open(url)
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            webView.evaluateJavaScript(
+                "document.querySelectorAll('a[target=_blank]').forEach(function(a){a.target='_self';});",
+                completionHandler: nil
+            )
+        }
+
+        private func evaluateJavaScript(_ script: String) {
+            DispatchQueue.main.async { [weak self] in
+                self?.webView?.evaluateJavaScript(script, completionHandler: nil)
+            }
+        }
+
+        private func deliverSetupResult(_ result: [String: Any]) {
+            guard let data = try? JSONSerialization.data(withJSONObject: result),
+                  let json = String(data: data, encoding: .utf8) else {
+                evaluateJavaScript("window.onServerSetupResult && window.onServerSetupResult({ok:false,error:'Could not return the setup result.'});")
+                return
+            }
+            evaluateJavaScript("window.onServerSetupResult && window.onServerSetupResult(\(json));")
+        }
     }
 }

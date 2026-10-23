@@ -86,6 +86,10 @@ assert.match(app,/iOS cannot add Server as a third SIM/,"the website explains th
 assert.match(androidMain,/deliveryMode == "manual_sms"/);
 assert.match(iosModel,/guestInviteMessage/);
 assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
+assert.match(iosView,/WKWebView/,"iOS companion hosts the website onboarding instead of a native calling dial pad");
+assert.match(iosView,/loadFileURL/,"iOS onboarding loads the bundled website assets");
+assert.match(iosProject,/\.\.\/\.\.\/web\/index\.html/,"Xcode bundles the same website HTML used on Android");
+assert.match(iosProject,/\.\.\/\.\.\/web\/app\.js/,"Xcode bundles the same website onboarding logic");
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);

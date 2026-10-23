@@ -12,7 +12,7 @@ function showStatus(message, ok = false) {
   if (ok) statusEl.classList.add("ok");
 }
 
-if (window.ServerAndroid && nativeSetup && stepForm) {
+if ((window.ServerAndroid || window.ServerIOS) && nativeSetup && stepForm) {
   stepForm.classList.add("hidden");
   nativeSetup.classList.remove("hidden");
 
@@ -25,6 +25,19 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
   const finishStep = document.querySelector("#finish-step");
   const serverId = document.querySelector("#server-id");
   let selectedSubscriptionId = null;
+  const isIOSBridge = Boolean(window.ServerIOS && !window.ServerAndroid);
+
+  if (isIOSBridge) {
+    const firstTitle = nativeSetup.querySelector(".step-title h2");
+    const firstDescription = nativeSetup.querySelector(".step-title p");
+    if (firstTitle) firstTitle.textContent = "Prepare iPhone calling";
+    if (firstDescription) firstDescription.textContent = "iOS keeps cellular SIMs under the phone system and does not offer Server as SIM 3. This step creates your separate Server internet-calling identity; on iOS 18.2 or later, an entitled build may be selected as your default calling app.";
+    detectButton.classList.add("hidden");
+    simOptions.classList.add("hidden");
+    continuePermissions.classList.remove("hidden");
+    continuePermissions.disabled = false;
+    continuePermissions.textContent = "Continue to calling permissions →";
+  }
 
   const showSims = (data) => {
     simOptions.replaceChildren();
@@ -100,13 +113,15 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
   });
 
   continuePermissions?.addEventListener("click", () => {
-    if (selectedSubscriptionId === null) {
+    if (selectedSubscriptionId === null && !isIOSBridge) {
       showStatus("Choose a SIM before continuing.");
       return;
     }
     callStep.classList.remove("hidden");
     continuePermissions.classList.add("hidden");
-    showStatus("SIM selected. Next, grant microphone permission for calling and accept the legal terms.", true);
+    showStatus(isIOSBridge
+      ? "iPhone cannot offer Server as another SIM. Next, grant microphone access and accept the terms."
+      : "SIM selected. Next, grant microphone permission for calling and accept the legal terms.", true);
   });
 
   terms?.addEventListener("change", () => {
@@ -120,8 +135,11 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     }
     grantCalls.disabled = true;
     grantCalls.textContent = "Waiting for Android permissions…";
-    showStatus("Android will request microphone permission and, where available, notification permission.");
-    window.ServerAndroid.requestCallPermissions();
+    showStatus(isIOSBridge
+      ? "iOS will ask for microphone permission for Server internet calls."
+      : "Android will request microphone permission and, where available, notification permission.");
+    if (isIOSBridge) window.ServerIOS.requestCallPermissions();
+    else window.ServerAndroid.requestCallPermissions();
   });
 
   window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted) => {
@@ -133,7 +151,8 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     }
     showStatus("Permissions granted. Creating your Server identity without SMS OTP…");
     grantCalls.disabled = true;
-    window.ServerAndroid.completeSetup(Boolean(terms?.checked));
+    if (isIOSBridge) window.ServerIOS.completeSetup(Boolean(terms?.checked));
+    else window.ServerAndroid.completeSetup(Boolean(terms?.checked));
   };
 
   window.onServerSetupResult = (result) => {
@@ -145,10 +164,19 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     callStep.classList.add("hidden");
     finishStep.classList.remove("hidden");
     serverId.textContent = `Your Server ID: ${result.serverId}`;
-    showStatus("Server ID created. Android needs one final approval to enable Server as a calling account; after you enable it and return, the normal dialer will open automatically.", true);
-    // Keep the user's journey short: ask Android to enable the account now.
-    // The native bridge opens the dialer when the user returns from system settings.
-    window.ServerAndroid.openCallingSettings();
+    if (window.ServerAndroid) {
+      const doneText = finishStep.querySelector(".done-text");
+      if (doneText) doneText.textContent = "Server is registered as an Android internet-calling account, not a cellular SIM/eSIM. Enable the account in Android Calling accounts, then use the normal dialer.";
+      showStatus("Server ID created. Android needs one final approval to enable Server as a calling account; after you enable it and return, the normal dialer will open automatically.", true);
+      window.ServerAndroid.openCallingSettings();
+    } else {
+      const doneText = finishStep.querySelector(".done-text");
+      if (doneText) doneText.textContent = "iOS does not add Server beside SIM 1 and SIM 2. On iOS/iPadOS 18.2 or later, select Server under Settings → Apps → Default Apps → Calling, but only after Apple has enabled the Default Calling App entitlement for the signed build. This setup screen does not claim that entitlement or setting has been verified.";
+      document.querySelector("#enable-calling-account")?.classList.remove("hidden");
+      document.querySelector("#enable-calling-account").textContent = "How to set Server as default calling app";
+      document.querySelector("#open-phone-dialer")?.classList.add("hidden");
+      showStatus("Server identity created. iOS requires a separate default-calling-app setting; it cannot show Server as a third SIM.", true);
+    }
   };
 
   window.onServerCallingAccountStatus = (enabled) => {
@@ -160,13 +188,25 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
   };
 
   window.onServerSettingsError = () => {
+    if (isIOSBridge) {
+      showStatus("Open Settings → Apps → Default Apps → Calling and choose Server, if the signed build is entitled. iOS cannot add Server as a third SIM.", true);
+      return;
+    }
     showStatus("Android could not open Calling accounts automatically. Open Phone Settings, enable Server under Calling accounts, then return here and tap Open my normal phone dialer.");
   };
 
   document.querySelector("#enable-calling-account")?.addEventListener("click", () => {
+    if (isIOSBridge) {
+      showStatus("Open Settings → Apps → Default Apps → Calling and choose Server, if Apple has provisioned the calling-app entitlement. iOS does not offer Server as a SIM option.", true);
+      return;
+    }
     window.ServerAndroid.openCallingSettings();
   });
   document.querySelector("#open-phone-dialer")?.addEventListener("click", () => {
+    if (isIOSBridge) {
+      showStatus("Select Server as the default calling app in iOS Settings first. This is different from selecting a cellular SIM.", true);
+      return;
+    }
     if (!window.ServerAndroid.isCallingAccountEnabled()) {
       showStatus("Server is not enabled yet. Open phone settings, enable Server under calling accounts, then return here.");
       return;
@@ -176,8 +216,10 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
 
   // If permission has already been granted on this phone, prefill the SIM choices.
   try {
-    const existing = JSON.parse(window.ServerAndroid.getSimChoices());
-    if (!existing.permissionNeeded && existing.sims?.length) showSims(existing);
+    if (window.ServerAndroid) {
+      const existing = JSON.parse(window.ServerAndroid.getSimChoices());
+      if (!existing.permissionNeeded && existing.sims?.length) showSims(existing);
+    }
   } catch {
     // The explicit Detect SIMs button remains available.
   }
