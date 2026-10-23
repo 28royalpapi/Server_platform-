@@ -59,64 +59,18 @@ jobs:
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
       - name: Run Android phone emulator UI smoke test
-        timeout-minutes: 30
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager --licenses >/dev/null
-          install_sdk_package() {
-            local package="$1"
-            for attempt in 1 2 3; do
-              if sdkmanager --install "$package"; then
-                return 0
-              fi
-              echo "SDK package $package failed on attempt $attempt/3; clearing partial downloads before retry." >&2
-              rm -rf "$ANDROID_HOME/.temp"
-              case "$package" in
-                emulator) rm -rf "$ANDROID_HOME/emulator" ;;
-                *system-images*) rm -rf "$ANDROID_HOME/system-images/android-30/default/x86_64" ;;
-                *platforms*) rm -rf "$ANDROID_HOME/platforms/android-30" ;;
-              esac
-              sleep 8
-            done
-            return 1
-          }
-          install_sdk_package 'platforms;android-30'
-          install_sdk_package 'system-images;android-30;default;x86_64'
-          install_sdk_package 'emulator'
-
-          echo no | avdmanager create avd --name server-test --package 'system-images;android-30;default;x86_64' --device pixel_2 --force
-          "$ANDROID_HOME/emulator/emulator" -avd server-test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -memory 2048 -cores 2 > artifacts/server-emulator.log 2>&1 &
-          EMULATOR_PID=$!
-          cleanup_emulator() {
-            adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
-            kill "$EMULATOR_PID" 2>/dev/null || true
-          }
-          trap cleanup_emulator EXIT
-
-          timeout 90s adb -s emulator-5554 wait-for-device
-          READY=0
-          for attempt in $(seq 1 600); do
-            STATE="$(adb -s emulator-5554 get-state 2>/dev/null || true)"
-            BOOTED=""
-            if [[ "$STATE" == "device" ]]; then
-              BOOTED="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-            fi
-            if [[ "$STATE" == "device" && "$BOOTED" == "1" ]]; then READY=1; break; fi
-            sleep 2
-          done
-          if [[ "$READY" -ne 1 ]]; then
-            adb -s emulator-5554 logcat -d -t 1000 > artifacts/server-android-boot-failure-logcat.txt 2>&1 || true
-            tail -n 200 artifacts/server-emulator.log || true
-            echo "Android emulator did not finish booting." >&2
-            exit 1
-          fi
-          adb -s emulator-5554 shell settings put global window_animation_scale 0
-          adb -s emulator-5554 shell settings put global transition_animation_scale 0
-          adb -s emulator-5554 shell settings put global animator_duration_scale 0
-          bash scripts/android-emulator-smoke.sh
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          cores: 2
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            bash scripts/android-emulator-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
