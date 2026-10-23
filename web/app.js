@@ -211,6 +211,6 @@ button?.addEventListener("click", () => {
       showStatus("Android did not open the system integration component. SIM selection cannot be completed in the browser alone.");
     }
     button.disabled = false;
-    button.innerHTML = 'Open Server on this phone <span aria-hidden="true">→</span>';
+    button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
   }, 1800);
 });
