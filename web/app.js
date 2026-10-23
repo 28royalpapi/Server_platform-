@@ -143,11 +143,22 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     callStep.classList.add("hidden");
     finishStep.classList.remove("hidden");
     serverId.textContent = `Your Server ID: ${result.serverId}`;
-    showStatus("Server identity created and the calling account registered. Enable it in phone settings before opening the dialer.", true);
+    showStatus("Server ID created. Android needs one final approval to enable Server as a calling account; after you enable it and return, the normal dialer will open automatically.", true);
+    // Keep the user's journey short: ask Android to enable the account now.
+    // The native bridge opens the dialer when the user returns from system settings.
+    window.ServerAndroid.openCallingSettings();
+  };
+
+  window.onServerCallingAccountStatus = (enabled) => {
+    if (enabled) {
+      showStatus("Server is enabled. Opening your normal phone dialer…", true);
+    } else {
+      showStatus("In Android Calling accounts, enable Server and return here. Your normal phone dialer will open automatically.");
+    }
   };
 
   window.onServerSettingsError = () => {
-    showStatus("Could not open calling-account settings automatically. Open the phone's Settings and enable the Server calling account.");
+    showStatus("Android could not open Calling accounts automatically. Open Phone Settings, enable Server under Calling accounts, then return here and tap Open my normal phone dialer.");
   };
 
   document.querySelector("#enable-calling-account")?.addEventListener("click", () => {
