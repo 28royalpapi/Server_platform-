@@ -37,7 +37,7 @@ object ServerTelecomRegistry {
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
       .setShortDescription("Server internet calling account; not a cellular SIM")
     if (observedNumber.isNotBlank()) {
-      accountBuilder.setAddress(Uri.fromParts("tel", observedNumber, null))
+      accountBuilder.setAddress(Uri.parse("tel:$observedNumber"))
     }
     val account = accountBuilder.build()
     telecom.registerPhoneAccount(account)
