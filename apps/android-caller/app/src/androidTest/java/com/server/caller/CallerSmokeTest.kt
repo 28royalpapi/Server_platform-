@@ -43,6 +43,11 @@ class CallerSmokeTest {
       val emulatorSim = device.wait(Until.findObject(By.textContains("Emulator test SIM")), 10_000)
       assertNotNull("The debug emulator must expose a clearly-labelled test SIM fixture", emulatorSim)
       emulatorSim!!.click()
+      val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+      assertEquals("Selecting a SIM in the website must persist its chosen subscription id",
+        -1001, savedPrefs.getInt("selected_sim_subscription_id", -1))
+      assertEquals("The emulator fixture must be explicitly labelled as a mock, not a carrier line",
+        "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
       val continueButton = device.wait(Until.findObject(By.textContains("Continue to calling permissions")), 10_000)
       assertNotNull("SIM selection did not advance the web flow", continueButton)
       continueButton!!.click()
@@ -71,8 +76,19 @@ class CallerSmokeTest {
     context.startActivity(settings)
 
     val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    assertTrue("Android calling-account settings did not show Server",
-      device.wait(Until.hasObject(By.text("Server")), 15_000))
+    val serverEntry = device.wait(Until.findObject(By.text("Server")), 15_000)
+    assertNotNull("Android calling-account settings did not show Server", serverEntry)
+    // Exercise the real system consent toggle instead of treating registration or
+    // APK installation as proof that the calling account is available.
+    if (!ServerTelecomRegistry.isEnabled(context)) {
+      serverEntry!!.click()
+      val deadline = System.currentTimeMillis() + 10_000
+      while (System.currentTimeMillis() < deadline && !ServerTelecomRegistry.isEnabled(context)) {
+        Thread.sleep(250)
+      }
+    }
+    assertTrue("Server is listed but has not been enabled in Android calling-account settings",
+      ServerTelecomRegistry.isEnabled(context))
     device.pressBack()
   }
 
@@ -93,6 +109,8 @@ class CallerSmokeTest {
         (account!!.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
       assertTrue("Server must be a system-managed call provider, not self-managed",
         (account.capabilities and PhoneAccount.CAPABILITY_SELF_MANAGED) == 0)
+      assertTrue("Server must explicitly advertise tel URI support so the normal dialer can route numbers to it",
+        account.supportedUriSchemes.contains(PhoneAccount.SCHEME_TEL))
       assertEquals("The selected SIM number must be carried as account metadata",
         Uri.parse("tel:+2348012345678"), account.address)
     } finally {
