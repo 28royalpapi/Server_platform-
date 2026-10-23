@@ -3,6 +3,7 @@ package com.server.caller
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
@@ -532,13 +533,54 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).apply()
   }
 
+  private fun normalizePhoneForServer(raw: String): String? {
+    val value = raw.trim()
+    val digits = value.filter { it.isDigit() }
+    val candidate = when {
+      value.startsWith("+") -> "+$digits"
+      value.startsWith("00") -> "+" + digits.drop(2)
+      digits.startsWith("234") && digits.length == 13 -> "+$digits"
+      digits.length == 11 && digits.startsWith("0") -> "+234" + digits.drop(1)
+      digits.length == 10 && digits.firstOrNull() in '7'..'9' -> "+234$digits"
+      else -> return null
+    }
+    return candidate.takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
+  }
+
+  /** Opens the user's SMS composer; Server never sends a paid or unsolicited SMS silently. */
+  private fun openGuestInviteComposer(number: String, body: String) {
+    val smsIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$number")).apply {
+      putExtra("sms_body", body)
+    }
+    try {
+      startActivity(smsIntent)
+      setStatus("Guest invitation prepared in your SMS app. Tap Send there; then return to the call. The recipient must open it with internet and microphone access.")
+    } catch (_: Exception) {
+      try {
+        val share = Intent(Intent.ACTION_SEND).apply {
+          type = "text/plain"
+          putExtra(Intent.EXTRA_TEXT, body)
+        }
+        startActivity(Intent.createChooser(share, "Share Server guest-call invitation"))
+        setStatus("Choose Messages or another app to share the invitation. The recipient needs internet and microphone access.")
+      } catch (e: Exception) {
+        setStatus("The guest invitation is ready, but no messaging app could open it. Copy and share this link manually: " + body, true)
+      }
+    }
+  }
+
   private fun startCall() = lifecycleScope.launch {
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { askMic.launch(Manifest.permission.RECORD_AUDIO); setStatus("Allow microphone access and tap Call with Server again.", true); return@launch }
-    val target = targetInput.text.toString().trim().replace(" ", "").uppercase()
+    val typedTarget = targetInput.text.toString().trim()
+    val serverId = typedTarget.uppercase()
+    val isServerId = Regex("^SVR-[0-9A-F]{10}$").matches(serverId)
+    val normalizedPhone = if (isServerId) null else normalizePhoneForServer(typedTarget)
+    if (!isServerId && normalizedPhone == null) {
+      setStatus("Enter a Server ID (SVR- plus 10 characters) or a valid phone number, e.g. 08012345678 or +2348012345678.", true)
+      return@launch
+    }
     val payload = JSONObject()
-    if (Regex("^SVR-[0-9A-F]{10}$").matches(target)) payload.put("to_server_id", target)
-    else if (Regex("^\\+[1-9][0-9]{7,14}$").matches(target)) payload.put("to_phone", target)
-    else { setStatus("Enter a Server ID (SVR- plus 10 characters) or a full number with country code.", true); return@launch }
+    if (isServerId) payload.put("to_server_id", serverId) else payload.put("to_phone", normalizedPhone)
     callButton.isEnabled = false
     try {
       val started = api("start", payload)
@@ -548,14 +590,19 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val offer = createLocalDescription(true)
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
       callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
-      setStatus(if (currentRoute == "guest") "Guest invitation queued. Waiting for the recipient to open the SMS link, grant microphone access and connect to the internet." else "Calling another Server user… waiting for answer.")
       beginCallPolling()
+      val deliveryMode = started.optString("delivery_mode", "")
+      val invitationBody = started.optString("sms_body", "")
+      if (currentRoute == "guest" && deliveryMode == "manual_sms" && invitationBody.isNotBlank() && normalizedPhone != null) {
+        openGuestInviteComposer(normalizedPhone, invitationBody)
+      } else {
+        setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Server user… waiting for answer.")
+      }
     } catch (e: Exception) {
       cleanPeer(); callId = null
       setStatus(e.message ?: "Could not start call.", true)
     } finally { callButton.isEnabled = true }
   }
-
   private suspend fun incomingLoop() {
     while (lifecycleScope.coroutineContext.isActive && !accessToken.isNullOrBlank()) {
       try {
