@@ -3,6 +3,13 @@ package com.server.caller
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.telecom.PhoneAccountHandle
+import android.telecom.TelecomManager
+import android.widget.Toast
 import android.net.Uri
 import android.content.pm.PackageManager
 import android.media.AudioManager
@@ -73,6 +80,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     renderSimChoices()
   }
   private var callId: String? = null
+  private var callStartedAt = 0L
+  private var carrierFallbackPhone: String? = null
+  private var carrierFallbackOfferedFor: String? = null
   private var activeStateSyncedFor: String? = null
   private var pendingDialedNumber: String? = null
   private var currentRoute = "server"
@@ -569,6 +579,52 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
+  private fun selectedCellularAccount(): PhoneAccountHandle? {
+    val subscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
+    if (subscriptionId < 0) return null
+    return try {
+      val telecom = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+      telecom.callCapablePhoneAccounts.firstOrNull { handle ->
+        handle != ServerTelecomRegistry.handle(this) &&
+          (handle.id == subscriptionId.toString() || handle.id.endsWith(":$subscriptionId"))
+      }
+    } catch (_: Exception) { null }
+  }
+
+  /** Presents a user-confirmed route into the normal carrier dialer; it never silently places a paid call. */
+  private fun notifyCarrierFallback(number: String, reason: String) {
+    if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(number)) return
+    try {
+      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val channelId = "server-carrier-fallback"
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        manager.createNotificationChannel(NotificationChannel(
+          channelId, "Server carrier-call fallback", NotificationManager.IMPORTANCE_HIGH
+        ).apply { description = "Lets you switch to a normal carrier call when Server cannot reach a user." })
+      }
+      val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).apply {
+        selectedCellularAccount()?.let { putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      val pending = PendingIntent.getActivity(
+        this, number.hashCode(), dialIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+      )
+      val notification = Notification.Builder(this, channelId)
+        .setSmallIcon(android.R.drawable.sym_action_call)
+        .setContentTitle("Try a normal carrier call")
+        .setContentText(reason)
+        .setStyle(Notification.BigTextStyle().bigText("$reason Tap to open the phone dialer and place a regular call. Your mobile operator may charge you."))
+        .setCategory(Notification.CATEGORY_CALL)
+        .setAutoCancel(true)
+        .setContentIntent(pending)
+        .build()
+      manager.notify(7341, notification)
+    } catch (_: Exception) {
+      Toast.makeText(this, "$reason Open your normal phone dialer to place a carrier call; charges may apply.", Toast.LENGTH_LONG).show()
+    }
+  }
+
   private fun startCall() = lifecycleScope.launch {
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { askMic.launch(Manifest.permission.RECORD_AUDIO); setStatus("Allow microphone access and tap Call with Server again.", true); return@launch }
     val typedTarget = targetInput.text.toString().trim()
@@ -585,6 +641,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     try {
       val started = api("start", payload)
       callId = started.getString("call_id"); activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
+      callStartedAt = System.currentTimeMillis()
+      carrierFallbackOfferedFor = null
+      val mappedPhone = started.optJSONObject("call")?.optString("callee_phone_e164").orEmpty()
+      carrierFallbackPhone = (normalizedPhone ?: mappedPhone).takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
@@ -599,8 +659,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Server user… waiting for answer.")
       }
     } catch (e: Exception) {
-      cleanPeer(); callId = null
+      val fallbackPhone = normalizedPhone
+      cleanPeer(); callId = null; carrierFallbackPhone = null
       setStatus(e.message ?: "Could not start call.", true)
+      if (fallbackPhone != null) notifyCarrierFallback(fallbackPhone, "Server could not reach its call service.")
     } finally { callButton.isEnabled = true }
   }
   private suspend fun incomingLoop() {
@@ -640,6 +702,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private suspend fun acceptCall(id: String) {
     try {
       callId = id; activeStateSyncedFor = null; currentRoute = "server"; lastSeq = 0
+      carrierFallbackPhone = null
       val accepted = api("accept", JSONObject().put("call_id", id))
       callIceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
@@ -762,7 +825,19 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           }
           lastSeq = maxOf(lastSeq, result.optLong("next_after_seq", lastSeq))
           val state = result.optJSONObject("call")?.optString("state") ?: ""
-          if (state in listOf("ended", "failed", "missed")) { cleanPeer(); callId = null; showCallIdle(); setStatus("Call ended."); break }
+          val fallbackPhone = carrierFallbackPhone
+          if (currentRoute == "server" && state == "ringing" && fallbackPhone != null &&
+              System.currentTimeMillis() - callStartedAt >= 30_000 && carrierFallbackOfferedFor != id) {
+            carrierFallbackOfferedFor = id
+            notifyCarrierFallback(fallbackPhone, "The Server user has not connected. They may be offline.")
+            try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
+            callId = null
+            cleanPeer()
+            showCallIdle()
+            setStatus("Server did not connect. A notification offers a regular carrier call instead; no carrier call was placed automatically.", true)
+            break
+          }
+          if (state in listOf("ended", "failed", "missed")) { cleanPeer(); callId = null; carrierFallbackPhone = null; showCallIdle(); setStatus("Call ended."); break }
         } catch (e: Exception) { setStatus(e.message ?: "Call connection interrupted.", true) }
         delay(700)
       }
@@ -772,7 +847,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun endCall() = lifecycleScope.launch {
     val id = callId
     if (id != null) try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
-    cleanPeer(); callId = null; showCallIdle(); setStatus("Call ended.")
+    cleanPeer(); callId = null; carrierFallbackPhone = null; showCallIdle(); setStatus("Call ended.")
   }
   private fun showCallIdle() { runOnUiThread { callButton.visibility = View.VISIBLE; hangupButton.visibility = View.GONE } }
   private fun cleanPeer() {
