@@ -33,10 +33,16 @@ adb shell input keyevent 3 >/dev/null 2>&1 || true
 sleep 2
 adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
 
-echo "Running caller-app Android instrumentation tests"
+echo "Configuring the emulator's simulated cellular modem and test phone number"
+adb emu gsm voice on >/dev/null 2>&1 || true
+adb emu gsm data on >/dev/null 2>&1 || true
+adb emu phonenumber +15550001001 >/dev/null 2>&1 || true
+adb shell dumpsys isub > artifacts/server-emulator-subscriptions.txt 2>&1 || true
+
+echo "Running web-first caller onboarding Android instrumentation tests"
 timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
 
-echo "Recording the caller app screen"
+echo "Recording the website-based Server onboarding screen"
 adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
 REC_PID=$!
 cleanup_recorder() {
@@ -45,11 +51,11 @@ cleanup_recorder() {
 }
 trap cleanup_recorder EXIT
 sleep 2
-adb shell am start -n com.server.caller.debug/com.server.caller.MainActivity
+adb shell am start -n com.server.caller.debug/com.server.caller.ServerSetupWebActivity
 wait "$REC_PID" || true
 trap - EXIT
 adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 >/dev/null
-echo "ANDROID_UI_SMOKE_PASS: caller instrumentation tests passed and startup recording captured."
+echo "ANDROID_UI_SMOKE_PASS: website-first SIM-selection flow tests passed and onboarding recording captured."
 
 echo "Installing the SIM Gateway APK onto the emulator before launching it"
 timeout 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
