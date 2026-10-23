@@ -10,7 +10,13 @@ struct ServerCallerApp: App {
                 .environmentObject(model)
                 .preferredColorScheme(.dark)
                 .onOpenURL { url in
-                    Task { await model.handleAppHandoff(url) }
+                    if url.scheme?.lowercased() == "tel" {
+                        let raw = String(url.absoluteString.dropFirst("tel:".count))
+                        let handle = raw.removingPercentEncoding ?? raw
+                        Task { await model.startCallFromSystemHandle(handle) }
+                    } else {
+                        Task { await model.handleAppHandoff(url) }
+                    }
                 }
                 // Apple's default-calling-app flow delivers INStartCallIntent
                 // inside the NSUserActivity interaction. startCallHandle belongs

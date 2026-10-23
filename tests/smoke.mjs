@@ -81,6 +81,8 @@ assert.match(iosEntitlements,/<key>com\.apple\.developer\.calling-app<\/key>\s*<
 assert.match(iosProject,/CODE_SIGN_ENTITLEMENTS = ServerCaller\.entitlements/,"iOS target uses the default calling app entitlements file");
 assert.match(iosInfo,/<string>voip<\/string>/,"iOS declares the VoIP background mode required by Apple's calling-app guidelines");
 assert.match(iosApp,/onContinueUserActivity\("INStartCallIntent"\)/,"iOS consumes system-originated Contacts call intents");
+assert.match(iosApp,/url\.scheme\?\.lowercased\(\) == "tel"/,"iOS handles tel: URLs from Contacts/default calling flow");
+assert.match(iosApp,/startCallFromSystemHandle\(handle\)/,"iOS forwards tel: URLs into the existing call engine");
 assert.match(iosModel,/startCallFromSystemHandle/,"iOS forwards the system call handle into the existing Server call engine");
 assert.match(app,/iOS cannot add Server as a third SIM/,"the website explains the iOS default-calling-app route is not a third SIM");
 assert.match(androidMain,/deliveryMode == "manual_sms"/);
