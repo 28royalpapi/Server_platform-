@@ -142,6 +142,20 @@ class ServerSetupWebActivity : Activity() {
       catch (_: SecurityException) { emptyList() }
     val selectedId = prefs.getInt("selected_sim_subscription_id", -1)
     val rows = JSONArray()
+    // The stock Android Emulator can simulate modem events, but it does not let
+    // an ordinary app manufacture a carrier-backed SubscriptionInfo record. For
+    // debug emulator runs only, expose a clearly-labelled test fixture so we can
+    // exercise the website selection flow without claiming a real SIM is present.
+    if (subscriptions.isEmpty() && BuildConfig.DEBUG && isRunningOnEmulator()) {
+      rows.put(JSONObject()
+        .put("id", EMULATOR_TEST_SIM_ID)
+        .put("slot", 1)
+        .put("carrier", "Emulator test SIM (not a real line)")
+        .put("number", "+15550001001")
+        .put("numberAvailable", true)
+        .put("selected", selectedId == EMULATOR_TEST_SIM_ID)
+        .put("testOnly", true))
+    }
     subscriptions.forEachIndexed { index, info ->
       val carrier = info.carrierName?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "Unknown carrier"
       val phone = readPhoneNumber(manager, info)
@@ -166,6 +180,15 @@ class ServerSetupWebActivity : Activity() {
 
   private fun chooseSim(subscriptionId: Int): Boolean {
     if (!hasSimPermissions()) return false
+    if (subscriptionId == EMULATOR_TEST_SIM_ID && BuildConfig.DEBUG && isRunningOnEmulator()) {
+      prefs.edit()
+        .putInt("selected_sim_subscription_id", EMULATOR_TEST_SIM_ID)
+        .putInt("selected_sim_slot", 0)
+        .putString("selected_sim_carrier", "Emulator test SIM (not a real line)")
+        .putString("selected_sim_phone", "+15550001001")
+        .apply()
+      return true
+    }
     @Suppress("DEPRECATION", "MissingPermission")
     val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
     @Suppress("DEPRECATION", "MissingPermission")
@@ -186,7 +209,9 @@ class ServerSetupWebActivity : Activity() {
 
   private fun registerDevice(acceptedTerms: Boolean): JSONObject {
     if (!acceptedTerms) return JSONObject().put("ok", false).put("error", "Accept the Terms and Privacy Notice first.")
-    if (prefs.getInt("selected_sim_subscription_id", -1) < 0) {
+    val chosenSubscription = prefs.getInt("selected_sim_subscription_id", -1)
+    val emulatorTestChoice = chosenSubscription == EMULATOR_TEST_SIM_ID && BuildConfig.DEBUG && isRunningOnEmulator()
+    if (chosenSubscription < 0 && !emulatorTestChoice) {
       return JSONObject().put("ok", false).put("error", "Choose an active SIM before continuing.")
     }
     return try {
@@ -315,9 +340,19 @@ class ServerSetupWebActivity : Activity() {
     }
   }
 
+  private fun isRunningOnEmulator(): Boolean =
+    Build.FINGERPRINT.startsWith("generic") ||
+      Build.FINGERPRINT.startsWith("unknown") ||
+      Build.MODEL.contains("Emulator", ignoreCase = true) ||
+      Build.MODEL.contains("Android SDK built for", ignoreCase = true) ||
+      Build.HARDWARE.contains("goldfish", ignoreCase = true) ||
+      Build.HARDWARE.contains("ranchu", ignoreCase = true) ||
+      Build.PRODUCT.contains("sdk", ignoreCase = true)
+
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
     private const val REQUEST_SIM = 5101
     private const val REQUEST_CALL = 5102
+    private const val EMULATOR_TEST_SIM_ID = -1001
   }
 }
