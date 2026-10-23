@@ -47,6 +47,11 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK components
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+      - name: Install GNU timeout for cross-platform emulator smoke script
+        run: |
+          if ! command -v gtimeout >/dev/null 2>&1; then
+            brew install coreutils
+          fi
       - name: Build Server caller and SIM gateway
         run: |
           gradle -p apps/android-caller assembleDebug --no-daemon
