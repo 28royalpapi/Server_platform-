@@ -35,6 +35,9 @@ object ServerTelecomRegistry {
       .filter { it.isDigit() || it == '+' }
     val accountBuilder = PhoneAccount.builder(handle, "Server")
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
+      // Tell Telecom explicitly that Server handles telephone-number URIs. This is
+      // an internet-calling account; it must never be registered as a cellular SIM.
+      .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
       .setShortDescription("Server internet calling account; not a cellular SIM")
     if (observedNumber.isNotBlank()) {
       accountBuilder.setAddress(Uri.parse("tel:$observedNumber"))
