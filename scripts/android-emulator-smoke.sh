@@ -55,6 +55,13 @@ fi
 test -s artifacts/server-gateway-screen.png
 echo "GATEWAY_LAUNCH_SMOKE_PASS: explicit launcher activity is in the activity stack and a screenshot was streamed over ADB."
 
+echo "Unlocking and foregrounding the Android emulator before instrumentation tests"
+adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+adb shell input keyevent 82 >/dev/null 2>&1 || true
+adb shell input keyevent 3 >/dev/null 2>&1 || true
+sleep 2
+adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
+
 echo "Running caller-app Android instrumentation tests"
 timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
 
