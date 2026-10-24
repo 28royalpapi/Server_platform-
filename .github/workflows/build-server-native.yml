@@ -162,14 +162,14 @@ jobs:
           }
           let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
           print("iOS simulator visible-screen OCR:\n\(recognized)")
-          let hasBrand = recognized.localizedCaseInsensitiveContains("SAVA CALL")
-          let hasKeypad = recognized.localizedCaseInsensitiveContains("Keypad")
-          let hasContacts = recognized.localizedCaseInsensitiveContains("Contacts")
-          let hasCallRoutes = recognized.localizedCaseInsensitiveContains("Choose how to call")
-          guard hasBrand && hasKeypad && hasContacts && hasCallRoutes else {
-              fail("Sava Call did not render its own dialer, contacts entry and call-route action.")
+          let hasBrand = recognized.localizedCaseInsensitiveContains("SERVER")
+          let hasSetupHeading = recognized.localizedCaseInsensitiveContains("Set up Server on this iPhone")
+          let hasCreateIdentity = recognized.localizedCaseInsensitiveContains("Create Server identity")
+          let hasCallingDisclosure = recognized.localizedCaseInsensitiveContains("How iPhone calling works")
+          guard hasBrand && hasSetupHeading && hasCreateIdentity && hasCallingDisclosure else {
+              fail("Server did not render its setup and default-calling integration screen.")
           }
-          print("IOS_UI_SMOKE_PASS: Sava Call dialer rendered visible app UI.")
+          print("IOS_UI_SMOKE_PASS: Server setup and default-calling integration UI rendered.")
           SWIFT
           if ! swift /tmp/check-server-ios-screen.swift artifacts/server-ios-startup.png; then
             echo "IOS_UI_SMOKE_FAIL: dumping recent crash diagnostics"

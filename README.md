@@ -1,6 +1,6 @@
 # Server Platform
 
-Server is a phone onboarding and internet-calling project. Website onboarding verifies an existing number; ordinary calls are intended to run through installed native clients. This is **not** an additional SIM/eSIM or a PSTN/carrier bridge.
+Server is a website-led onboarding and internet-calling project. Android uses a narrow native bridge for OS-only SIM metadata and Telecom registration; the onboarding UI remains the website. Server is **not** an extra SIM/eSIM and this repo does not contain a PSTN/SIP carrier bridge.
 
 ## Live Supabase backend
 
@@ -45,8 +45,14 @@ The new project has no online gateway yet. The backend safely refuses an OTP req
 
 Server-to-Server calls and guest browser calls use WebRTC. Guest calls require the guest to open the invitation while online and grant microphone access. Only a public STUN server is configured by default; restrictive networks need a separately operated TURN relay. An SMS link cannot cause a traditional cellular ring or work when a guest has no data. Background incoming calls require platform-specific push delivery; iOS PushKit/APNs is not configured.
 
+## Normal dialer integration
+
+- **Android:** the launcher opens the website onboarding inside a WebView bridge. With permission, the bridge reads the real SubscriptionInfo list and saves the user's selection. It registers Server as a system-managed Telecom PhoneAccount with telephone-number URI support. The user must enable Server in Android Calling accounts; the normal phone app's exact picker behavior varies by device/dialer. Server is never registered as a cellular SIM and does not clone a carrier subscription.
+- **iPhone:** the native integration uses Apple's Default Calling App entitlement for iOS 18.2+. When Apple authorizes the entitlement and the user chooses Server as their default calling app, a Contacts tap-to-call can be handed to Server, where the user can choose Server internet calling or explicitly return to the carrier. iOS does not expose SIM-slot selection to Server and this does not add a third cellular line. The entitlement is in source; a valid Apple-authorized signing profile and on-device acceptance test are still required.
+- **Calling scope:** Server-to-Server WebRTC is supported by the current call engine. A number that is not a Server account currently follows the guest-invitation path; this repository does not provide PSTN/SIP trunking, so it must not be described as a normal carrier-network call to any arbitrary phone number.
+
 ## Build/test status
 
-[Latest backend CI](https://github.com/28royalpapi/Server_platform-/actions/runs/39665035984) passed static checks and 5/5 live API contracts. [Latest Android/iOS CI](https://github.com/28royalpapi/Server_platform-/actions/runs/39665036017) passed backend checks, built both Android APKs, built and launched the iOS Simulator app, and saved an iOS startup recording; the Android emulator smoke-test step is still running as of the last inspection. Check run results and artifacts; do not treat source presence or a queued workflow as proof of passing builds.
+The latest backend/source-contract checks have passed during development. Use the GitHub Actions history at https://github.com/28royalpapi/Server_platform-/actions for the current native build and emulator acceptance result; source presence or a successful compile is not proof that the normal system dialer shows Server or that real audio calls work.
 
 Real SIM SMS, end-to-end audio between two devices, background push calls, TURN, and store-ready device security have not been confirmed. Do not treat Server as production-ready until those checks pass.

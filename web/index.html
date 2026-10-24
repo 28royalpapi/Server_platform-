@@ -28,7 +28,7 @@
         <p id="fallback" class="fine-print hidden">The phone integration did not open. A regular website cannot access SIM subscriptions or register an account with the system dialer by itself; the native integration component is required for those OS-controlled steps.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Server does not clone a SIM or copy its number into a new cellular line. Your Server ID is a separate internet-calling identity. Android may expose a SIM number, but some carriers/devices hide it; the app will not treat it as proof of ownership.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-        <p class="fine-print">On iPhone, a website cannot inspect SIM slots or register a default calling app. iOS requires an installed, entitled calling integration; the website cannot perform those system steps alone.</p>
+        <p class="fine-print">On iPhone, a website cannot inspect SIM slots. iOS 18.2+ can route Contacts tap-to-call to an alternative default calling app once Apple authorizes Server’s calling-app entitlement and the user chooses Server as the default. This does not add a third cellular SIM.</p>
       </div>
       <div id="native-setup" class="hidden">
         <div class="step-title"><span class="step-number">01</span><div><h2>Choose your SIM</h2><p>Android needs your permission to reveal the SIM list. After you grant it, choose SIM 1 or SIM 2 here. If the carrier hides the phone number, Server will show that clearly.</p></div></div>

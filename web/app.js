@@ -189,13 +189,24 @@ button?.addEventListener("click", () => {
   button.textContent = "Opening Server…";
   fallback?.classList.add("hidden");
   if (!isAndroid) {
-    fallback?.classList.remove("hidden");
-    button.disabled = false;
-    button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
+    fallback?.classList.add("hidden");
     if (isIOS) {
-      fallback.textContent = "iPhone does not expose SIM slots to websites. Server needs an installed calling integration with Apple's calling-app entitlement before the system dialer can route calls to Server. This website cannot enable that by itself.";
-      showStatus("The web onboarding is available, but iPhone requires native calling integration for system-dialer setup.");
+      showStatus("Opening Server’s iPhone calling integration. The app will continue setup on this phone.");
+      const started = Date.now();
+      window.location.href = "server://sim-setup";
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
+          fallback?.classList.remove("hidden");
+          fallback.textContent = "Server could not open. Install the Server iPhone integration first. iOS 18.2+ supports a default calling app when Apple authorizes the required entitlement; iPhone does not expose SIM slots to Server.";
+          showStatus("The Server iPhone integration did not open. The website alone cannot register an iOS calling app.");
+        }
+        button.disabled = false;
+        button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
+      }, 1800);
     } else {
+      fallback?.classList.remove("hidden");
+      button.disabled = false;
+      button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
       fallback.textContent = "Open this website on your Android phone to run the SIM-selection flow. Desktop browsers cannot access phone SIMs or register calling accounts.";
       showStatus("Phone SIM selection is supported only through the operating system's mobile integration.");
     }

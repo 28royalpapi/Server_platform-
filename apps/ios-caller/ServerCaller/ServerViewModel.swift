@@ -76,7 +76,7 @@ final class ServerViewModel: ObservableObject {
 
     func handleAppHandoff(_ url: URL) async {
         guard url.scheme == "server" else { return }
-        if url.host == "sim-setup" { update("Continue setup here. iOS does not expose SIM-slot numbers to ordinary apps; Server will create a separate Server ID."); return }
+        if url.host == "sim-setup" { update("Website onboarding opened Server. iOS does not expose SIM slots; create your Server identity here, then use the authorized default-calling integration when Apple permits it."); return }
         guard url.host == "setup" else { return }
         guard let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "handoff" })?.value,
@@ -154,7 +154,7 @@ final class ServerViewModel: ObservableObject {
             UserDefaults.standard.set(expiresAt, forKey: "server.expiry")
             serverID = id; storedPhone = ""; UserDefaults.standard.removeObject(forKey: "server.phone"); UserDefaults.standard.set(id, forKey: "server.server_id")
             isSignedIn = true
-            update("Setup complete. Your Server ID is \(id). iOS uses CallKit for native call screens; it cannot add Server as a cellular SIM line.")
+            update("Setup complete. Your Server ID is \(id). The project includes the iOS Default Calling App capability; Apple-authorized signing and iOS 18.2+ are required before Server can be selected as the default caller.")
             startIncomingPolling()
         } catch { update("Device-first setup failed: \(error.localizedDescription)", error: true) }
     }
@@ -195,7 +195,7 @@ final class ServerViewModel: ObservableObject {
         else if digits.count == 11 && digits.hasPrefix("0") { candidate = "+234" + String(digits.dropFirst()) }
         else if digits.count == 10, let first = digits.first, ["7", "8", "9"].contains(String(first)) { candidate = "+234" + digits }
         else { return nil }
-        return candidate.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? candidate : nil
+        return candidate.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? candidate : nil
     }
 
     func startCall() async {
@@ -417,7 +417,7 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
     private var handles: [UUID: String] = [:]
 
     override init() {
-        let config = CXProviderConfiguration(localizedName: "Sava Call")
+        let config = CXProviderConfiguration(localizedName: "Server")
         config.supportsVideo = false; config.maximumCallGroups = 1; config.maximumCallsPerCallGroup = 1
         config.supportedHandleTypes = [.phoneNumber]
         provider = CXProvider(configuration: config)

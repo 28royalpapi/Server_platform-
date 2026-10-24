@@ -6,15 +6,14 @@
   <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
   <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>Sava Call</string>
-  <key>CFBundleDisplayName</key><string>Sava Call</string>
+  <key>CFBundleName</key><string>Server</string>
+  <key>CFBundleDisplayName</key><string>Server</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
   <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
   <key>LSRequiresIPhoneOS</key><true/>
-  <key>NSContactsUsageDescription</key><string>Sava Call uses your contacts to let you choose who to call. Your address book is read on this iPhone and is not uploaded.</string>
-  <key>NSMicrophoneUsageDescription</key><string>Sava Call uses the microphone to carry your voice during calls.</string>
-  <key>UIBackgroundModes</key><array><string>audio</string></array>
+    <key>NSMicrophoneUsageDescription</key><string>Sava Call uses the microphone to carry your voice during calls.</string>
+  <key>UIBackgroundModes</key><array><string>audio</string><string>voip</string></array>
   <key>SERVER_SUPABASE_URL</key><string>$(SERVER_SUPABASE_URL)</string>
   <key>SERVER_SUPABASE_PUBLISHABLE_KEY</key><string>$(SERVER_SUPABASE_PUBLISHABLE_KEY)</string>
   <key>UILaunchScreen</key><dict/>

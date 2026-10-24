@@ -14,6 +14,8 @@ const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/call
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
+const iosEntitlements=read("apps/ios-caller/ServerCaller/ServerCaller.entitlements");
+const iosProject=read("apps/ios-caller/ServerCaller.xcodeproj/project.pbxproj");
 const iosModel=read("apps/ios-caller/ServerCaller/ServerViewModel.swift");
 const iosView=read("apps/ios-caller/ServerCaller/ContentView.swift");
 const auth=read("supabase/functions/server-auth/index.ts");
@@ -41,7 +43,13 @@ assert.match(androidMain,/READ_PHONE_NUMBERS/);
 assert.match(androidMain,/SubscriptionManager/);
 assert.match(androidMain,/registerDevice\(\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
-assert.match(iosView,/Create Sava Call identity/);
+assert.match(iosView,/Create Server identity/);
+assert.match(iosView,/onContinueUserActivity/);
+assert.match(iosView,/telephony/);
+assert.match(iosEntitlements,/com.apple.developer.calling-app/);
+assert.match(iosInfo,/<string>voip<\/string>/);
+assert.match(iosProject,/CODE_SIGN_ENTITLEMENTS = ServerCaller\/ServerCaller.entitlements/);
+assert.doesNotMatch(iosView,/CNContactStore/);
 
 
 
@@ -68,7 +76,9 @@ assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
 assert.doesNotMatch(androidTelecom,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
-assert.match(iosApp,/handleAppHandoff/);
+assert.match(iosView,/model.handleAppHandoff/);
+assert.match(iosView,/Set up Server on this iPhone/);
+assert.match(iosView,/How iPhone calling works/);
 assert.match(iosInfo,/CFBundleURLTypes/);
 assert.match(auth,/action==="request_otp"/);
 assert.match(auth,/action==="verify_otp"/);
