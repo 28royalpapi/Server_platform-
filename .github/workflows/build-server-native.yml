@@ -31,9 +31,9 @@ jobs:
         run: npm run check:live
 
   android-build-and-emulator-smoke:
-    # Run Android system-UI tests on a macOS host with native emulator
-    # virtualization; the Linux runner failed to boot Android 35 without KVM.
-    runs-on: macos-14
+    # Use the Intel macOS runner for the x86_64 API 35 emulator. The ARM
+    # emulator on the Apple Silicon runner was spending >12 minutes in its UI step.
+    runs-on: macos-15-intel
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
@@ -72,13 +72,14 @@ jobs:
         with:
           api-level: 35
           target: google_apis
-          # macos-14 runners are Apple Silicon (aarch64); x86_64 AVDs crash before boot.
-          arch: arm64-v8a
+          # macos-15-intel runs x86_64 natively, avoiding ARM AVD startup stalls.
+          arch: x86_64
           profile: pixel_2
-          ram-size: 2048M
+          ram-size: 3072M
           cores: 2
+          emulator-boot-timeout: 300
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save
           script: |
             bash scripts/android-emulator-smoke.sh
       - uses: actions/upload-artifact@v4

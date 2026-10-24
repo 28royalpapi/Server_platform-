@@ -14,7 +14,9 @@ fi
 
 echo "Waiting for the Android emulator to be online and fully booted"
 READY=0
-for attempt in $(seq 1 240); do
+# The emulator action already waits for boot. Keep this second ADB
+# readiness guard short so a broken emulator fails with diagnostics promptly.
+for attempt in $(seq 1 60); do
   STATE="$(adb get-state 2>/dev/null || true)"
   BOOTED=""
   if [[ "$STATE" == "device" ]]; then
