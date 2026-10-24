@@ -10,6 +10,8 @@ import android.provider.ContactsContract
 import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
+import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -31,7 +33,7 @@ import androidx.activity.result.contract.ActivityResultContracts
  */
 class DialerActivity : ComponentActivity() {
   private data class ContactRow(val name: String, val number: String)
-  private data class CarrierChoice(val label: String, val handle: PhoneAccountHandle)
+  private data class CarrierChoice(val label: String, val handle: PhoneAccountHandle, val slotIndex: Int?)
 
   private lateinit var root: LinearLayout
   private lateinit var numberInput: EditText
@@ -311,12 +313,36 @@ class DialerActivity : ComponentActivity() {
   @Suppress("DEPRECATION", "MissingPermission")
   private fun carrierAccounts(): List<CarrierChoice> {
     val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
+    val subscriptionManager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+    val telephony = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
+    val activeSubscriptions = try {
+      subscriptionManager.activeSubscriptionInfoList.orEmpty()
+    } catch (_: Exception) {
+      emptyList()
+    }
     return try {
       telecom.callCapablePhoneAccounts.mapNotNull { handle ->
         val account = telecom.getPhoneAccount(handle) ?: return@mapNotNull null
         if ((account.capabilities and PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION) == 0) return@mapNotNull null
-        CarrierChoice(account.label?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "Mobile carrier", handle)
+
+        // Android 11+ exposes the real subscription ID behind a phone account.
+        // Resolve it to SubscriptionInfo.slotIndex rather than assuming the
+        // order returned by TelecomManager equals SIM 1 / SIM 2.
+        val subscriptionId = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+          try { telephony.getSubscriptionId(handle) } catch (_: Exception) { SubscriptionManager.INVALID_SUBSCRIPTION_ID }
+        } else {
+          SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        }
+        val info = activeSubscriptions.firstOrNull { it.subscriptionId == subscriptionId }
+        val slot = info?.simSlotIndex?.takeIf { it >= 0 }
+        val carrierName = info?.carrierName?.toString()?.trim()
+          .takeUnless { it.isNullOrBlank() }
+          ?: account.label?.toString()?.trim().takeUnless { it.isNullOrBlank() }
+          ?: "Mobile carrier"
+        val label = if (slot != null) "SIM ${slot + 1} · $carrierName" else "Carrier line · $carrierName"
+        CarrierChoice(label, handle, slot)
       }.distinctBy { it.handle }
+        .sortedWith(compareBy<CarrierChoice>({ it.slotIndex ?: Int.MAX_VALUE }, { it.label }))
     } catch (_: SecurityException) {
       emptyList()
     } catch (_: Exception) {
@@ -328,16 +354,24 @@ class DialerActivity : ComponentActivity() {
     val target = numberInput.text.toString().trim()
     if (target.isBlank()) return
     carrierChoices = carrierAccounts()
-    val labels = mutableListOf("Sava Call · Internet calling")
-    labels.addAll(carrierChoices.mapIndexed { index, choice -> "SIM " + (index + 1) + " · " + choice.label })
+    // Keep the user's expected order: SIM 1, Sava Call, SIM 2. If Android
+    // cannot tell us the slot on an older OS, label carrier options honestly
+    // instead of inventing SIM slot numbers.
+    val choices = mutableListOf<Pair<String, CarrierChoice?>>()
+    val first = carrierChoices.firstOrNull()
+    if (first?.slotIndex != null) choices.add(first.label to first)
+    choices.add("Sava Call · Internet calling" to null)
+    val rest = if (first?.slotIndex != null) carrierChoices.drop(1) else carrierChoices
+    choices.addAll(rest.map { it.label to it })
     if (carrierChoices.isEmpty()) {
       setStatus("No carrier SIM calling accounts are currently exposed by Android. Sava Call remains available; check that a SIM is active for carrier calls.")
     }
     android.app.AlertDialog.Builder(this)
       .setTitle("Call " + target + " using…")
-      .setItems(labels.toTypedArray()) { _, which ->
-        if (which == 0) placeSavaCall(target)
-        else carrierChoices.getOrNull(which - 1)?.let { placeCarrierCall(target, it.handle) }
+      .setItems(choices.map { it.first }.toTypedArray()) { _, which ->
+        val selected = choices.getOrNull(which) ?: return@setItems
+        val carrier = selected.second
+        if (carrier == null) placeSavaCall(target) else placeCarrierCall(target, carrier.handle)
       }
       .setNegativeButton("Cancel", null)
       .show()
