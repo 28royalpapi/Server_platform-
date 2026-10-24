@@ -24,6 +24,10 @@ class CallerSmokeTest {
   @Test fun launcherOpensWebsiteOnboardingInsteadOfCustomDialer() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
+    // Explicitly grant SIM metadata access in the emulator so the test can
+    // cover the selection path after permissions, not stop at the permission gate.
+    try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
+    try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     assertNotNull("Server does not expose a launcher entry", launchIntent)
     assertEquals("The launcher must open the website onboarding bridge",
@@ -164,7 +168,7 @@ class CallerSmokeTest {
       // The stock Android emulator has no carrier-backed SubscriptionInfo, so a
       // clearly labelled mock calling account exercises the OS account chooser.
       // It is not a real SIM or cellular subscription.
-      val mockAccount = PhoneAccount.builder(mockSimHandle, "Test SIM 1 (mock)")
+      val mockAccount = PhoneAccount.builder(mockSimHandle, "Test call provider (mock)")
         .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
         .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
         .setShortDescription("Test-only simulated SIM account; not a carrier line")
@@ -172,12 +176,12 @@ class CallerSmokeTest {
         .build()
       telecom.registerPhoneAccount(mockAccount)
       mockSimRegistered = true
-      ensureAccountEnabled(context, device, mockSimHandle, "Test SIM 1 (mock)")
+      ensureAccountEnabled(context, device, mockSimHandle, "Test call provider (mock)")
 
       val callCapable = telecom.callCapablePhoneAccounts
       assertTrue("Server is not a call-capable account in Android Telecom",
         callCapable.any { it == serverHandle })
-      assertTrue("The test-only SIM account is missing from Android Telecom",
+      assertTrue("The test-only call-provider account is missing from Android Telecom",
         callCapable.any { it == mockSimHandle })
 
       device.pressHome()
@@ -196,11 +200,11 @@ class CallerSmokeTest {
       var mockChoice: androidx.test.uiautomator.UiObject2? = null
       while (System.currentTimeMillis() < chooserDeadline && (serverChoice == null || mockChoice == null)) {
         serverChoice = device.findObject(By.text("Server"))
-        mockChoice = device.findObject(By.text("Test SIM 1 (mock)"))
+        mockChoice = device.findObject(By.text("Test call provider (mock)"))
         Thread.sleep(200)
       }
       assertNotNull("Android did not show Server as an option in the system calling-account chooser", serverChoice)
-      assertNotNull("Android did not show the test-only SIM beside Server", mockChoice)
+      assertNotNull("Android did not show the test call provider beside Server", mockChoice)
       serverChoice!!.click()
       val justOnce = device.wait(Until.findObject(By.textContains("Just once")), 2_000)
       if (justOnce != null) justOnce.click()
