@@ -44,6 +44,64 @@ class CallerSmokeTest {
     }
   }
 
+
+  @Test fun customDialerSavaChoiceRoutesIntoExistingCallEngine() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val previousToken = prefs.getString("access_token", null)
+    val previousExpiry = prefs.getLong("access_expiry", 0L)
+    val previousPhone = prefs.getString("phone", null)
+    val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
+    val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
+    val device = UiDevice.getInstance(instrumentation)
+
+    try {
+      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
+      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO) } catch (_: Exception) {}
+      // Invalid test session: the UI path is exercised, but the backend must reject
+      // the request before any real call session can be created.
+      prefs.edit()
+        .putString("access_token", "0".repeat(64))
+        .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
+        .putString("phone", "+15550001001")
+        .remove("debug_last_call_engine_entered_at")
+        .remove("debug_last_call_target_kind")
+        .commit()
+
+      ActivityScenario.launch(DialerActivity::class.java).use {
+        assertTrue("Sava Call dialer did not open",
+          device.wait(Until.hasObject(By.text("SAVA CALL")), 10_000))
+        val numberField = device.findObject(By.clazz("android.widget.EditText"))
+        assertNotNull("Sava Call number entry is missing", numberField)
+        numberField!!.setText("+15550001001")
+        device.findObject(By.text("Choose how to call")).click()
+        val savaChoice = device.wait(Until.findObject(By.text("Sava Call · Internet calling")), 8_000)
+        assertNotNull("Sava Call is not offered in its own call-route picker", savaChoice)
+        savaChoice!!.click()
+
+        val deadline = System.currentTimeMillis() + 15_000
+        while (System.currentTimeMillis() < deadline &&
+          prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) {
+          Thread.sleep(200)
+        }
+        assertTrue("Choosing Sava Call did not reach the existing call engine",
+          prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L)
+        assertEquals("A telephone number must enter the phone-number route",
+          "phone", prefs.getString("debug_last_call_target_kind", null))
+      }
+    } finally {
+      val edit = prefs.edit()
+      if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
+      edit.putLong("access_expiry", previousExpiry)
+      if (previousPhone == null) edit.remove("phone") else edit.putString("phone", previousPhone)
+      if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
+      if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
+      edit.commit()
+      device.executeShellCommand("am force-stop " + context.packageName)
+    }
+  }
+
   @Test fun websiteEntryOpensSimSelectionInsideNativeBridge() {
     val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     ActivityScenario.launch(ServerSetupWebActivity::class.java).use {
@@ -62,8 +120,8 @@ class CallerSmokeTest {
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     assertTrue("Android calling-account settings did not show Server",
-      device.wait(Until.hasObject(By.text("Server")), 15_000))
-    device.findObject(By.text("Server")).click()
+      device.wait(Until.hasObject(By.text("Sava Call")), 15_000))
+    device.findObject(By.text("Sava Call")).click()
 
     // Android builds vary: some expose an inline switch, others open an account
     // detail page. Try the detail-page switch if clicking the row did not enable it.
@@ -188,7 +246,7 @@ class CallerSmokeTest {
         mockChoice = device.findObject(By.text("Test SIM 1 (mock)"))
         Thread.sleep(200)
       }
-      assertNotNull("Android did not show Server as an option in the system calling-account chooser", serverChoice)
+      assertNotNull("Android did not show Sava Call as an option in the system calling-account chooser", serverChoice)
       assertNotNull("Android did not show the test-only SIM beside Server", mockChoice)
       serverChoice!!.click()
       val justOnce = device.wait(Until.findObject(By.textContains("Just once")), 2_000)

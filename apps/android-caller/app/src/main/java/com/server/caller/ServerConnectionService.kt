@@ -33,12 +33,12 @@ object ServerTelecomRegistry {
       .getString("selected_sim_phone", "")
       .orEmpty()
       .filter { it.isDigit() || it == '+' }
-    val accountBuilder = PhoneAccount.builder(handle, "Server")
+    val accountBuilder = PhoneAccount.builder(handle, "Sava Call")
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
       // Tell Telecom explicitly that Server handles telephone-number URIs. This is
       // an internet-calling account; it must never be registered as a cellular SIM.
       .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
-      .setShortDescription("Server internet calling account; not a cellular SIM")
+      .setShortDescription("Sava Call internet calling account; not a cellular SIM")
     if (observedNumber.isNotBlank()) {
       accountBuilder.setAddress(Uri.parse("tel:$observedNumber"))
     }
@@ -80,7 +80,7 @@ class ServerConnectionService : ConnectionService() {
     val phone = request.address?.schemeSpecificPart.orEmpty()
     val connection = ServerTelecomConnection(this).apply {
       setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
-      setCallerDisplayName("Server internet call", TelecomManager.PRESENTATION_ALLOWED)
+      setCallerDisplayName("Sava Call internet call", TelecomManager.PRESENTATION_ALLOWED)
       setAudioModeIsVoip(true)
       setExtras(Bundle().apply { putString("server_remote_phone", phone) })
       setDialing()
@@ -98,7 +98,7 @@ class ServerConnectionService : ConnectionService() {
     val callId = extras.getString("server_call_id").orEmpty()
     return ServerTelecomConnection(this).apply {
       setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
-      setCallerDisplayName(if (phone.isBlank()) "Server caller" else phone, TelecomManager.PRESENTATION_ALLOWED)
+      setCallerDisplayName(if (phone.isBlank()) "Sava Call caller" else phone, TelecomManager.PRESENTATION_ALLOWED)
       setAudioModeIsVoip(true)
       setExtras(Bundle().apply { putString("server_call_id", callId); putString("server_remote_phone", phone) })
       setRinging()
