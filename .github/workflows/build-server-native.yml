@@ -31,8 +31,8 @@ jobs:
         run: npm run check:live
 
   android-build-and-emulator-smoke:
-    # Use the Intel macOS runner for the x86_64 API 35 emulator. The ARM
-    # emulator on the Apple Silicon runner was spending >12 minutes in its UI step.
+    # Use the Intel macOS runner for an x86_64 API 34 emulator. API 35 stayed
+    # offline for the full five-minute boot window on this hosted runner.
     runs-on: macos-15-intel
     timeout-minutes: 50
     steps:
@@ -70,16 +70,16 @@ jobs:
       - name: Run Android phone emulator UI smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
-          # macos-15-intel runs x86_64 natively, avoiding ARM AVD startup stalls.
+          # API 34 supports the Android 11+ subscription-slot API used by the app.
           arch: x86_64
           profile: pixel_2
           ram-size: 3072M
           cores: 2
-          emulator-boot-timeout: 300
+          emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader -feature -Vulkan -no-snapshot -no-snapshot-save
           script: |
             bash scripts/android-emulator-smoke.sh
       - uses: actions/upload-artifact@v4
