@@ -30,6 +30,11 @@ final class ServerViewModel: ObservableObject {
     @Published var isSignedIn = false
     @Published var callId: String?
     @Published var incomingCall: IncomingCall?
+    @Published var phoneLinkPhone = "+234"
+    @Published var phoneLinkCode = ""
+    @Published var phoneLinkStatus = ""
+    @Published var phoneLinkCodeSent = false
+    @Published var linkedPhone = UserDefaults.standard.string(forKey: "server.linked_phone") ?? ""
 
     private var accessToken = Keychain.read("server.access")
     private var refreshToken = Keychain.read("server.refresh")
@@ -46,6 +51,7 @@ final class ServerViewModel: ObservableObject {
     init() {
         if let phoneFromKeychain = Keychain.read("server.phone"), !phoneFromKeychain.isEmpty { storedPhone = phoneFromKeychain }
         phone = storedPhone.isEmpty ? "+234" : storedPhone
+        phoneLinkPhone = linkedPhone.isEmpty ? (storedPhone.isEmpty ? "+234" : storedPhone) : linkedPhone
         isSignedIn = accessToken != nil
         rtc.iceStateHandler = { [weak self] state in
             Task { @MainActor [weak self] in
@@ -158,6 +164,104 @@ final class ServerViewModel: ObservableObject {
             startIncomingPolling()
         } catch { update("Device-first setup failed: \(error.localizedDescription)", error: true) }
     }
+    func requestPhoneLinkCode() async {
+        guard isConfigured else {
+            phoneLinkStatus = "This Server build is not connected to the backend."
+            isError = true
+            return
+        }
+        guard isSignedIn, accessToken != nil else {
+            phoneLinkStatus = "Create your Server identity before linking a number."
+            isError = true
+            return
+        }
+        guard let clean = normalizePhoneForServer(phoneLinkPhone) else {
+            phoneLinkStatus = "Enter a valid number, e.g. +2348012345678 or 08012345678."
+            isError = true
+            return
+        }
+        phoneLinkPhone = clean
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            _ = try await request("/functions/v1/server-auth",
+                                  body: ["action": "request_otp", "phone": clean],
+                                  authorized: false)
+            phoneLinkCodeSent = true
+            phoneLinkStatus = "A verification code was queued for \(clean). Check the handset; carrier SMS charges may apply."
+            isError = false
+        } catch {
+            let reason = error.localizedDescription
+            if reason.contains("SMS_GATEWAY_OFFLINE") {
+                phoneLinkStatus = "Server's SMS gateway is offline. Pair the Android SMS gateway and try again, or skip number linking."
+            } else if reason.contains("OTP_RATE_LIMITED") {
+                phoneLinkStatus = "Too many requests. Wait before requesting another code."
+            } else {
+                phoneLinkStatus = "Could not send the verification code: \(reason)"
+            }
+            isError = true
+        }
+    }
+
+    func verifyAndLinkPhone() async {
+        guard isConfigured, isSignedIn, accessToken != nil else {
+            phoneLinkStatus = "Create your Server identity and connect to the backend first."
+            isError = true
+            return
+        }
+        guard let clean = normalizePhoneForServer(phoneLinkPhone) else {
+            phoneLinkStatus = "Enter a valid number in international format."
+            isError = true
+            return
+        }
+        guard phoneLinkCodeSent else {
+            phoneLinkStatus = "Request a verification code first."
+            isError = true
+            return
+        }
+        let code = phoneLinkCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.range(of: "^[0-9]{6}$", options: .regularExpression) != nil else {
+            phoneLinkStatus = "Enter the six digits from the SMS."
+            isError = true
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            let result = try await request("/functions/v1/server-auth",
+                                          body: ["action": "link_phone", "phone": clean, "code": code],
+                                          authorized: true)
+            guard result["ok"] as? Bool == true,
+                  let verified = result["phone"] as? String else {
+                throw ServerError.message("Server did not confirm the number link.")
+            }
+            linkedPhone = verified
+            phoneLinkPhone = verified
+            phoneLinkCode = ""
+            phoneLinkCodeSent = false
+            storedPhone = verified
+            phone = verified
+            UserDefaults.standard.set(verified, forKey: "server.linked_phone")
+            UserDefaults.standard.set(verified, forKey: "server.phone")
+            Keychain.save(verified, key: "server.phone")
+            phoneLinkStatus = "Number verified and linked to your existing Server ID. Your identity has not changed."
+            isError = false
+            update("Phone number verified and linked. On iPhone, choose Server as the default calling app in Settings > Apps > Default Apps > Calling after Apple authorizes this app's entitlement.")
+        } catch {
+            let reason = error.localizedDescription
+            if reason.contains("PHONE_ALREADY_LINKED") {
+                phoneLinkStatus = "That number already belongs to another Server identity. Sign in to that identity or use a different number."
+            } else if reason.contains("INVALID_OR_EXPIRED_CODE") {
+                phoneLinkStatus = "That code is invalid or expired. Request a new code and try again."
+            } else if reason.contains("OTP_VERIFY_RATE_LIMITED") {
+                phoneLinkStatus = "Too many attempts. Wait before trying again."
+            } else {
+                phoneLinkStatus = "Could not link this number: \(reason)"
+            }
+            isError = true
+        }
+    }
+
     func requestOtp() async {
         guard isConfigured else { update("Supabase project URL and publishable key are not configured.", error: true); return }
         let clean = phone.trimmingCharacters(in: .whitespacesAndNewlines)

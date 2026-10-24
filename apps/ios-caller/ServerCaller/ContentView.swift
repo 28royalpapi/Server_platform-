@@ -174,6 +174,66 @@ struct ContentView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
+                if model.linkedPhone.isEmpty {
+                    GroupBox("Link a mobile number for saved-contact calling") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("This optional SMS check attaches a verified number to your existing Server ID, so other Server users can find you from their contacts. iPhone does not expose SIM slots. SMS verification requires a paired Server gateway and carrier charges may apply.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("Phone number, e.g. +2348012345678", text: $model.phoneLinkPhone)
+                                .keyboardType(.phonePad)
+                                .textContentType(.telephoneNumber)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .padding(12)
+                                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                            Button {
+                                Task { await model.requestPhoneLinkCode() }
+                            } label: {
+                                if model.isBusy {
+                                    ProgressView().frame(maxWidth: .infinity)
+                                } else {
+                                    Label(model.phoneLinkCodeSent ? "Send code again" : "Send verification code", systemImage: "message")
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                            .disabled(model.isBusy)
+                            if model.phoneLinkCodeSent {
+                                TextField("Six-digit SMS code", text: $model.phoneLinkCode)
+                                    .keyboardType(.numberPad)
+                                    .textContentType(.oneTimeCode)
+                                    .padding(12)
+                                    .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                                Button {
+                                    Task { await model.verifyAndLinkPhone() }
+                                } label: {
+                                    Label("Verify and link number", systemImage: "checkmark.shield")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.blue)
+                                .disabled(model.isBusy || model.phoneLinkCode.count != 6)
+                            }
+                            if !model.phoneLinkStatus.isEmpty {
+                                Text(model.phoneLinkStatus)
+                                    .font(.footnote)
+                                    .foregroundStyle(model.isError ? .orange : .green)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            Text("You can skip this step and still call by Server ID. Linking is needed for saved mobile numbers to resolve to your Server identity.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 5)
+                    }
+                } else {
+                    Label("Verified number linked: \(model.linkedPhone)", systemImage: "checkmark.seal.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.green)
+                }
+
                 if model.callId != nil {
                     Button(role: .destructive) {
                         Task { await model.endCall() }
