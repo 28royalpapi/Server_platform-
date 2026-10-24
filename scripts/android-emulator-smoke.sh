@@ -51,10 +51,10 @@ adb emu gsm data on >/dev/null 2>&1 || true
 adb emu phonenumber 15550001001 >/dev/null 2>&1 || true
 adb shell dumpsys isub > artifacts/server-emulator-subscriptions.txt 2>&1 || true
 
-echo "Running Sava Call dialer and website setup-bridge Android instrumentation tests"
+echo "Running Server website onboarding and system calling-account Android instrumentation tests"
 $TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
 
-echo "Recording the website setup bridge after the Sava Call dialer tests"
+echo "Recording the website setup bridge after Android system-call tests"
 adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
 REC_PID=$!
 cleanup_recorder() {
@@ -67,7 +67,7 @@ adb shell am start -n com.server.caller.debug/com.server.caller.ServerSetupWebAc
 wait "$REC_PID" || true
 trap - EXIT
 adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 >/dev/null
-echo "ANDROID_UI_SMOKE_PASS: Sava Call dialer + website setup-bridge tests passed and setup recording captured."
+echo "ANDROID_UI_SMOKE_PASS: website onboarding and system calling-account tests passed and setup recording captured."
 
 echo "Installing the SIM Gateway APK onto the emulator before launching it"
 $TIMEOUT_BIN 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk

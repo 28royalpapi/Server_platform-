@@ -9,7 +9,8 @@ const handoffMigration=read("supabase/migrations/20261021195856_server_app_hando
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
 const handoff=read("supabase/functions/server-handoff/index.ts");
 const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt");
-const androidDialer=read("apps/android-caller/app/src/main/java/com/server/caller/DialerActivity.kt");
+const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
+const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
@@ -41,23 +42,32 @@ assert.match(androidMain,/SubscriptionManager/);
 assert.match(androidMain,/registerDevice\(\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
 assert.match(iosView,/Create Sava Call identity/);
-assert.match(iosView,/CNContactStore/);
-assert.match(iosView,/Carrier call · iPhone chooses the line/);
-assert.match(iosInfo,/NSContactsUsageDescription/);
-assert.match(androidManifest,/android:name="com.server.caller.DialerActivity"/);
-assert.match(androidDialer,/ContactsContract\.CommonDataKinds\.Phone\.CONTENT_URI/);
-assert.match(androidDialer,/CAPABILITY_SIM_SUBSCRIPTION/);
-assert.match(androidDialer,/getSubscriptionId\(handle\)/);
-assert.match(androidDialer,/simSlotIndex/);
-assert.match(androidDialer,/Carrier line ·/);
-assert.match(androidDialer,/EXTRA_PHONE_ACCOUNT_HANDLE/);
-assert.match(androidDialer,/putExtra\("sava_dialer_launch", true\)/);
+
+
+
+
+
+
+
+
+
+
+
 assert.match(iosModel,/to_server_id/);
 assert.match(handoff,/HANDOFF_EXPIRED_OR_ALREADY_USED/);
 assert.match(handoff,/server_sessions/);
 assert.match(app,/server:\/\/sim-setup/);
 assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
+assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
+assert.doesNotMatch(androidManifest,/DialerActivity/);
+assert.match(androidManifest,/android:name="android.intent.action.MAIN"/);
+assert.match(androidSetup,/SubscriptionManager/);
+assert.match(androidSetup,/activeSubscriptionInfoList/);
+assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
+assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
+assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
+assert.doesNotMatch(androidTelecom,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
 assert.match(iosApp,/handleAppHandoff/);
 assert.match(iosInfo,/CFBundleURLTypes/);
 assert.match(auth,/action==="request_otp"/);

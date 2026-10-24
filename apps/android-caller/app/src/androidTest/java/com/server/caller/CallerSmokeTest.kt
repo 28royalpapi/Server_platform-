@@ -21,84 +21,37 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @Test fun launcherOpensSavaCallDialerWithContactsAndCallingChoices() {
+  @Test fun launcherOpensWebsiteOnboardingInsteadOfCustomDialer() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-    assertNotNull("Sava Call does not expose a launcher entry", launchIntent)
-    assertEquals("The launcher must open the native Sava Call dialer",
-      DialerActivity::class.java.name, launchIntent!!.component?.className)
+    assertNotNull("Server does not expose a launcher entry", launchIntent)
+    assertEquals("The launcher must open the website onboarding bridge",
+      ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
 
-    ActivityScenario.launch<DialerActivity>(launchIntent).use {
+    ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
       val device = UiDevice.getInstance(instrumentation)
-      assertTrue("Sava Call brand is not visible",
-        device.wait(Until.hasObject(By.text("SAVA CALL")), 10_000))
-      assertTrue("The keypad is not visible",
-        device.wait(Until.hasObject(By.text("Keypad")), 10_000))
-      assertTrue("Contacts access is not available from the dialer",
-        device.wait(Until.hasObject(By.text("Contacts")), 10_000))
-      assertTrue("The caller cannot choose a call route",
-        device.wait(Until.hasObject(By.text("Choose how to call")), 10_000))
-      assertTrue("Setup entry is not reachable from the dialer",
-        device.wait(Until.hasObject(By.text("Set up Sava Call")), 10_000))
-    }
-  }
-
-
-  @Test fun customDialerSavaChoiceRoutesIntoExistingCallEngine() {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val context = instrumentation.targetContext
-    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-    val previousToken = prefs.getString("access_token", null)
-    val previousExpiry = prefs.getLong("access_expiry", 0L)
-    val previousPhone = prefs.getString("phone", null)
-    val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
-    val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
-    val device = UiDevice.getInstance(instrumentation)
-
-    try {
-      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
-      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO) } catch (_: Exception) {}
-      // Invalid test session: the UI path is exercised, but the backend must reject
-      // the request before any real call session can be created.
-      prefs.edit()
-        .putString("access_token", "0".repeat(64))
-        .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
-        .putString("phone", "+15550001001")
-        .remove("debug_last_call_engine_entered_at")
-        .remove("debug_last_call_target_kind")
-        .commit()
-
-      ActivityScenario.launch(DialerActivity::class.java).use {
-        assertTrue("Sava Call dialer did not open",
-          device.wait(Until.hasObject(By.text("SAVA CALL")), 10_000))
-        val numberField = device.findObject(By.clazz("android.widget.EditText"))
-        assertNotNull("Sava Call number entry is missing", numberField)
-        numberField!!.setText("+15550001001")
-        device.findObject(By.text("Choose how to call")).click()
-        val savaChoice = device.wait(Until.findObject(By.text("Sava Call · Internet calling")), 8_000)
-        assertNotNull("Sava Call is not offered in its own call-route picker", savaChoice)
-        savaChoice!!.click()
-
-        val deadline = System.currentTimeMillis() + 15_000
-        while (System.currentTimeMillis() < deadline &&
-          prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) {
-          Thread.sleep(200)
-        }
-        assertTrue("Choosing Sava Call did not reach the existing call engine",
-          prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L)
-        assertEquals("A telephone number must enter the phone-number route",
-          "phone", prefs.getString("debug_last_call_target_kind", null))
-      }
-    } finally {
-      val edit = prefs.edit()
-      if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
-      edit.putLong("access_expiry", previousExpiry)
-      if (previousPhone == null) edit.remove("phone") else edit.putString("phone", previousPhone)
-      if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
-      if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
-      edit.commit()
-      device.executeShellCommand("am force-stop " + context.packageName)
+      assertTrue("Website onboarding brand is not visible",
+        device.wait(Until.hasObject(By.text("SERVER")), 20_000))
+      assertTrue("SIM-first web onboarding step is not visible",
+        device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
+      assertTrue("SIM permission action is not visible",
+        device.wait(Until.hasObject(By.textContains("Allow SIM access and detect SIMs")), 10_000))
+      val emulatorSim = device.wait(Until.findObject(By.textContains("Emulator test SIM")), 10_000)
+      assertNotNull("The debug emulator must expose a clearly-labelled test SIM fixture", emulatorSim)
+      emulatorSim!!.click()
+      val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+      assertEquals("Selecting a SIM in the website must persist its chosen subscription id",
+        -1001, savedPrefs.getInt("selected_sim_subscription_id", -1))
+      assertEquals("The emulator fixture must be explicitly labelled as a mock, not a carrier line",
+        "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
+      val continueButton = device.wait(Until.findObject(By.textContains("Continue to calling permissions")), 10_000)
+      assertNotNull("SIM selection did not advance the web flow", continueButton)
+      continueButton!!.click()
+      assertTrue("The website did not advance to the calling-permission step",
+        device.wait(Until.hasObject(By.textContains("Allow Server calling")), 10_000))
+      assertTrue("A custom number-entry dialer unexpectedly appeared",
+        !device.hasObject(By.text("Call a number")))
     }
   }
 
@@ -120,8 +73,8 @@ class CallerSmokeTest {
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     assertTrue("Android calling-account settings did not show Server",
-      device.wait(Until.hasObject(By.text("Sava Call")), 15_000))
-    device.findObject(By.text("Sava Call")).click()
+      device.wait(Until.hasObject(By.text("Server")), 15_000))
+    device.findObject(By.text("Server")).click()
 
     // Android builds vary: some expose an inline switch, others open an account
     // detail page. Try the detail-page switch if clicking the row did not enable it.
@@ -171,7 +124,7 @@ class CallerSmokeTest {
     assertTrue("Android shows $label but has not enabled it", accountEnabled(context, handle))
   }
 
-  @Test fun systemDialerOffersServerBesideTestOnlySimAndRoutesCallToEngine() {
+  @Test fun systemTelecomChooserOffersServerBesideTestAccountAndRoutesCallToEngine() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
@@ -246,7 +199,7 @@ class CallerSmokeTest {
         mockChoice = device.findObject(By.text("Test SIM 1 (mock)"))
         Thread.sleep(200)
       }
-      assertNotNull("Android did not show Sava Call as an option in the system calling-account chooser", serverChoice)
+      assertNotNull("Android did not show Server as an option in the system calling-account chooser", serverChoice)
       assertNotNull("Android did not show the test-only SIM beside Server", mockChoice)
       serverChoice!!.click()
       val justOnce = device.wait(Until.findObject(By.textContains("Just once")), 2_000)
@@ -299,6 +252,8 @@ class CallerSmokeTest {
         (account.capabilities and PhoneAccount.CAPABILITY_SELF_MANAGED) == 0)
       assertTrue("Server must explicitly advertise tel URI support so the normal dialer can route numbers to it",
         account.supportedUriSchemes.contains(PhoneAccount.SCHEME_TEL))
+      assertTrue("Server must not masquerade as a cellular SIM",
+        (account.capabilities and PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION) == 0)
       assertEquals("The selected SIM number must be carried as account metadata",
         Uri.parse("tel:+2348012345678"), account.address)
     } finally {

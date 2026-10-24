@@ -157,9 +157,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
     scroll.addView(root)
     setContentView(scroll)
-    root.addView(TextView(this).apply { text = "SAVA CALL"; textSize = 12f; setTextColor(0xFF18C879.toInt()); letterSpacing = .18f })
+    root.addView(TextView(this).apply { text = "SERVER"; textSize = 12f; setTextColor(0xFF18C879.toInt()); letterSpacing = .18f })
     root.addView(TextView(this).apply { text = "Calling, made natural"; textSize = 30f; setTextColor(0xFFF3F7FB.toInt()); setPadding(0, dp(6), 0, dp(4)) })
-    root.addView(TextView(this).apply { text = "Choose a carrier SIM for setup. Sava Call itself makes calls over the internet."; textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20)) })
+    root.addView(TextView(this).apply { text = "Choose a carrier SIM for setup. Server itself makes calls over the internet."; textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20)) })
 
     statusText = TextView(this).apply { textSize = 13f; setTextColor(0xFFFFDFA3.toInt()); setPadding(dp(13), dp(12), dp(13), dp(12)); visibility = View.GONE }
     root.addView(statusText, matchWrap())
@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     root.addView(authPanel, matchWrap())
     authPanel.addView(label("Choose the SIM to associate with this device"))
     authPanel.addView(TextView(this).apply {
-      text = "Sava Call reads SIM details only inside this Android app, with your permission. Selecting a SIM does not clone its number or create a cellular line; Sava Call creates a separate internet-calling identity."
+      text = "Server reads SIM details only inside this Android app, with your permission. Selecting a SIM does not clone its number or create a cellular line; Server creates a separate internet-calling identity."
       textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(12))
     }, matchWrap())
     simSetupHint = TextView(this).apply {
@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     authPanel.addView(simChoices, matchWrap())
     authPanel.addView(button("Detect SIM cards / grant permission") { ensureSimPermissions() }, matchWrap())
     termsCheck = CheckBox(this).apply {
-      text = "I accept Sava Call's Terms of Service and acknowledge its Privacy Notice."
+      text = "I accept Server's Terms of Service and acknowledge its Privacy Notice."
       setTextColor(0xFFE6EDF5.toInt())
       buttonTintList = android.content.res.ColorStateList.valueOf(0xFF18C879.toInt())
     }
@@ -201,11 +201,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(label("Call a number"))
     targetInput = field("SVR-XXXXXXXXXX or +234...", "", false).apply { id = R.id.server_target }
     callPanel.addView(targetInput, matchWrap())
-    callButton = button("Call with Sava Call") { startCall() }.apply { id = R.id.server_start_call }
+    callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-    callPanel.addView(button("Enable Sava Call in phone app") { enableCallingAccount() }, matchWrap())
+    callPanel.addView(button("Enable Server in phone app") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply { text = "Server-to-Server calls use a Server ID. Calling a non-Server number still needs a guest link and internet, and SMS invitations need an active gateway. Server is an internet-calling account, not a SIM/eSIM."; textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0) })
   }
@@ -245,7 +245,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     targetInput.setText("")
     if (incomingJob?.isActive != true) incomingJob = lifecycleScope.launch { incomingLoop() }
     val id = currentServerId.ifBlank { "Server ID loading" }
-    setStatus("Your Server ID is $id. This is your Sava Call internet-calling identity; the selected mobile number remains on your carrier SIM.")
+    setStatus("Your Server ID is $id. This is your Server internet-calling identity; the selected mobile number remains on your carrier SIM.")
     lifecycleScope.launch {
       try {
         val result = api("me")
@@ -254,7 +254,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         if (serverId.matches(Regex("^SVR-[0-9A-F]{10}$"))) {
           currentServerId = serverId
           prefs.edit().putString("server_id", serverId).apply()
-          setStatus("Your Server ID is $serverId. Registering Sava Call with Android Telecom.")
+          setStatus("Your Server ID is $serverId. Registering Server with Android Telecom.")
         }
       } catch (_: Exception) {}
       try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
@@ -269,7 +269,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun enableCallingAccount() {
     try {
       ServerTelecomRegistry.register(this)
-      setStatus("Sava Call internet-calling account registered. Android may show it as a calling option after you enable it in calling-account settings; it is not a SIM/eSIM.")
+      setStatus("Server internet-calling account registered. Android may show it as a calling option after you enable it in calling-account settings; it is not a SIM/eSIM.")
       startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS"))
     } catch (e: Exception) { setStatus("Could not register the Server calling account: ${e.message}", true) }
   }
@@ -283,7 +283,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private fun yieldToSystemPhoneUi(incoming: Intent?) {
-    // A call selected inside Sava Call's own dialer must leave the call engine visible.
+    // A call selected inside Server's own dialer must leave the call engine visible.
     // Only calls launched from Android's external Telecom UI should background this activity.
     if (incoming?.getBooleanExtra("sava_dialer_launch", false) == true) return
     val action = incoming?.getStringExtra("server_action") ?: return
@@ -352,7 +352,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       "incoming" -> {
         val id = intent.getStringExtra("server_call_id").orEmpty()
         val phone = intent.getStringExtra("server_remote_phone") ?: "Server caller"
-        if (id.isNotBlank()) { shownIncoming.add(id); setStatus("Incoming Sava Call from ${mask(phone)}. Answer or decline using the phone app's calling UI.") }
+        if (id.isNotBlank()) { shownIncoming.add(id); setStatus("Incoming Server from ${mask(phone)}. Answer or decline using the phone app's calling UI.") }
       }
       "answer" -> {
         val id = intent.getStringExtra("server_call_id").orEmpty()
@@ -478,7 +478,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         .putLong("access_expiry", accessExpiry).putString("server_id", currentServerId).remove("phone").apply()
       showSignedIn()
       try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
-      setStatus("Setup complete. Your Server ID is $currentServerId. Sava Call is registered as an internet-calling account, not a copied SIM line.")
+      setStatus("Setup complete. Your Server ID is $currentServerId. Server is registered as an internet-calling account, not a copied SIM line.")
     } catch (e: Exception) {
       setStatus(e.message ?: "Device-first setup failed.", true)
       continueSetupButton.isEnabled = termsCheck.isChecked && selectedSimSubscriptionId >= 0
@@ -674,13 +674,13 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       if (currentRoute == "guest" && deliveryMode == "manual_sms" && invitationBody.isNotBlank() && normalizedPhone != null) {
         openGuestInviteComposer(normalizedPhone, invitationBody)
       } else {
-        setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Sava Call user… waiting for answer.")
+        setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Server user… waiting for answer.")
       }
     } catch (e: Exception) {
       val fallbackPhone = normalizedPhone
       cleanPeer(); callId = null; carrierFallbackPhone = null
       setStatus(e.message ?: "Could not start call.", true)
-      if (fallbackPhone != null) notifyCarrierFallback(fallbackPhone, "Sava Call could not reach its call service.")
+      if (fallbackPhone != null) notifyCarrierFallback(fallbackPhone, "Server could not reach its call service.")
     } finally { callButton.isEnabled = true }
   }
   private suspend fun incomingLoop() {
