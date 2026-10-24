@@ -634,7 +634,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
-  private fun startCall() = lifecycleScope.launch {
+  private fun startCall(): Job = lifecycleScope.launch {
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { askMic.launch(Manifest.permission.RECORD_AUDIO); setStatus("Allow microphone access and tap Call with Server again.", true); return@launch }
     val typedTarget = targetInput.text.toString().trim()
     val serverId = typedTarget.uppercase()
