@@ -45,6 +45,8 @@ assert.match(androidMain,/registerDevice\(\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
 assert.match(iosView,/Create Server identity/);
 assert.match(iosView,/onContinueUserActivity/);
+assert.match(iosView,/INStartAudioCallIntent/);
+assert.match(iosInfo,/NSUserActivityTypes/);
 assert.match(iosView,/telephony/);
 assert.match(iosEntitlements,/com.apple.developer.calling-app/);
 assert.match(iosInfo,/<string>voip<\/string>/);

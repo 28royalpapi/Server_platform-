@@ -1,4 +1,5 @@
 import CallKit
+import Intents
 import SwiftUI
 import UIKit
 
@@ -88,10 +89,14 @@ struct ContentView: View {
             }
         }
         .onContinueUserActivity("INStartCallIntent") { userActivity in
-            if #available(iOS 18.2, *), let handle = userActivity.startCallHandle, !handle.isEmpty {
+            // SiriKit places the resolved call intent on the activity's interaction.
+            // The default calling-app Contacts path uses a tel: URL handled above.
+            if let intent = userActivity.interaction?.intent as? INStartAudioCallIntent,
+               let handle = intent.contacts?.first?.personHandle?.value,
+               !handle.isEmpty {
                 handleSystemCallRequest(handle)
             } else {
-                model.status = "iOS did not provide a telephone number to Server. Return to Contacts and try again."
+                model.status = "iOS opened Server for a calling request, but the resolved activity did not include a usable phone number."
                 model.isError = true
             }
         }
