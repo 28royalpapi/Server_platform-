@@ -17,13 +17,13 @@
     </header>
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
-      <h1>Choose on your phone.<br><span>Start without SMS OTP.</span></h1>
+      <h1>Choose on your phone.<br><span>Set up without SMS OTP.</span></h1>
       <p>This website is Server’s onboarding experience. On Android, the phone must hand SIM and system-calling tasks to a small native integration component; it opens this same web flow, then returns you to the normal dialer. A website alone cannot read SIM slots or register a system calling account.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Set up once here, then use your normal phone dialer. No SMS OTP is needed for a device-bound Server ID.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Set up once here, then use your normal phone dialer. A Server ID does not require SMS OTP; linking a mobile number later is optional but helps saved contacts find Server users.</p></div></div>
         <button class="primary full" id="open-server-app" type="button">Continue setup on this phone <span aria-hidden="true">→</span></button>
         <p id="fallback" class="fine-print hidden">The phone integration did not open. A regular website cannot access SIM subscriptions or register an account with the system dialer by itself; the native integration component is required for those OS-controlled steps.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Server does not clone a SIM or copy its number into a new cellular line. Your Server ID is a separate internet-calling identity. Android may expose a SIM number, but some carriers/devices hide it; the app will not treat it as proof of ownership.</span></div>
@@ -41,18 +41,35 @@
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Create Server identity and grant permissions <span aria-hidden="true">→</span></button>
         </div>
-        <div id="finish-step" class="hidden centered">
+        <div id="finish-step" class="hidden">
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Server is registered as a calling account in Android Telecom. It is not a carrier SIM/eSIM; the selected SIM number is account metadata when Android exposes it.</p>
+          <p class="done-text">Your Server ID is ready. To make your saved contacts resolve to existing Server users, verify the mobile number you want linked to this identity. This is optional and does not clone your SIM.</p>
+
+          <section id="phone-link-step" class="phone-link-step">
+            <h3>Link your mobile number</h3>
+            <p class="fine-print">This one-time SMS check connects your number to this Server ID, so other Server users can find you by their saved contacts. It needs a paired Server SMS gateway and may use carrier SMS charges. You can skip it for now and still call by Server ID.</p>
+            <label for="link-phone-number">Mobile number</label>
+            <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or 08012345678">
+            <button class="primary full" id="request-phone-link-code" type="button">Send verification code</button>
+            <div id="phone-link-code-step" class="hidden">
+              <label for="link-phone-code">Six-digit SMS code</label>
+              <input id="link-phone-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456">
+              <button class="primary full" id="verify-link-phone" type="button">Verify and link number</button>
+            </div>
+            <p id="phone-link-status" class="status hidden" role="status" aria-live="polite"></p>
+            <button class="secondary full" id="skip-phone-link" type="button">Skip number verification</button>
+          </section>
+
+          <p id="calling-account-note" class="done-text">Next, Android will ask you to enable Server under Calling accounts. After you approve it, Server will open your normal phone dialer.</p>
           <button class="secondary full" id="enable-calling-account" type="button">Enable Server in phone settings</button>
           <button class="primary full" id="open-phone-dialer" type="button">Open my normal phone dialer <span aria-hidden="true">→</span></button>
-          <p class="fine-print">In phone settings, enable the Server calling account first. Then return and open your normal dialer. The dialer may display Server as a calling-account option; the exact layout depends on your phone's dialer.</p>
+          <p class="fine-print">Server is an Android internet-calling account, not a second cellular SIM. Android dialers differ, so the exact placement of Server in the system's call choices depends on the phone and dialer version.</p>
         </div>
       </div>
     </section>
-    <footer><span>SERVER · NATIVE SETUP</span><span>Device-bound identity · No SMS OTP</span></footer>
+    <footer><span>SERVER · NATIVE SETUP</span><span>Website onboarding · Native calling bridge</span></footer>
   </main>
 </body>
 </html>

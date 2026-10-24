@@ -24,7 +24,36 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
   const grantCalls = document.querySelector("#grant-call-permissions");
   const finishStep = document.querySelector("#finish-step");
   const serverId = document.querySelector("#server-id");
+  const phoneLinkInput = document.querySelector("#link-phone-number");
+  const phoneCodeInput = document.querySelector("#link-phone-code");
+  const phoneCodeStep = document.querySelector("#phone-link-code-step");
+  const requestPhoneCodeButton = document.querySelector("#request-phone-link-code");
+  const verifyPhoneButton = document.querySelector("#verify-link-phone");
+  const phoneLinkStatus = document.querySelector("#phone-link-status");
+  const skipPhoneLinkButton = document.querySelector("#skip-phone-link");
   let selectedSubscriptionId = null;
+  let pendingPhoneNumber = "";
+
+  const normalizePhone = (raw) => {
+    const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
+    let candidate = value;
+    if (candidate.startsWith("00")) candidate = "+" + candidate.slice(2);
+    else if (!candidate.startsWith("+")) {
+      const digits = candidate.replace(/\D/g, "");
+      if (digits.startsWith("234") && digits.length === 13) candidate = "+" + digits;
+      else if (digits.length === 11 && digits.startsWith("0")) candidate = "+234" + digits.slice(1);
+      else if (digits.length === 10 && /^[789]/.test(digits)) candidate = "+234" + digits;
+      else return null;
+    }
+    return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
+  };
+
+  const showPhoneLinkStatus = (message, ok = false) => {
+    if (!phoneLinkStatus) return;
+    phoneLinkStatus.textContent = message;
+    phoneLinkStatus.classList.remove("hidden", "ok");
+    if (ok) phoneLinkStatus.classList.add("ok");
+  };
 
   const showSims = (data) => {
     simOptions.replaceChildren();
@@ -145,11 +174,104 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     callStep.classList.add("hidden");
     finishStep.classList.remove("hidden");
     serverId.textContent = `Your Server ID: ${result.serverId}`;
-    showStatus("Server ID created. Android needs one final approval to enable Server as a calling account; after you enable it and return, the normal dialer will open automatically.", true);
-    // Keep the user's journey short: ask Android to enable the account now.
-    // The native bridge opens the dialer when the user returns from system settings.
-    window.ServerAndroid.openCallingSettings();
+    pendingPhoneNumber = "";
+    phoneCodeStep?.classList.add("hidden");
+    if (phoneCodeInput) phoneCodeInput.value = "";
+    if (phoneLinkInput && result.selectedSimNumber && !phoneLinkInput.value) {
+      phoneLinkInput.value = result.selectedSimNumber;
+    }
+    showStatus("Server identity created. You can optionally verify your mobile number to link it to this Server ID, then enable Server under Android Calling accounts.", true);
   };
+
+  requestPhoneCodeButton?.addEventListener("click", () => {
+    const number = normalizePhone(phoneLinkInput?.value);
+    if (!number) {
+      showPhoneLinkStatus("Enter a valid number such as +2348012345678 or 08012345678.");
+      phoneLinkInput?.focus();
+      return;
+    }
+    pendingPhoneNumber = number;
+    phoneLinkInput.value = number;
+    phoneLinkInput.disabled = true;
+    requestPhoneCodeButton.disabled = true;
+    requestPhoneCodeButton.textContent = "Sending SMS…";
+    showPhoneLinkStatus("Requesting a one-time verification code through Server's paired SMS gateway. No code is sent until you press this button.");
+    window.ServerAndroid.requestPhoneLinkOtp(number);
+  });
+
+  window.onServerPhoneOtpRequested = (result) => {
+    requestPhoneCodeButton.disabled = false;
+    requestPhoneCodeButton.textContent = "Send verification code again";
+    if (!result?.ok) {
+      phoneLinkInput.disabled = false;
+      const message = {
+        SMS_GATEWAY_OFFLINE: "The Server SMS gateway is offline. You can pair the Android SMS gateway later and try again, or skip number linking for now.",
+        OTP_RATE_LIMITED: "Too many verification requests. Wait before requesting another code.",
+        INVALID_PHONE_FORMAT: "Enter a valid number in international format.",
+        OTP_QUEUE_FAILED: "Server could not queue the SMS. Try again after checking the paired gateway."
+      }[result?.error] || "Server could not send a verification code (" + (result?.error || "unknown error") + ").";
+      showPhoneLinkStatus(message);
+      return;
+    }
+    phoneCodeStep?.classList.remove("hidden");
+    if (phoneCodeInput) {
+      phoneCodeInput.value = "";
+      phoneCodeInput.focus();
+    }
+    showPhoneLinkStatus("Verification code requested for " + pendingPhoneNumber + ". Check that phone for an SMS. Carrier SMS charges may apply.", true);
+  };
+
+  verifyPhoneButton?.addEventListener("click", () => {
+    const code = String(phoneCodeInput?.value || "").trim();
+    if (!pendingPhoneNumber) {
+      showPhoneLinkStatus("Request a verification code first.");
+      return;
+    }
+    if (!/^[0-9]{6}$/.test(code)) {
+      showPhoneLinkStatus("Enter the six digits from the SMS.");
+      phoneCodeInput?.focus();
+      return;
+    }
+    verifyPhoneButton.disabled = true;
+    verifyPhoneButton.textContent = "Verifying number…";
+    showPhoneLinkStatus("Verifying the code and attaching this number to your existing Server ID…");
+    window.ServerAndroid.verifyAndLinkPhone(pendingPhoneNumber, code);
+  });
+
+  window.onServerPhoneLinkResult = (result) => {
+    verifyPhoneButton.disabled = false;
+    verifyPhoneButton.textContent = "Verify and link number";
+    if (!result?.ok) {
+      const message = {
+        INVALID_OR_EXPIRED_CODE: "That code is invalid or expired. Request a new code and try again.",
+        OTP_VERIFY_RATE_LIMITED: "Too many attempts. Wait before requesting another code.",
+        PHONE_ALREADY_LINKED: "This number is already linked to another Server identity. Try a number that belongs to this account, or continue with the existing Server ID.",
+        SESSION_REQUIRED: "The Server session expired. Restart website setup and try again."
+      }[result?.error] || "Server could not link this number (" + (result?.error || "unknown error") + ").";
+      showPhoneLinkStatus(message);
+      if (result?.error === "PHONE_ALREADY_LINKED") {
+        phoneLinkInput.disabled = false;
+        phoneCodeStep?.classList.add("hidden");
+        if (phoneCodeInput) phoneCodeInput.value = "";
+        pendingPhoneNumber = "";
+        phoneLinkInput.focus();
+      } else if (result?.error === "INVALID_OR_EXPIRED_CODE" || result?.error === "OTP_VERIFY_RATE_LIMITED") {
+        phoneCodeInput?.focus();
+      }
+      return;
+    }
+    phoneLinkInput.disabled = true;
+    phoneCodeInput.disabled = true;
+    requestPhoneCodeButton.disabled = true;
+    verifyPhoneButton.disabled = true;
+    showPhoneLinkStatus("Number verified and linked to " + (result.server_id || result.phone || pendingPhoneNumber) + ". Your existing Server ID is unchanged.", true);
+    showStatus("Phone number linked. Enable Server in Android Calling accounts to continue to your normal dialer.", true);
+  };
+
+  skipPhoneLinkButton?.addEventListener("click", () => {
+    showStatus("Continuing without a verified mobile number. Server-to-Server calling by Server ID remains available; saved mobile contacts cannot resolve to your Server identity until you link a number.", true);
+    window.ServerAndroid.openCallingSettings();
+  });
 
   window.onServerCallingAccountStatus = (enabled) => {
     if (enabled) {

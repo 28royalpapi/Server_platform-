@@ -129,6 +129,42 @@ class ServerSetupWebActivity : Activity() {
     runOnUiThread { web.evaluateJavascript(script, null) }
   }
 
+  /**
+   * Calls Server's custom auth endpoint. A publishable key is always sent;
+   * a private device-session bearer is sent only for operations that need it.
+   * Never write the OTP, bearer, or full response to logs.
+   */
+  private fun requestServerAuth(body: JSONObject, accessToken: String? = null): JSONObject {
+    val url = BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-auth"
+    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+      requestMethod = "POST"
+      connectTimeout = 15000
+      readTimeout = 20000
+      doOutput = true
+      setRequestProperty("content-type", "application/json")
+      setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+      if (!accessToken.isNullOrBlank()) setRequestProperty("authorization", "Bearer $accessToken")
+    }
+    return try {
+      conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+      val status = conn.responseCode
+      val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+      val text = stream?.use { input -> BufferedReader(InputStreamReader(input)).readText() }.orEmpty()
+      val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
+      if (status !in 200..299) {
+        if (result.optString("error").isBlank()) result.put("error", "HTTP_$status")
+        result.put("ok", false)
+      }
+      result.put("http_status", status)
+    } finally {
+      conn.disconnect()
+    }
+  }
+
+  private fun callbackToWebsite(name: String, result: JSONObject) {
+    runJs("window.$name && window.$name($result)")
+  }
+
   private fun hasSimPermissions(): Boolean =
     checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
     checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
@@ -308,6 +344,47 @@ class ServerSetupWebActivity : Activity() {
       Thread {
         val result = registerDevice(acceptedTerms)
         runJs("window.onServerSetupResult && window.onServerSetupResult($result)")
+      }.start()
+    }
+
+    @JavascriptInterface fun requestPhoneLinkOtp(rawPhone: String) {
+      Thread {
+        val to = rawPhone.trim()
+        val result = if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(to)) {
+          JSONObject().put("ok", false).put("error", "INVALID_PHONE_FORMAT")
+        } else {
+          try {
+            requestServerAuth(JSONObject().put("action", "request_otp").put("phone", to))
+          } catch (_: Exception) {
+            JSONObject().put("ok", false).put("error", "OTP_REQUEST_UNAVAILABLE")
+          }
+        }
+        callbackToWebsite("onServerPhoneOtpRequested", result)
+      }.start()
+    }
+
+    @JavascriptInterface fun verifyAndLinkPhone(rawPhone: String, rawCode: String) {
+      Thread {
+        val to = rawPhone.trim()
+        val code = rawCode.trim()
+        val access = prefs.getString("access_token", null).orEmpty()
+        val result = when {
+          !Regex("^\\+[1-9][0-9]{7,14}$").matches(to) ->
+            JSONObject().put("ok", false).put("error", "INVALID_PHONE_FORMAT")
+          !Regex("^[0-9]{6}$").matches(code) ->
+            JSONObject().put("ok", false).put("error", "INVALID_CODE_FORMAT")
+          !Regex("^[0-9a-f]{64}$").matches(access) ->
+            JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+          else -> try {
+            requestServerAuth(
+              JSONObject().put("action", "link_phone").put("phone", to).put("code", code),
+              access
+            )
+          } catch (_: Exception) {
+            JSONObject().put("ok", false).put("error", "PHONE_LINK_UNAVAILABLE")
+          }
+        }
+        callbackToWebsite("onServerPhoneLinkResult", result)
       }.start()
     }
 

@@ -24,7 +24,7 @@ Server is a website-led onboarding and internet-calling project. Android uses a 
 
 ## Phone OTP flow
 
-The primary login flow deliberately uses Server's own OTP API rather than requiring a separate paid SMS provider:
+Creating a device-bound Server ID does not require SMS OTP. After setup, users can optionally verify and link a mobile number so saved contacts can resolve to an existing Server identity. That optional step uses the existing Server OTP API and needs a paired Android SMS gateway; carrier charges may apply. The primary phone-ownership flow uses Server's own OTP API rather than requiring a separate paid SMS provider:
 1. `server-auth` makes a six-digit code, stores an HMAC (pepper held in Supabase Vault), limits requests/attempts, and queues the actual SMS only if a gateway has reported online recently.
 2. The paired Android SIM gateway uses the device's SIM to send the queued SMS. Mobile carrier fees may apply.
 3. The code expires after five minutes, is single-use, and only up to five wrong attempts are allowed per challenge. The server stores only the HMAC of the code, not the plaintext code.
@@ -49,6 +49,7 @@ Server-to-Server calls and guest browser calls use WebRTC. Guest calls require t
 
 - **Android:** the launcher opens the website onboarding inside a WebView bridge. With permission, the bridge reads the real SubscriptionInfo list and saves the user's selection. It registers Server as a system-managed Telecom PhoneAccount with telephone-number URI support. The user must enable Server in Android Calling accounts; the normal phone app's exact picker behavior varies by device/dialer. Server is never registered as a cellular SIM and does not clone a carrier subscription.
 - **iPhone:** the native integration uses Apple's Default Calling App entitlement for iOS 18.2+. When Apple authorizes the entitlement and the user chooses Server as their default calling app, a Contacts tap-to-call can be handed to Server, where the user can choose Server internet calling or explicitly return to the carrier. iOS does not expose SIM-slot selection to Server and this does not add a third cellular line. The entitlement is in source; a valid Apple-authorized signing profile and on-device acceptance test are still required.
+- **Phone-number linking:** the Android website flow can request an OTP and link a verified number to the same device-bound Server ID; the phone number is never treated as verified merely because Android exposes it on a SIM. If the SMS gateway is offline, users can skip number linking and still use their Server ID.
 - **Calling scope:** Server-to-Server WebRTC is supported by the current call engine. A number that is not a Server account currently follows the guest-invitation path; this repository does not provide PSTN/SIP trunking, so it must not be described as a normal carrier-network call to any arbitrary phone number.
 
 ## Build/test status

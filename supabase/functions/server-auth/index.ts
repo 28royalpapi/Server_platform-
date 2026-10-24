@@ -142,6 +142,44 @@ Deno.serve(async(req:Request)=>{
    return out({ok:true,access_token:access,token_type:"Bearer",expires_at:validUntil,user:{id:profile.user_id,phone:profile.phone_e164,phone_verified_at:profile.phone_verified_at}});
   }
   const session=await bearer(req,db);if(!session)return out({error:"SESSION_REQUIRED"},401);
+  if(action==="link_phone"){
+   const to=phone(b.phone),code=typeof b.code==="string"?b.code.trim():"";
+   if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
+   if(!/^[0-9]{6}$/.test(code))return out({error:"INVALID_CODE_FORMAT"},400);
+
+   const {data:profile,error:profileError}=await db.from("server_profiles")
+    .select("user_id,server_id,phone_e164,phone_verified_at")
+    .eq("user_id",session.user_id).maybeSingle();
+   if(profileError||!profile)return out({error:"PROFILE_LOOKUP_FAILED"},503);
+   if(profile.phone_e164===to&&profile.phone_verified_at){
+    return out({ok:true,phone:to,phone_verified_at:profile.phone_verified_at,already_linked:true});
+   }
+
+   // A verified phone belongs to one Server identity. Check before consuming
+   // the OTP; the UNIQUE(phone_e164) constraint closes concurrent-link races.
+   const {data:owner,error:ownerError}=await db.from("server_profiles")
+    .select("user_id").eq("phone_e164",to).maybeSingle();
+   if(ownerError)return out({error:"PHONE_OWNERSHIP_LOOKUP_FAILED"},503);
+   if(owner&&owner.user_id!==session.user_id)return out({error:"PHONE_ALREADY_LINKED"},409);
+
+   const {data:verification,error:verifyError}=await db.rpc("server_verify_otp",{
+    p_phone:to,p_code:code,p_ip_hash:await ipHash(req)
+   });
+   if(verifyError)return out({error:"OTP_VERIFY_UNAVAILABLE"},503);
+   const verdict=verification as Record<string,unknown>;
+   if(verdict?.status==="RATE_LIMITED")return out({error:"OTP_VERIFY_RATE_LIMITED"},429);
+   if(verdict?.status!=="VERIFIED")return out({error:"INVALID_OR_EXPIRED_CODE"},400);
+
+   const verifiedAt=new Date().toISOString();
+   const {data:updated,error:updateError}=await db.from("server_profiles").update({
+    phone_e164:to,phone_verified_at:verifiedAt,updated_at:verifiedAt
+   }).eq("user_id",session.user_id).select("user_id,server_id,phone_e164,phone_verified_at").single();
+   if(updateError){
+    if(updateError.code==="23505")return out({error:"PHONE_ALREADY_LINKED"},409);
+    return out({error:"PHONE_LINK_FAILED"},503);
+   }
+   return out({ok:true,phone:updated.phone_e164,phone_verified_at:updated.phone_verified_at,server_id:updated.server_id});
+  }
   if(action==="refresh"){
    const validUntil=expiry();
    const {error}=await db.from("server_sessions").update({expires_at:validUntil,last_seen_at:new Date().toISOString()}).eq("id",session.id);

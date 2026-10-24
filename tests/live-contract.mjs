@@ -63,6 +63,19 @@ const record = (name, ok, detail) => {
     "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
+// Phone linking must require the private device session. This malformed/unauthorized
+// request never reaches OTP verification and cannot consume a real SMS challenge.
+{
+  const r = await request("server-auth", "POST", {
+    action: "link_phone",
+    phone: "+2348012345678",
+    code: "123456"
+  });
+  const ok = r.response.status === 401 && r.data.error === "SESSION_REQUIRED";
+  record("server-auth phone-link session boundary", ok,
+    "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+
 // Private call API must reject requests with no Server session token.
 {
   const r = await request("server-calls", "POST", { action: "poll" });
