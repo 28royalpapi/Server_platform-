@@ -12,6 +12,7 @@ const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
+const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
 const iosEntitlements=read("apps/ios-caller/ServerCaller/ServerCaller.entitlements");
@@ -90,6 +91,8 @@ assert.match(androidSetup,/SubscriptionManager/);
 assert.match(androidSetup,/activeSubscriptionInfoList/);
 assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
+assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
+assert.match(androidTests,/Intent\.ACTION_DIAL/);
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
 assert.doesNotMatch(androidTelecom,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
 assert.match(iosView,/model.handleAppHandoff/);

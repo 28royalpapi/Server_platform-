@@ -237,6 +237,96 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+    val serverHandle = ServerTelecomRegistry.handle(context)
+    val testHandle = android.telecom.PhoneAccountHandle(
+      android.content.ComponentName(context, ServerConnectionService::class.java),
+      "server-normal-dialer-test-provider"
+    )
+    val previousToken = prefs.getString("access_token", null)
+    val previousExpiry = prefs.getLong("access_expiry", 0L)
+    val previousPhone = prefs.getString("phone", null)
+    val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
+    val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
+    val device = UiDevice.getInstance(instrumentation)
+    var testAccountRegistered = false
+
+    try {
+      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO) } catch (_: Exception) {}
+      prefs.edit()
+        .putString("access_token", "0".repeat(64))
+        .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
+        .putString("phone", "+15550001001")
+        .putString("selected_sim_phone", "+15550001001")
+        .remove("debug_last_call_engine_entered_at")
+        .remove("debug_last_call_target_kind")
+        .commit()
+
+      ServerTelecomRegistry.register(context)
+      ensureAccountEnabled(context, device, serverHandle, "Server")
+
+      // The emulator has no physical carrier SIM. Keep this second account clearly
+      // labelled as a mock while exercising the preinstalled Phone app UI.
+      val testAccount = PhoneAccount.builder(testHandle, "Test call provider (mock)")
+        .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
+        .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
+        .setShortDescription("Test-only calling provider; not a carrier SIM")
+        .setAddress(Uri.parse("tel:+15550001001"))
+        .build()
+      telecom.registerPhoneAccount(testAccount)
+      testAccountRegistered = true
+      ensureAccountEnabled(context, device, testHandle, "Test call provider (mock)")
+
+      device.pressHome()
+      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+15550001001"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+
+      // Exercise the handset’s bundled Phone UI, not TelecomManager.placeCall from
+      // instrumentation, so this test checks the user-visible outgoing-call path.
+      val callButton = device.wait(Until.findObject(By.descContains("Call")), 12_000)
+        ?: device.wait(Until.findObject(By.text("Call")), 2_000)
+      assertNotNull("The preinstalled Phone app did not expose its Call action for a tel: URI", callButton)
+      callButton!!.click()
+
+      val chooserDeadline = System.currentTimeMillis() + 15_000
+      var serverChoice: androidx.test.uiautomator.UiObject2? = null
+      var testChoice: androidx.test.uiautomator.UiObject2? = null
+      while (System.currentTimeMillis() < chooserDeadline && (serverChoice == null || testChoice == null)) {
+        serverChoice = device.findObject(By.text("Server"))
+        testChoice = device.findObject(By.text("Test call provider (mock)"))
+        Thread.sleep(200)
+      }
+      assertNotNull("The preinstalled Phone app did not show Server as an outgoing-call choice", serverChoice)
+      assertNotNull("The preinstalled Phone app did not show a second calling provider beside Server", testChoice)
+      serverChoice!!.click()
+      val justOnce = device.wait(Until.findObject(By.textContains("Just once")), 2_000)
+      if (justOnce != null) justOnce.click()
+
+      val deadline = System.currentTimeMillis() + 20_000
+      while (System.currentTimeMillis() < deadline && prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) Thread.sleep(200)
+      assertTrue("Choosing Server from the preinstalled Phone app did not reach Server’s call engine",
+        prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L)
+      assertEquals("The system dialer telephone number must enter the phone-number call path",
+        "phone", prefs.getString("debug_last_call_target_kind", null))
+    } finally {
+      val edit = prefs.edit()
+      if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
+      edit.putLong("access_expiry", previousExpiry)
+      if (previousPhone == null) edit.remove("phone") else edit.putString("phone", previousPhone)
+      if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
+      if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
+      edit.commit()
+      if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
+      ServerTelecomRegistry.register(context)
+      device.executeShellCommand("am force-stop " + context.packageName)
+      device.pressHome()
+    }
+  }
+
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
