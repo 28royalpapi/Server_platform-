@@ -161,15 +161,14 @@ jobs:
           }
           let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
           print("iOS simulator visible-screen OCR:\n\(recognized)")
-          let hasBrand = recognized.localizedCaseInsensitiveContains("SERVER")
-          let hasDeviceFirstSetup = recognized.localizedCaseInsensitiveContains("Set up Server on this iPhone")
-              || recognized.localizedCaseInsensitiveContains("Create Server ID")
-          let showsLegacyOtp = recognized.localizedCaseInsensitiveContains("Verify your phone")
-              || recognized.localizedCaseInsensitiveContains("Send real SMS code")
-          guard hasBrand && hasDeviceFirstSetup && !showsLegacyOtp else {
-              fail("ServerCaller did not show the device-first, no-SMS-OTP onboarding UI.")
+          let hasBrand = recognized.localizedCaseInsensitiveContains("SAVA CALL")
+          let hasKeypad = recognized.localizedCaseInsensitiveContains("Keypad")
+          let hasContacts = recognized.localizedCaseInsensitiveContains("Contacts")
+          let hasCallRoutes = recognized.localizedCaseInsensitiveContains("Choose how to call")
+          guard hasBrand && hasKeypad && hasContacts && hasCallRoutes else {
+              fail("Sava Call did not render its own dialer, contacts entry and call-route action.")
           }
-          print("IOS_UI_SMOKE_PASS: ServerCaller rendered visible app UI.")
+          print("IOS_UI_SMOKE_PASS: Sava Call dialer rendered visible app UI.")
           SWIFT
           if ! swift /tmp/check-server-ios-screen.swift artifacts/server-ios-startup.png; then
             echo "IOS_UI_SMOKE_FAIL: dumping recent crash diagnostics"
