@@ -111,7 +111,13 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private lateinit var hangupButton: Button
 
   private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-    if (!granted) setStatus("Microphone permission is required to place or answer calls.", true)
+    if (!granted) {
+      setStatus("Microphone permission is required to place or answer calls.", true)
+    } else if (::targetInput.isInitialized && targetInput.text.toString().isNotBlank() && callId == null) {
+      // Continue the call action that triggered the permission prompt instead of
+      // forcing the user to tap Call a second time after granting microphone access.
+      lifecycleScope.launch { delay(150); startCall() }
+    }
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {

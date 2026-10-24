@@ -61,6 +61,10 @@ class DialerActivity : ComponentActivity() {
     if (result[Manifest.permission.READ_PHONE_STATE] == true && showRouteAfterPermission) {
       showRouteAfterPermission = false
       showCallChoices()
+    } else if (result.containsKey(Manifest.permission.READ_PHONE_STATE) &&
+      result[Manifest.permission.READ_PHONE_STATE] == false && showRouteAfterPermission) {
+      showRouteAfterPermission = false
+      setStatus("Phone-state permission was denied. No carrier SIM choices can be listed until you allow it.")
     }
     val pending = pendingCarrierCall
     if (result[Manifest.permission.CALL_PHONE] == true && pending != null) {
@@ -276,7 +280,7 @@ class DialerActivity : ComponentActivity() {
     val query = if (::searchInput.isInitialized) searchInput.text.toString().trim() else ""
     val filtered = contacts.filter {
       query.isBlank() || it.name.contains(query, ignoreCase = true) || it.number.contains(query, ignoreCase = true)
-    }.take(300)
+    }
     for (contact in filtered) {
       contactRows.addView(button(contact.name + "\n" + contact.number) {
         numberInput.setText(contact.number)
