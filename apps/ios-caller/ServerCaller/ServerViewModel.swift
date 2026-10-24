@@ -417,7 +417,7 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
     private var handles: [UUID: String] = [:]
 
     override init() {
-        let config = CXProviderConfiguration(localizedName: "Server")
+        let config = CXProviderConfiguration(localizedName: "Sava Call")
         config.supportsVideo = false; config.maximumCallGroups = 1; config.maximumCallsPerCallGroup = 1
         config.supportedHandleTypes = [.phoneNumber]
         provider = CXProvider(configuration: config)

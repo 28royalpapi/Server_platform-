@@ -21,43 +21,29 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @Test fun launcherOpensWebOnboardingInsteadOfNativeNumberEntryScreen() {
+  @Test fun launcherOpensSavaCallDialerWithContactsAndCallingChoices() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    // Pre-grant only the SIM metadata permissions so this UI test can exercise
-    // the chooser deterministically without leaving a runtime prompt on screen.
-    try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
-    try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-    assertNotNull("Server does not expose a launcher entry", launchIntent)
-    assertEquals("The launcher must open the web onboarding bridge",
-      ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
+    assertNotNull("Sava Call does not expose a launcher entry", launchIntent)
+    assertEquals("The launcher must open the native Sava Call dialer",
+      DialerActivity::class.java.name, launchIntent!!.component?.className)
 
-    ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
-      val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-      assertTrue("Web onboarding brand is not visible",
-        device.wait(Until.hasObject(By.text("SERVER")), 20_000))
-      assertTrue("SIM-first web onboarding step is not visible",
-        device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
-      assertTrue("SIM permission action is not visible",
-        device.wait(Until.hasObject(By.textContains("Allow SIM access and detect SIMs")), 10_000))
-      val emulatorSim = device.wait(Until.findObject(By.textContains("Emulator test SIM")), 10_000)
-      assertNotNull("The debug emulator must expose a clearly-labelled test SIM fixture", emulatorSim)
-      emulatorSim!!.click()
-      val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-      assertEquals("Selecting a SIM in the website must persist its chosen subscription id",
-        -1001, savedPrefs.getInt("selected_sim_subscription_id", -1))
-      assertEquals("The emulator fixture must be explicitly labelled as a mock, not a carrier line",
-        "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
-      val continueButton = device.wait(Until.findObject(By.textContains("Continue to calling permissions")), 10_000)
-      assertNotNull("SIM selection did not advance the web flow", continueButton)
-      continueButton!!.click()
-      assertTrue("The website did not advance to the calling-permission step",
-        device.wait(Until.hasObject(By.textContains("Allow Server calling")), 10_000))
-      assertTrue("The old native number-entry caller screen appeared",
-        !device.hasObject(By.text("Call a number")))
+    ActivityScenario.launch<DialerActivity>(launchIntent).use {
+      val device = UiDevice.getInstance(instrumentation)
+      assertTrue("Sava Call brand is not visible",
+        device.wait(Until.hasObject(By.text("SAVA CALL")), 10_000))
+      assertTrue("The keypad is not visible",
+        device.wait(Until.hasObject(By.text("Keypad")), 10_000))
+      assertTrue("Contacts access is not available from the dialer",
+        device.wait(Until.hasObject(By.text("Contacts")), 10_000))
+      assertTrue("The caller cannot choose a call route",
+        device.wait(Until.hasObject(By.text("Choose how to call")), 10_000))
+      assertTrue("Setup entry is not reachable from the dialer",
+        device.wait(Until.hasObject(By.text("Set up Sava Call")), 10_000))
     }
   }
+
   @Test fun websiteEntryOpensSimSelectionInsideNativeBridge() {
     val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     ActivityScenario.launch(ServerSetupWebActivity::class.java).use {

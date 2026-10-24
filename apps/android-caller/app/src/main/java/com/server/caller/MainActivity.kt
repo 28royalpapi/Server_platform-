@@ -277,6 +277,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private fun yieldToSystemPhoneUi(incoming: Intent?) {
+    // A call selected inside Sava Call's own dialer must leave the call engine visible.
+    // Only calls launched from Android's external Telecom UI should background this activity.
+    if (incoming?.getBooleanExtra("sava_dialer_launch", false) == true) return
     val action = incoming?.getStringExtra("server_action") ?: return
     if (action !in setOf("dial", "incoming", "answer", "decline", "hangup")) return
     // Call commands run in lifecycleScope and remain alive while the Activity is
