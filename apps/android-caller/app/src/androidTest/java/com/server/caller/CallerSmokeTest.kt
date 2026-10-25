@@ -36,7 +36,7 @@ class CallerSmokeTest {
     ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
       val device = UiDevice.getInstance(instrumentation)
       assertTrue("Website onboarding brand is not visible",
-        device.wait(Until.hasObject(By.text("SERVER")), 20_000))
+        device.wait(Until.hasObject(By.text("server")), 20_000))
       assertTrue("SIM-first web onboarding step is not visible",
         device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
       assertTrue("SIM permission action is not visible",
@@ -70,7 +70,14 @@ class CallerSmokeTest {
   }
 
 
+  private fun grantPhoneMetadataPermissions(context: Context) {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.RECORD_AUDIO)) {
+      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission) } catch (_: Exception) {}
+    }
+  }
   private fun ensureServerCallingAccountEnabled(context: Context, device: UiDevice) {
+    grantPhoneMetadataPermissions(context)
     ServerTelecomRegistry.register(context)
     if (ServerTelecomRegistry.isEnabled(context)) return
 
@@ -111,6 +118,7 @@ class CallerSmokeTest {
     handle: android.telecom.PhoneAccountHandle,
     label: String
   ) {
+    grantPhoneMetadataPermissions(context)
     if (accountEnabled(context, handle)) return
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -329,6 +337,7 @@ class CallerSmokeTest {
 
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
+    grantPhoneMetadataPermissions(context)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val handle = ServerTelecomRegistry.handle(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)

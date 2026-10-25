@@ -44,12 +44,15 @@ object ServerTelecomRegistry {
     }
     val account = accountBuilder.build()
     telecom.registerPhoneAccount(account)
-    return telecom.getPhoneAccount(handle)?.isEnabled == true
+    // Account registration should survive a later revocation of phone-number metadata permission.
+    return try { telecom.getPhoneAccount(handle)?.isEnabled == true }
+    catch (_: SecurityException) { false }
   }
 
   fun isEnabled(context: Context): Boolean {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    return telecom.getPhoneAccount(handle(context))?.isEnabled == true
+    return try { telecom.getPhoneAccount(handle(context))?.isEnabled == true }
+    catch (_: SecurityException) { false }
   }
 
   fun openApp(context: Context, extras: Bundle) {

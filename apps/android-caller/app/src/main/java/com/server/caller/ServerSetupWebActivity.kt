@@ -11,6 +11,9 @@ import android.os.Bundle
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.webkit.JavascriptInterface
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
+import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -70,6 +73,12 @@ class ServerSetupWebActivity : Activity() {
       settings.allowContentAccess = false
       settings.javaScriptCanOpenWindowsAutomatically = false
       addJavascriptInterface(Bridge(), "ServerAndroid")
+      webChromeClient = object : WebChromeClient() {
+        override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+          Log.w("ServerOnboardingWeb", "${message.message()} (line ${message.lineNumber()})")
+          return true
+        }
+      }
       webViewClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
           val uri = request?.url ?: return true
@@ -100,10 +109,13 @@ class ServerSetupWebActivity : Activity() {
     val js = assets.open("server-web/app.js").bufferedReader().use { it.readText() }
     var page = html
       .replace("""<link rel="stylesheet" href="styles.css">""", "<style>\n$css\n</style>")
-      .replace("""<script defer src="app.js"></script>""", "<script>\n$js\n</script>")
+      .replace("""<script defer src="app.js"></script>""", "")
       .replace("target=\"_blank\" rel=\"noopener\"", "target=\"_self\"")
-    check(page.contains("native-setup") && page.contains("ServerAndroid")) {
-      "Bundled Server onboarding HTML is missing the SIM-first bridge UI."
+    // Inline at the end of body: replacing a deferred external script with a normal inline script in head executes before DOM nodes exist.
+    page = page.replace("</body>", "<script>\n$js\n</script>\n</body>")
+    check(page.contains("native-setup") && page.contains("window.ServerAndroid") &&
+      page.indexOf("<script>\n$js\n</script>") > page.indexOf("id=\"native-setup\"")) {
+      "Bundled Server onboarding HTML is missing the SIM-first bridge UI or correct script order."
     }
     web.loadDataWithBaseURL("https://$HOST/", page, "text/html", "UTF-8", null)
   }
