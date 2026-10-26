@@ -5,6 +5,7 @@ const isAndroid = /Android/i.test(navigator.userAgent);
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const stepForm = document.querySelector(".step-form");
 const nativeSetup = document.querySelector("#native-setup");
+const isAndroidWebView = isAndroid && /\\bwv\\b/i.test(navigator.userAgent);
 
 function showStatus(message, ok = false) {
   statusEl.textContent = message;
@@ -12,7 +13,7 @@ function showStatus(message, ok = false) {
   if (ok) statusEl.classList.add("ok");
 }
 
-if (nativeSetup && stepForm) {
+if ((window.ServerAndroid || isAndroidWebView) && nativeSetup && stepForm) {
   stepForm.classList.add("hidden");
   nativeSetup.classList.remove("hidden");
 
@@ -154,6 +155,7 @@ if (nativeSetup && stepForm) {
     grantCalls.disabled = true;
     grantCalls.textContent = "Waiting for Android permissions…";
     showStatus("Android will request microphone permission and, where available, notification permission.");
+    if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.requestCallPermissions();
   });
 
@@ -166,6 +168,7 @@ if (nativeSetup && stepForm) {
     }
     showStatus("Permissions granted. Creating your Server identity without SMS OTP…");
     grantCalls.disabled = true;
+    if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.completeSetup(Boolean(terms?.checked));
   };
 
@@ -212,6 +215,7 @@ if (nativeSetup && stepForm) {
     requestPhoneCodeButton.disabled = true;
     requestPhoneCodeButton.textContent = "Sending SMS…";
     showPhoneLinkStatus("Requesting a one-time verification code through Server's paired SMS gateway. No code is sent until you press this button.");
+    if (!window.ServerAndroid) { phoneLinkInput.disabled = false; requestPhoneCodeButton.disabled = false; showPhoneLinkStatus("Android calling integration is not connected."); return; }
     window.ServerAndroid.requestPhoneLinkOtp(number);
   });
 
@@ -308,6 +312,7 @@ if (nativeSetup && stepForm) {
   };
   skipPhoneLinkButton?.addEventListener("click", () => {
     showStatus("Continuing without a verified number. Calls by Server ID remain available; the normal phone number will not route to Server until you verify it and explicitly allow number-based Server calls.", true);
+    if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
     window.ServerAndroid.openCallingSettings();
   });
 
@@ -331,6 +336,7 @@ if (nativeSetup && stepForm) {
       showStatus("Server is not enabled yet. Open phone settings, enable Server under calling accounts, then return here.");
       return;
     }
+    if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
     window.ServerAndroid.openPhoneDialer();
   });
 
