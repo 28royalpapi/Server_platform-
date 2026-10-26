@@ -6,6 +6,7 @@ const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const stepForm = document.querySelector(".step-form");
 const nativeSetup = document.querySelector("#native-setup");
 const isAndroidWebView = isAndroid && navigator.userAgent.toLowerCase().includes("; wv");
+const isNativeSetup = !!window.ServerAndroid || isAndroidWebView || document.querySelector('meta[name="server-native-bridge"]')?.content === "true";
 
 function showStatus(message, ok = false) {
   statusEl.textContent = message;
@@ -13,7 +14,7 @@ function showStatus(message, ok = false) {
   if (ok) statusEl.classList.add("ok");
 }
 
-if ((window.ServerAndroid || isAndroidWebView) && nativeSetup && stepForm) {
+if (isNativeSetup && nativeSetup && stepForm) {
   stepForm.classList.add("hidden");
   nativeSetup.classList.remove("hidden");
 

@@ -81,6 +81,16 @@ class ServerSetupWebActivity : Activity() {
         }
       }
       webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView?, url: String?) {
+          super.onPageFinished(view, url)
+          if (url?.startsWith("https://$HOST/") == true && Uri.parse(url).path == "/") {
+            // Pass the SIM list after the page DOM and its callbacks are ready.
+            val choices = simChoicesJson()
+            val permissionGranted = !choices.optBoolean("permissionNeeded", true)
+            runJs("window.onServerSimPermissionResult && window.onServerSimPermissionResult($permissionGranted, $choices)")
+          }
+        }
+
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
           val uri = request?.url ?: return true
           val isTrustedHost = uri.scheme == "https" && uri.host == HOST
@@ -109,12 +119,14 @@ class ServerSetupWebActivity : Activity() {
     val css = assets.open("server-web/styles.css").bufferedReader().use { it.readText() }
     val js = assets.open("server-web/app.js").bufferedReader().use { it.readText() }
     var page = html
+      .replace("<head>", "<head>\n<meta name=\"server-native-bridge\" content=\"true\">")
       .replace("""<link rel="stylesheet" href="styles.css">""", "<style>\n$css\n</style>")
       .replace("""<script defer src="app.js"></script>""", "")
       .replace("target=\"_blank\" rel=\"noopener\"", "target=\"_self\"")
     // Inline at the end of body: replacing a deferred external script with a normal inline script in head executes before DOM nodes exist.
     page = page.replace("</body>", "<script>\n$js\n</script>\n</body>")
     check(page.contains("native-setup") && page.contains("window.ServerAndroid") &&
+      page.contains("server-native-bridge") &&
       page.indexOf("<script>\n$js\n</script>") > page.indexOf("id=\"native-setup\"")) {
       "Bundled Server onboarding HTML is missing the SIM-first bridge UI or correct script order."
     }
