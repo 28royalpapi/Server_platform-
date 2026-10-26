@@ -53,11 +53,23 @@ jobs:
             brew install coreutils
           fi
       - name: Build Server caller and SIM gateway
+        timeout-minutes: 18
+        shell: bash
         run: |
-          gradle -p apps/android-caller assembleDebug --no-daemon
-          gradle -p apps/android-sim-gateway assembleDebug --no-daemon
+          set -euo pipefail
+          echo "BUILD_SERVER_CALLER_START $(date -u +%FT%TZ)"
+          gtimeout 480s gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
+          echo "BUILD_SERVER_CALLER_COMPLETE $(date -u +%FT%TZ)"
+          gtimeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
+          echo "BUILD_SIM_GATEWAY_COMPLETE $(date -u +%FT%TZ)"
       - name: Compile Android instrumentation tests before booting emulator
-        run: gradle -p apps/android-caller compileDebugAndroidTestKotlin --no-daemon
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "COMPILE_ANDROID_TESTS_START $(date -u +%FT%TZ)"
+          gtimeout 420s gradle -p apps/android-caller compileDebugAndroidTestKotlin --no-daemon --console=plain --stacktrace
+          echo "COMPILE_ANDROID_TESTS_COMPLETE $(date -u +%FT%TZ)"
       - name: Upload built Android APKs before emulator smoke test
         uses: actions/upload-artifact@v4
         if: always()
@@ -68,6 +80,7 @@ jobs:
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
       - name: Run Android phone emulator UI smoke test
+        timeout-minutes: 22
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
