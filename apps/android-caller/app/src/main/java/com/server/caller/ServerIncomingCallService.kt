@@ -80,7 +80,8 @@ class ServerIncomingCallService : Service() {
           stopSelf()
           break
         }
-        val token = freshAccessToken() ?: run { stopSelf(); break }
+        val token = freshAccessToken()
+        if (token == null) { stopSelf(); break }
         val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
         val rows = result.optJSONArray("calls")
         if (rows != null) {
