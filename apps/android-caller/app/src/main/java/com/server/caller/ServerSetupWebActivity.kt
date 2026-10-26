@@ -83,7 +83,7 @@ class ServerSetupWebActivity : Activity() {
       webViewClient = object : WebViewClient() {
         override fun onPageFinished(view: WebView?, url: String?) {
           super.onPageFinished(view, url)
-          if (url?.startsWith("https://$HOST/") == true && Uri.parse(url).path == "/") {
+          if (!url.isNullOrBlank() && url.startsWith("https://$HOST/") && Uri.parse(url).path == "/") {
             // Pass the SIM list after the page DOM and its callbacks are ready.
             val choices = simChoicesJson()
             val permissionGranted = !choices.optBoolean("permissionNeeded", true)

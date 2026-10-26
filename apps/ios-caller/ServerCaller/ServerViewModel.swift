@@ -74,6 +74,7 @@ final class ServerViewModel: ObservableObject {
         callKit.onEnd = { [weak self] _ in Task { await self?.endCall() } }
         if isSignedIn { status = "Signed in as \(maskedPhone). Checking Server calls…"; startIncomingPolling() }
         if isSignedIn { Task { await loadNumberCallPreferences() } }
+        if isSignedIn { Task { await loadNumberCallPreferences() } }
     }
 
     var isConfigured: Bool {

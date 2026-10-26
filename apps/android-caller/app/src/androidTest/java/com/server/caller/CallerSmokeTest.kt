@@ -83,7 +83,7 @@ class CallerSmokeTest {
 
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    val serverVisible = device.wait(Until.hasObject(By.text("Server")), 15_000)
+    val serverVisible = device.wait(Until.hasObject(By.textContains("Server")), 15_000)
     if (!serverVisible) {
       val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
       android.util.Log.e("ServerDialerAcceptance", "Phone accounts: " + telecom.callCapablePhoneAccounts.joinToString { h -> h.id + ":" + (telecom.getPhoneAccount(h)?.label ?: "no-label") })
@@ -129,7 +129,7 @@ class CallerSmokeTest {
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     assertTrue("Android calling-account settings did not show $label",
-      device.wait(Until.hasObject(By.text(label)), 15_000))
+      device.wait(Until.hasObject(By.textContains(label)), 15_000))
     device.findObject(By.text(label)).click()
     val deadline = System.currentTimeMillis() + 10_000
     while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) {
@@ -214,7 +214,7 @@ class CallerSmokeTest {
       var mockChoice: androidx.test.uiautomator.UiObject2? = null
       while (System.currentTimeMillis() < chooserDeadline && (serverChoice == null || mockChoice == null)) {
         serverChoice = device.findObject(By.text("Server"))
-        mockChoice = device.findObject(By.text("Test call provider (mock)"))
+        mockChoice = device.findObject(By.textContains("Test call provider (mock)"))
         Thread.sleep(200)
       }
       assertNotNull("Android did not show Server as an option in the system calling-account chooser", serverChoice)
