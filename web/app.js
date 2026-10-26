@@ -5,7 +5,7 @@ const isAndroid = /Android/i.test(navigator.userAgent);
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const stepForm = document.querySelector(".step-form");
 const nativeSetup = document.querySelector("#native-setup");
-const isAndroidWebView = isAndroid && /\\bwv\\b/i.test(navigator.userAgent);
+const isAndroidWebView = isAndroid && navigator.userAgent.toLowerCase().includes("; wv");
 
 function showStatus(message, ok = false) {
   statusEl.textContent = message;

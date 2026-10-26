@@ -55,6 +55,7 @@ assert.match(app,/onServerPhoneLinkResult/);
 assert.match(app,/skip-phone-link/);
 assert.match(app,/allow-number-calls/);
 assert.match(app,/isAndroidWebView/);
+assert.match(app,/userAgent\.toLowerCase\(\)\.includes\("; wv"\)/);
 assert.match(app,/setNumberCallConsent/);
 assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
