@@ -36,7 +36,7 @@ class CallerSmokeTest {
     ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
       val device = UiDevice.getInstance(instrumentation)
       assertTrue("Website onboarding brand is not visible",
-        device.wait(Until.hasObject(By.text("server")), 20_000))
+        device.wait(Until.hasObject(By.text("SERVER")), 20_000))
       assertTrue("SIM-first web onboarding step is not visible",
         device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
       assertTrue("SIM permission action is not visible",

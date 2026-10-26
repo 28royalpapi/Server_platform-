@@ -52,7 +52,16 @@ adb emu phonenumber 15550001001 >/dev/null 2>&1 || true
 adb shell dumpsys isub > artifacts/server-emulator-subscriptions.txt 2>&1 || true
 
 echo "Running Server website onboarding and system calling-account Android instrumentation tests"
-$TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon
+TEST_STATUS=0
+$TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
+# Preserve Android diagnostics if an acceptance assertion fails.
+adb logcat -d -t 12000 > artifacts/server-android-tests-logcat.txt 2>&1 || true
+adb shell dumpsys telecom > artifacts/server-android-tests-telecom.txt 2>&1 || true
+adb shell dumpsys activity activities > artifacts/server-android-tests-activities.txt 2>&1 || true
+if [[ "$TEST_STATUS" -ne 0 ]]; then
+  echo "Android instrumentation acceptance tests failed with exit code $TEST_STATUS."
+  exit "$TEST_STATUS"
+fi
 
 echo "Recording the website setup bridge after Android system-call tests"
 adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
