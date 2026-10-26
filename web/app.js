@@ -12,7 +12,7 @@ function showStatus(message, ok = false) {
   if (ok) statusEl.classList.add("ok");
 }
 
-if (window.ServerAndroid && nativeSetup && stepForm) {
+if (nativeSetup && stepForm) {
   stepForm.classList.add("hidden");
   nativeSetup.classList.remove("hidden");
 
@@ -31,8 +31,11 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
   const verifyPhoneButton = document.querySelector("#verify-link-phone");
   const phoneLinkStatus = document.querySelector("#phone-link-status");
   const skipPhoneLinkButton = document.querySelector("#skip-phone-link");
+  const allowNumberCalls = document.querySelector("#allow-number-calls");
   let selectedSubscriptionId = null;
   let pendingPhoneNumber = "";
+  let phoneLinkVerified = false;
+  let persistedNumberConsent = false;
 
   const normalizePhone = (raw) => {
     const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
@@ -125,6 +128,7 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     detectButton.disabled = true;
     detectButton.textContent = "Waiting for Android permission…";
     showStatus("Android will ask permission to read the SIM slots and any number the carrier exposes.");
+    if (!window.ServerAndroid) { showStatus("Server is still connecting to Android. Please tap again."); detectButton.disabled = false; detectButton.textContent = "Allow SIM access and detect SIMs →"; return; }
     window.ServerAndroid.requestSimPermissions();
   });
 
@@ -180,7 +184,19 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     if (phoneLinkInput && result.selectedSimNumber && !phoneLinkInput.value) {
       phoneLinkInput.value = result.selectedSimNumber;
     }
-    showStatus("Server identity created. You can optionally verify your mobile number to link it to this Server ID, then enable Server under Android Calling accounts.", true);
+    try {
+      const savedNumberPreferences = JSON.parse(window.ServerAndroid.getNumberCallPreferences());
+      if (savedNumberPreferences.phoneLinked && savedNumberPreferences.phone) {
+        phoneLinkVerified = true;
+        persistedNumberConsent = savedNumberPreferences.allowNumberCalls === true;
+        if (phoneLinkInput) { phoneLinkInput.value = savedNumberPreferences.phone; phoneLinkInput.disabled = true; }
+        if (allowNumberCalls) allowNumberCalls.checked = persistedNumberConsent;
+        if (requestPhoneCodeButton) { requestPhoneCodeButton.disabled = true; requestPhoneCodeButton.textContent = "Number already verified"; }
+        phoneCodeStep?.classList.add("hidden"); skipPhoneLinkButton?.classList.add("hidden");
+        showPhoneLinkStatus(persistedNumberConsent ? "This verified number is linked and permitted to receive Server internet calls." : "This verified number is linked, but Server calls by number are currently off.");
+      }
+    } catch { /* First-time number linking remains available. */ }
+    showStatus("Server identity created. Verify your existing SIM number and choose whether Server users may reach you on it, then enable Server under Android Calling accounts.", true);
   };
 
   requestPhoneCodeButton?.addEventListener("click", () => {
@@ -235,7 +251,7 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     verifyPhoneButton.disabled = true;
     verifyPhoneButton.textContent = "Verifying number…";
     showPhoneLinkStatus("Verifying the code and attaching this number to your existing Server ID…");
-    window.ServerAndroid.verifyAndLinkPhone(pendingPhoneNumber, code);
+    window.ServerAndroid.verifyAndLinkPhone(pendingPhoneNumber, code, Boolean(allowNumberCalls?.checked));
   });
 
   window.onServerPhoneLinkResult = (result) => {
@@ -264,12 +280,34 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
     phoneCodeInput.disabled = true;
     requestPhoneCodeButton.disabled = true;
     verifyPhoneButton.disabled = true;
-    showPhoneLinkStatus("Number verified and linked to " + (result.server_id || result.phone || pendingPhoneNumber) + ". Your existing Server ID is unchanged.", true);
-    showStatus("Phone number linked. Enable Server in Android Calling accounts to continue to your normal dialer.", true);
+    phoneLinkVerified = true;
+    persistedNumberConsent = result.allow_number_based_server_calls === true;
+    if (allowNumberCalls) allowNumberCalls.checked = persistedNumberConsent;
+    showPhoneLinkStatus(persistedNumberConsent
+      ? "Number verified. Other Server users may now call you through Server internet calling on this number."
+      : "Number verified and linked, but number-based incoming Server calls are off. You can still be reached by Server ID.", true);
+    showStatus("Phone number linked to your existing Server ID. Enable Server in Android Calling accounts to continue to your normal dialer.", true);
   };
 
+  allowNumberCalls?.addEventListener("change", () => {
+    if (!phoneLinkVerified) return;
+    if (!window.ServerAndroid) { showPhoneLinkStatus("Android bridge is unavailable; reopen Server onboarding."); return; }
+    window.ServerAndroid.setNumberCallConsent(Boolean(allowNumberCalls.checked));
+  });
+
+  window.onServerNumberCallConsentResult = (result) => {
+    if (!result?.ok) {
+      if (allowNumberCalls) allowNumberCalls.checked = persistedNumberConsent;
+      const reason = result?.error || "NUMBER_CALL_CONSENT_SAVE_FAILED";
+      showPhoneLinkStatus(reason === "VERIFIED_PHONE_REQUIRED" ? "Verify and link this number before enabling number-based Server calls." : "Could not save the calling permission (" + reason + "). The previous setting remains in effect.");
+      return;
+    }
+    persistedNumberConsent = result.allow_number_based_server_calls === true;
+    if (allowNumberCalls) allowNumberCalls.checked = persistedNumberConsent;
+    showPhoneLinkStatus(persistedNumberConsent ? "Permission saved. Server users can ring you through Server internet calling at this verified number." : "Permission revoked. Calls by Server ID still work, but this number will not route to your Server identity.", true);
+  };
   skipPhoneLinkButton?.addEventListener("click", () => {
-    showStatus("Continuing without a verified mobile number. Server-to-Server calling by Server ID remains available; saved mobile contacts cannot resolve to your Server identity until you link a number.", true);
+    showStatus("Continuing without a verified number. Calls by Server ID remain available; the normal phone number will not route to Server until you verify it and explicitly allow number-based Server calls.", true);
     window.ServerAndroid.openCallingSettings();
   });
 
@@ -298,6 +336,7 @@ if (window.ServerAndroid && nativeSetup && stepForm) {
 
   // If permission has already been granted on this phone, prefill the SIM choices.
   try {
+    if (!window.ServerAndroid) throw new Error("Android bridge is not ready");
     const existing = JSON.parse(window.ServerAndroid.getSimChoices());
     if (!existing.permissionNeeded && existing.sims?.length) showSims(existing);
   } catch {

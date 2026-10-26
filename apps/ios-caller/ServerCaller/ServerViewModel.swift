@@ -35,6 +35,7 @@ final class ServerViewModel: ObservableObject {
     @Published var phoneLinkStatus = ""
     @Published var phoneLinkCodeSent = false
     @Published var linkedPhone = UserDefaults.standard.string(forKey: "server.linked_phone") ?? ""
+    @Published var allowNumberBasedServerCalls = UserDefaults.standard.bool(forKey: "server.allow_number_based_server_calls")
 
     private var accessToken = Keychain.read("server.access")
     private var refreshToken = Keychain.read("server.refresh")
@@ -72,6 +73,7 @@ final class ServerViewModel: ObservableObject {
         }
         callKit.onEnd = { [weak self] _ in Task { await self?.endCall() } }
         if isSignedIn { status = "Signed in as \(maskedPhone). Checking Server calls…"; startIncomingPolling() }
+        if isSignedIn { Task { await loadNumberCallPreferences() } }
     }
 
     var isConfigured: Bool {
@@ -229,7 +231,7 @@ final class ServerViewModel: ObservableObject {
         defer { isBusy = false }
         do {
             let result = try await request("/functions/v1/server-auth",
-                                          body: ["action": "link_phone", "phone": clean, "code": code],
+                                          body: ["action": "link_phone", "phone": clean, "code": code, "allow_number_based_server_calls": allowNumberBasedServerCalls],
                                           authorized: true)
             guard result["ok"] as? Bool == true,
                   let verified = result["phone"] as? String else {
@@ -241,8 +243,10 @@ final class ServerViewModel: ObservableObject {
             phoneLinkCodeSent = false
             storedPhone = verified
             phone = verified
+            allowNumberBasedServerCalls = result["allow_number_based_server_calls"] as? Bool ?? allowNumberBasedServerCalls
             UserDefaults.standard.set(verified, forKey: "server.linked_phone")
             UserDefaults.standard.set(verified, forKey: "server.phone")
+            UserDefaults.standard.set(allowNumberBasedServerCalls, forKey: "server.allow_number_based_server_calls")
             Keychain.save(verified, key: "server.phone")
             phoneLinkStatus = "Number verified and linked to your existing Server ID. Your identity has not changed."
             isError = false
@@ -258,6 +262,53 @@ final class ServerViewModel: ObservableObject {
             } else {
                 phoneLinkStatus = "Could not link this number: \(reason)"
             }
+            isError = true
+        }
+    }
+
+    private func loadNumberCallPreferences() async {
+        guard isConfigured, isSignedIn else { return }
+        do {
+            let result = try await request("/functions/v1/server-auth", body: ["action": "me"], authorized: true)
+            let profile = result["profile"] as? [String: Any] ?? [:]
+            let allowed = profile["allow_number_based_server_calls"] as? Bool ?? false
+            allowNumberBasedServerCalls = allowed
+            UserDefaults.standard.set(allowed, forKey: "server.allow_number_based_server_calls")
+            if let number = profile["phone_e164"] as? String, !number.isEmpty, profile["phone_verified_at"] is String {
+                linkedPhone = number
+                phoneLinkPhone = number
+                UserDefaults.standard.set(number, forKey: "server.linked_phone")
+            }
+        } catch { }
+    }
+
+    func updateNumberCallConsent(_ requested: Bool) async {
+        guard isConfigured, isSignedIn, !linkedPhone.isEmpty else {
+            phoneLinkStatus = "Verify and link a mobile number before enabling calls by number."
+            isError = true
+            allowNumberBasedServerCalls = UserDefaults.standard.bool(forKey: "server.allow_number_based_server_calls")
+            return
+        }
+        let previous = UserDefaults.standard.bool(forKey: "server.allow_number_based_server_calls")
+        do {
+            let result = try await request("/functions/v1/server-auth", body: [
+                "action": "set_number_call_consent",
+                "allow_number_based_server_calls": requested
+            ], authorized: true)
+            guard result["ok"] as? Bool == true,
+                  let saved = result["allow_number_based_server_calls"] as? Bool else {
+                throw ServerError.message("Server did not confirm the calling permission.")
+            }
+            allowNumberBasedServerCalls = saved
+            UserDefaults.standard.set(saved, forKey: "server.allow_number_based_server_calls")
+            phoneLinkStatus = saved
+                ? "Permission saved. Server users can ring you over the internet at this verified number."
+                : "Permission revoked. Calls by Server ID still work, but calls by this number no longer route to this account."
+            isError = false
+        } catch {
+            allowNumberBasedServerCalls = previous
+            UserDefaults.standard.set(previous, forKey: "server.allow_number_based_server_calls")
+            phoneLinkStatus = "Could not save the calling permission: " + error.localizedDescription
             isError = true
         }
     }

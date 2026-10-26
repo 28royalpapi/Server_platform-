@@ -83,8 +83,14 @@ class CallerSmokeTest {
 
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    assertTrue("Android calling-account settings did not show Server",
-      device.wait(Until.hasObject(By.text("Server")), 15_000))
+    val serverVisible = device.wait(Until.hasObject(By.text("Server")), 15_000)
+    if (!serverVisible) {
+      val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+      android.util.Log.e("ServerDialerAcceptance", "Phone accounts: " + telecom.callCapablePhoneAccounts.joinToString { h -> h.id + ":" + (telecom.getPhoneAccount(h)?.label ?: "no-label") })
+      device.dumpWindowHierarchy(java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "calling-accounts-window.xml"))
+      android.util.Log.e("ServerDialerAcceptance", "Settings UI hierarchy: " + java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "calling-accounts-window.xml").readText().take(12000))
+    }
+    assertTrue("Android calling-account settings did not show Server", serverVisible)
     device.findObject(By.text("Server")).click()
 
     // Android builds vary: some expose an inline switch, others open an account

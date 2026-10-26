@@ -8,6 +8,8 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
   <application
     android:allowBackup="false"
     android:label="Server"
@@ -39,6 +41,8 @@
         <data android:scheme="server" android:host="sim-setup" />
       </intent-filter>
     </activity>
+    <service android:name="com.server.caller.ServerIncomingCallService"
+      android:exported="false" android:foregroundServiceType="phoneCall" />
     <service
       android:name="com.server.caller.ServerConnectionService"
       android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"

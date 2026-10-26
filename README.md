@@ -54,6 +54,6 @@ Server-to-Server calls and guest browser calls use WebRTC. Guest calls require t
 
 ## Build/test status
 
-The latest backend/source-contract checks have passed during development. Use the GitHub Actions history at https://github.com/28royalpapi/Server_platform-/actions for the current native build and emulator acceptance result; source presence or a successful compile is not proof that the normal system dialer shows Server or that real audio calls work.
+The live Server Backend includes explicit verified-number call consent. Check the GitHub Actions history at https://github.com/28royalpapi/Server_platform-/actions for current system-dialer acceptance results; a successful compile is not proof that a dialer choice or real-audio call has passed.
 
 Real SIM SMS, end-to-end audio between two devices, background push calls, TURN, and store-ready device security have not been confirmed. Do not treat Server as production-ready until those checks pass.

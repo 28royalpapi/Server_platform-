@@ -243,7 +243,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     authPanel.visibility = View.GONE
     callPanel.visibility = View.VISIBLE
     targetInput.setText("")
-    if (incomingJob?.isActive != true) incomingJob = lifecycleScope.launch { incomingLoop() }
+    if (ServerTelecomRegistry.isEnabled(this)) {
+      ServerIncomingCallService.start(this)
+    } else if (incomingJob?.isActive != true) {
+      incomingJob = lifecycleScope.launch { incomingLoop() }
+    }
     val id = currentServerId.ifBlank { "Server ID loading" }
     setStatus("Your Server ID is $id. This is your Server internet-calling identity; the selected mobile number remains on your carrier SIM.")
     lifecycleScope.launch {
@@ -258,6 +262,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         }
       } catch (_: Exception) {}
       try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
+      if (ServerTelecomRegistry.isEnabled(this@MainActivity)) ServerIncomingCallService.start(this@MainActivity)
     }
     pendingDialedNumber?.let { number ->
       pendingDialedNumber = null
@@ -279,6 +284,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     setIntent(intent)
     handleTelecomIntent(intent)
     handleAppLink(intent)
+    if (ServerTelecomRegistry.isEnabled(this)) {
+      incomingJob?.cancel()
+      incomingJob = null
+      ServerIncomingCallService.start(this)
+    }
     yieldToSystemPhoneUi(intent)
   }
 

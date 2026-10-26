@@ -148,11 +148,20 @@ Deno.serve(async(req:Request)=>{
    if(!/^[0-9]{6}$/.test(code))return out({error:"INVALID_CODE_FORMAT"},400);
 
    const {data:profile,error:profileError}=await db.from("server_profiles")
-    .select("user_id,server_id,phone_e164,phone_verified_at")
+    .select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls")
     .eq("user_id",session.user_id).maybeSingle();
    if(profileError||!profile)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    if(profile.phone_e164===to&&profile.phone_verified_at){
-    return out({ok:true,phone:to,phone_verified_at:profile.phone_verified_at,already_linked:true});
+    const hasConsent=typeof b.allow_number_based_server_calls==="boolean";
+    const allowed=hasConsent?b.allow_number_based_server_calls===true:profile.allow_number_based_server_calls===true;
+    if(hasConsent&&allowed!==(profile.allow_number_based_server_calls===true)){
+     const {error:consentError}=await db.from("server_profiles").update({
+      allow_number_based_server_calls:allowed,updated_at:new Date().toISOString()
+     }).eq("user_id",session.user_id);
+     if(consentError)return out({error:"NUMBER_CALL_CONSENT_SAVE_FAILED"},503);
+    }
+    return out({ok:true,phone:to,phone_verified_at:profile.phone_verified_at,already_linked:true,
+      allow_number_based_server_calls:allowed,server_id:profile.server_id});
    }
 
    // A verified phone belongs to one Server identity. Check before consuming
@@ -171,14 +180,28 @@ Deno.serve(async(req:Request)=>{
    if(verdict?.status!=="VERIFIED")return out({error:"INVALID_OR_EXPIRED_CODE"},400);
 
    const verifiedAt=new Date().toISOString();
+   const allowNumberCalls=b.allow_number_based_server_calls===true;
    const {data:updated,error:updateError}=await db.from("server_profiles").update({
-    phone_e164:to,phone_verified_at:verifiedAt,updated_at:verifiedAt
-   }).eq("user_id",session.user_id).select("user_id,server_id,phone_e164,phone_verified_at").single();
+    phone_e164:to,phone_verified_at:verifiedAt,allow_number_based_server_calls:allowNumberCalls,updated_at:verifiedAt
+   }).eq("user_id",session.user_id).select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").single();
    if(updateError){
     if(updateError.code==="23505")return out({error:"PHONE_ALREADY_LINKED"},409);
     return out({error:"PHONE_LINK_FAILED"},503);
    }
-   return out({ok:true,phone:updated.phone_e164,phone_verified_at:updated.phone_verified_at,server_id:updated.server_id});
+   return out({ok:true,phone:updated.phone_e164,phone_verified_at:updated.phone_verified_at,server_id:updated.server_id,allow_number_based_server_calls:updated.allow_number_based_server_calls===true});
+  }
+  if(action==="set_number_call_consent"){
+   const allowed=b.allow_number_based_server_calls===true;
+   const {data:profile,error:profileError}=await db.from("server_profiles")
+    .select("user_id,phone_e164,phone_verified_at")
+    .eq("user_id",session.user_id).maybeSingle();
+   if(profileError||!profile)return out({error:"PROFILE_LOOKUP_FAILED"},503);
+   if(!profile.phone_e164||!profile.phone_verified_at)return out({error:"VERIFIED_PHONE_REQUIRED"},409);
+   const {data:updated,error:updateError}=await db.from("server_profiles").update({
+    allow_number_based_server_calls:allowed,updated_at:new Date().toISOString()
+   }).eq("user_id",session.user_id).select("allow_number_based_server_calls").single();
+   if(updateError||!updated)return out({error:"NUMBER_CALL_CONSENT_SAVE_FAILED"},503);
+   return out({ok:true,allow_number_based_server_calls:updated.allow_number_based_server_calls===true});
   }
   if(action==="refresh"){
    const validUntil=expiry();
@@ -187,7 +210,7 @@ Deno.serve(async(req:Request)=>{
    return out({ok:true,access_token:session.token,token_type:"Bearer",expires_at:validUntil});
   }
   if(action==="me"){
-   const {data:profile,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
+   const {data:profile,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
    if(error||!profile)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
    return out({ok:true,user:profile});

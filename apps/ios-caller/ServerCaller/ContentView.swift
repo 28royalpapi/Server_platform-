@@ -180,6 +180,7 @@ struct ContentView: View {
                             Text("This optional SMS check attaches a verified number to your existing Server ID, so other Server users can find you from their contacts. iPhone does not expose SIM slots. SMS verification requires a paired Server gateway and carrier charges may apply.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            numberCallConsentToggle
                             TextField("Phone number, e.g. +2348012345678", text: $model.phoneLinkPhone)
                                 .keyboardType(.phonePad)
                                 .textContentType(.telephoneNumber)
@@ -232,6 +233,10 @@ struct ContentView: View {
                     Label("Verified number linked: \(model.linkedPhone)", systemImage: "checkmark.seal.fill")
                         .font(.subheadline)
                         .foregroundStyle(.green)
+                    numberCallConsentToggle
+                    if !model.phoneLinkStatus.isEmpty {
+                        Text(model.phoneLinkStatus).font(.footnote).foregroundStyle(model.isError ? .orange : .green)
+                    }
                 }
 
                 if model.callId != nil {
@@ -260,6 +265,25 @@ struct ContentView: View {
             }
             .padding(.vertical, 5)
         }
+    }
+
+    private var numberCallConsentToggle: some View {
+        Toggle(isOn: Binding(
+            get: { model.allowNumberBasedServerCalls },
+            set: { value in
+                model.allowNumberBasedServerCalls = value
+                if !model.linkedPhone.isEmpty {
+                    Task { await model.updateNumberCallConsent(value) }
+                }
+            }
+        )) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Allow Server calls on this number").font(.subheadline.weight(.medium))
+                Text("This allows other Server users to ring you using this verified number. Carrier-network calls remain with your mobile operator.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .tint(.green)
     }
 
     private func handleSystemCallRequest(_ rawNumber: String) {

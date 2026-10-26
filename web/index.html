@@ -49,7 +49,8 @@
 
           <section id="phone-link-step" class="phone-link-step">
             <h3>Link your mobile number</h3>
-            <p class="fine-print">This one-time SMS check connects your number to this Server ID, so other Server users can find you by their saved contacts. It needs a paired Server SMS gateway and may use carrier SMS charges. You can skip it for now and still call by Server ID.</p>
+            <p class="fine-print">Verify the same number already on your SIM. When enabled below, other Server users can ring you through Server internet calling using this verified number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
+            <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow other Server users to call me over the internet using this verified number.</span></label>
             <label for="link-phone-number">Mobile number</label>
             <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or 08012345678">
             <button class="primary full" id="request-phone-link-code" type="button">Send verification code</button>

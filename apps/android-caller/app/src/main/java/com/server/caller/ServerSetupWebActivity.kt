@@ -44,6 +44,7 @@ class ServerSetupWebActivity : Activity() {
     // continue directly to the ordinary dialer; never try to bypass the system toggle.
     val enabled = try { ServerTelecomRegistry.isEnabled(this) } catch (_: Exception) { false }
     if (enabled) {
+      ServerIncomingCallService.start(this)
       prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()
       web.post {
         if (isFinishing || isDestroyed) return@post
@@ -375,7 +376,7 @@ class ServerSetupWebActivity : Activity() {
       }.start()
     }
 
-    @JavascriptInterface fun verifyAndLinkPhone(rawPhone: String, rawCode: String) {
+    @JavascriptInterface fun verifyAndLinkPhone(rawPhone: String, rawCode: String, allowNumberCalls: Boolean) {
       Thread {
         val to = rawPhone.trim()
         val code = rawCode.trim()
@@ -389,14 +390,38 @@ class ServerSetupWebActivity : Activity() {
             JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
           else -> try {
             requestServerAuth(
-              JSONObject().put("action", "link_phone").put("phone", to).put("code", code),
+              JSONObject().put("action", "link_phone").put("phone", to).put("code", code).put("allow_number_based_server_calls", allowNumberCalls),
               access
             )
           } catch (_: Exception) {
             JSONObject().put("ok", false).put("error", "PHONE_LINK_UNAVAILABLE")
           }
         }
+        if (result.optBoolean("ok")) {
+          prefs.edit().putBoolean("server_phone_number_linked", true)
+            .putString("server_linked_phone", result.optString("phone", to))
+            .putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+        }
         callbackToWebsite("onServerPhoneLinkResult", result)
+      }.start()
+    }
+
+    @JavascriptInterface fun getNumberCallPreferences(): String = JSONObject()
+      .put("phoneLinked", prefs.getBoolean("server_phone_number_linked", false))
+      .put("phone", prefs.getString("server_linked_phone", "").orEmpty())
+      .put("allowNumberCalls", prefs.getBoolean("allow_number_based_server_calls", false)).toString()
+
+    @JavascriptInterface fun setNumberCallConsent(allowNumberCalls: Boolean) {
+      Thread {
+        val access = prefs.getString("access_token", null).orEmpty()
+        val result = if (!Regex("^[0-9a-f]{64}$").matches(access)) {
+          JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+        } else {
+          try { requestServerAuth(JSONObject().put("action", "set_number_call_consent").put("allow_number_based_server_calls", allowNumberCalls), access) }
+          catch (_: Exception) { JSONObject().put("ok", false).put("error", "NUMBER_CALL_CONSENT_SAVE_FAILED") }
+        }
+        if (result.optBoolean("ok")) prefs.edit().putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+        callbackToWebsite("onServerNumberCallConsentResult", result)
       }.start()
     }
 
@@ -404,6 +429,7 @@ class ServerSetupWebActivity : Activity() {
       runOnUiThread {
         try {
           if (ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity)) {
+            ServerIncomingCallService.start(this@ServerSetupWebActivity)
             prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()
             startActivity(Intent(Intent.ACTION_DIAL))
             finish()
@@ -423,6 +449,7 @@ class ServerSetupWebActivity : Activity() {
 
     @JavascriptInterface fun openPhoneDialer() {
       runOnUiThread {
+        if (ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity)) ServerIncomingCallService.start(this@ServerSetupWebActivity)
         startActivity(Intent(Intent.ACTION_DIAL))
         finish()
       }

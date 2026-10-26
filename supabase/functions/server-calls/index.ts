@@ -17,13 +17,13 @@ Deno.serve(async(req:Request)=>{
  const sessionHash=await sha(auth);
  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
- const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
+ const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",session.user_id).maybeSingle();
  if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
  await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
   if(action==="me"){
-   const {data,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
+   const {data,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
    if(error)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    return out({profile:data||{user_id:uid,phone_e164:profile.phone_e164}});
   }
@@ -53,10 +53,11 @@ Deno.serve(async(req:Request)=>{
     if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
     if(profile.phone_verified_at&&phone(profile.phone_e164)===to)return out({error:"CANNOT_CALL_SELF"},400);
     const {data:found,error:lookupError}=await db.from("server_profiles")
-      .select("user_id,server_id,phone_e164,phone_verified_at")
+      .select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls")
       .eq("phone_e164",to).maybeSingle();
     if(lookupError)return out({error:"SERVER_LOOKUP_FAILED"},503);
-    callee=found&&found.phone_verified_at?found:null;
+    if(found&&found.phone_verified_at&&found.allow_number_based_server_calls!==true){return out({error:"NUMBER_CALLING_DISABLED"},409);}
+    callee=found&&found.phone_verified_at&&found.allow_number_based_server_calls===true?found:null;
     route=callee?"server":"guest";
    }
    const now=new Date().toISOString();
