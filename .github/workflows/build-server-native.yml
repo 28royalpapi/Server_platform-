@@ -12,7 +12,7 @@ on:
       - 'scripts/**'
       - 'tests/**'
 concurrency:
-  group: server-native-${{ github.ref }}
+  group: server-native-${{ github.ref }}-kvm
   cancel-in-progress: true
 permissions:
   contents: read
