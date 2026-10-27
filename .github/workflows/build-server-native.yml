@@ -31,8 +31,7 @@ jobs:
         run: npm run check:live
 
   android-build-and-emulator-smoke:
-    # Use the Intel macOS runner for an x86_64 API 34 emulator. API 35 stayed
-    # offline for the full five-minute boot window on this hosted runner.
+    # Use the native Apple-Silicon emulator image after ADB stayed offline on Intel.
     runs-on: macos-15
     timeout-minutes: 50
     steps:
@@ -88,12 +87,17 @@ jobs:
           # API 34 supports the Android 11+ subscription-slot API used by the app.
           arch: arm64-v8a
           profile: pixel_2
-          ram-size: 4096M
           cores: 2
           ram-size: 3072M
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          pre-emulator-launch-script: |
+            set -euo pipefail
+            echo "ADB_PRESTART_START $(date -u +%FT%TZ)"
+            adb start-server
+            adb devices -l
+            echo "ADB_PRESTART_COMPLETE $(date -u +%FT%TZ)"
           script: |
             bash scripts/android-emulator-smoke.sh
       - uses: actions/upload-artifact@v4
