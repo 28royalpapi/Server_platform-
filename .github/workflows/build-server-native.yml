@@ -10,6 +10,7 @@ on:
       - 'supabase/**'
       - 'web/**'
       - 'scripts/**'
+      - 'tests/**'
 concurrency:
   group: server-native-${{ github.ref }}
   cancel-in-progress: true
@@ -31,8 +32,8 @@ jobs:
         run: npm run check:live
 
   android-build-and-emulator-smoke:
-    # Intel runner: the ARM runner's Android emulator exited with HV_UNSUPPORTED.
-    runs-on: macos-15-intel
+    # GitHub Ubuntu runners expose /dev/kvm; grant the job user access before emulator-runner probes it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
@@ -46,20 +47,26 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK components
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
-      - name: Install GNU timeout for cross-platform emulator smoke script
+      - name: Enable KVM access for Android emulator
+        shell: bash
         run: |
-          if ! command -v gtimeout >/dev/null 2>&1; then
-            brew install coreutils
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
           fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
       - name: Build Server caller and SIM gateway
         timeout-minutes: 18
         shell: bash
         run: |
           set -euo pipefail
           echo "BUILD_SERVER_CALLER_START $(date -u +%FT%TZ)"
-          gtimeout 480s gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
+          timeout 480s gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_CALLER_COMPLETE $(date -u +%FT%TZ)"
-          gtimeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
+          timeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SIM_GATEWAY_COMPLETE $(date -u +%FT%TZ)"
       - name: Compile Android instrumentation tests before booting emulator
         timeout-minutes: 8
@@ -67,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "COMPILE_ANDROID_TESTS_START $(date -u +%FT%TZ)"
-          gtimeout 420s gradle -p apps/android-caller compileDebugAndroidTestKotlin --no-daemon --console=plain --stacktrace
+          timeout 420s gradle -p apps/android-caller compileDebugAndroidTestKotlin --no-daemon --console=plain --stacktrace
           echo "COMPILE_ANDROID_TESTS_COMPLETE $(date -u +%FT%TZ)"
       - name: Upload built Android APKs before emulator smoke test
         uses: actions/upload-artifact@v4
@@ -84,14 +91,14 @@ jobs:
         with:
           api-level: 34
           target: google_apis
-          # Use an x86_64 system image on the Intel runner; API 34 supports subscription-slot APIs.
+          # Use an x86_64 system image with KVM acceleration; API 34 supports subscription-slot APIs.
           arch: x86_64
           profile: pixel_2
           cores: 2
           ram-size: 3072M
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 360
           disable-animations: true
-          emulator-options: -accel off -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           pre-emulator-launch-script: |
             set -euo pipefail
             echo "ADB_PRESTART_START $(date -u +%FT%TZ)"
