@@ -253,7 +253,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     lifecycleScope.launch {
       try {
         val result = api("me")
-        val profile = result.optJSONObject("profile")
+        val profile = result.optJSONObject("user") ?: result.optJSONObject("profile")
         val serverId = profile?.optString("server_id").orEmpty()
         if (serverId.matches(Regex("^SVR-[0-9A-F]{10}$"))) {
           currentServerId = serverId

@@ -271,7 +271,7 @@ final class ServerViewModel: ObservableObject {
         guard isConfigured, isSignedIn else { return }
         do {
             let result = try await request("/functions/v1/server-auth", body: ["action": "me"], authorized: true)
-            let profile = result["profile"] as? [String: Any] ?? [:]
+            let profile = result["user"] as? [String: Any] ?? result["profile"] as? [String: Any] ?? [:]
             let allowed = profile["allow_number_based_server_calls"] as? Bool ?? false
             allowNumberBasedServerCalls = allowed
             UserDefaults.standard.set(allowed, forKey: "server.allow_number_based_server_calls")

@@ -31,8 +31,8 @@ jobs:
         run: npm run check:live
 
   android-build-and-emulator-smoke:
-    # Use the native Apple-Silicon emulator image after ADB stayed offline on Intel.
-    runs-on: macos-15
+    # Intel runner: the ARM runner's Android emulator exited with HV_UNSUPPORTED.
+    runs-on: macos-15-intel
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
@@ -84,8 +84,8 @@ jobs:
         with:
           api-level: 34
           target: google_apis
-          # API 34 supports the Android 11+ subscription-slot API used by the app.
-          arch: arm64-v8a
+          # Use an x86_64 system image on the Intel runner; API 34 supports subscription-slot APIs.
+          arch: x86_64
           profile: pixel_2
           cores: 2
           ram-size: 3072M

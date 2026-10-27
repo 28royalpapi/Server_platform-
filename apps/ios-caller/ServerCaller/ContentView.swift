@@ -177,7 +177,7 @@ struct ContentView: View {
                 if model.linkedPhone.isEmpty {
                     GroupBox("Link a mobile number for saved-contact calling") {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("This optional SMS check attaches a verified number to your existing Server ID, so other Server users can find you from their contacts. iPhone does not expose SIM slots. SMS verification requires a paired Server gateway and carrier charges may apply.")
+                            Text("Link the same mobile number you already use—Server does not assign you a second public number. Once you verify it and opt in, other Server users can call you over Server internet calling using this number. Your mobile operator still handles ordinary cellular calls. SMS verification requires a paired Server gateway and carrier charges may apply.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             numberCallConsentToggle
