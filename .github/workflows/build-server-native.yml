@@ -91,12 +91,14 @@ jobs:
           ram-size: 3072M
           emulator-boot-timeout: 900
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          emulator-options: -accel off -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           pre-emulator-launch-script: |
             set -euo pipefail
             echo "ADB_PRESTART_START $(date -u +%FT%TZ)"
             adb start-server
             adb devices -l
+            echo "HOST_ARCH=$(uname -m)"
+            "$ANDROID_HOME/emulator/emulator" -version
             echo "ADB_PRESTART_COMPLETE $(date -u +%FT%TZ)"
           script: |
             bash scripts/android-emulator-smoke.sh
