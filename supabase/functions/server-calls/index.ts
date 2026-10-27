@@ -56,7 +56,8 @@ Deno.serve(async(req:Request)=>{
       .select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls")
       .eq("phone_e164",to).maybeSingle();
     if(lookupError)return out({error:"SERVER_LOOKUP_FAILED"},503);
-    if(found&&found.phone_verified_at&&found.allow_number_based_server_calls!==true){return out({error:"NUMBER_CALLING_DISABLED"},409);}
+    // A verified number only resolves to Server when the owner explicitly opted in.
+    // Otherwise keep the caller on the existing guest invitation route.
     callee=found&&found.phone_verified_at&&found.allow_number_based_server_calls===true?found:null;
     route=callee?"server":"guest";
    }

@@ -29,9 +29,11 @@ object ServerTelecomRegistry {
     // Reuse the number Android exposed for the user-selected SIM as the calling
     // account address when available. This affects the account metadata shown by
     // the dialer; it does not provision or clone a carrier subscription.
-    val observedNumber = app.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-      .getString("selected_sim_phone", "")
-      .orEmpty()
+    val sessionPrefs = app.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val linkedPhone = if (sessionPrefs.getBoolean("server_phone_number_linked", false)) {
+      sessionPrefs.getString("server_linked_phone", "").orEmpty()
+    } else ""
+    val observedNumber = (linkedPhone.ifBlank { sessionPrefs.getString("selected_sim_phone", "").orEmpty() })
       .filter { it.isDigit() || it == '+' }
     val accountBuilder = PhoneAccount.builder(handle, "Server")
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)

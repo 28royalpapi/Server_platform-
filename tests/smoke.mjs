@@ -46,7 +46,8 @@ assert.match(auth,/action==="link_phone"/);
 assert.match(auth,/PHONE_ALREADY_LINKED/);
 assert.match(auth,/allow_number_based_server_calls/);
 assert.match(calls,/found.allow_number_based_server_calls===true/);
-assert.match(calls,/NUMBER_CALLING_DISABLED/);
+assert.match(calls,/found\.allow_number_based_server_calls===true/);
+assert.doesNotMatch(calls,/NUMBER_CALLING_DISABLED/,"unconsented numbers should use the guest-invite route, not fail at call setup");
 assert.match(androidSetup,/requestPhoneLinkOtp/);
 assert.match(androidSetup,/verifyAndLinkPhone/);
 assert.match(app,/request-phone-link-code/);
@@ -102,6 +103,8 @@ assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActi
 assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallService"/);
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
+assert.match(androidSetup,/target\.evaluateJavascript\(bundledJavaScript\)/);
+assert.match(androidSetup,/Register before opening system settings/);
 assert.match(androidSetup,/server-native-bridge/);
 assert.match(androidSetup,/set_number_call_consent/);
 assert.doesNotMatch(androidManifest,/DialerActivity/);

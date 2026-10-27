@@ -33,6 +33,8 @@ import java.util.UUID
  */
 class ServerSetupWebActivity : Activity() {
   private lateinit var web: WebView
+  private var bundledJavaScript = ""
+  private var onboardingBootstrapped = false
   private val prefs by lazy { getSharedPreferences("server-session", Context.MODE_PRIVATE) }
 
   override fun onResume() {
@@ -83,11 +85,34 @@ class ServerSetupWebActivity : Activity() {
       webViewClient = object : WebViewClient() {
         override fun onPageFinished(view: WebView?, url: String?) {
           super.onPageFinished(view, url)
-          if (!url.isNullOrBlank() && url.startsWith("https://$HOST/") && Uri.parse(url).path == "/") {
-            // Pass the SIM list after the page DOM and its callbacks are ready.
-            val choices = simChoicesJson()
-            val permissionGranted = !choices.optBoolean("permissionNeeded", true)
-            runJs("window.onServerSimPermissionResult && window.onServerSimPermissionResult($permissionGranted, $choices)")
+          val target = view ?: return
+          val path = Uri.parse(url.orEmpty()).path.orEmpty()
+          if (!url.isNullOrBlank() && url.startsWith("https://$HOST/") &&
+              path in setOf("", "/", "/index.html") && !onboardingBootstrapped) {
+            onboardingBootstrapped = true
+            // Explicitly run the bundled website script after the DOM is present.
+            target.evaluateJavascript(
+              "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
+              null
+            )
+            target.evaluateJavascript(bundledJavaScript) {
+              target.evaluateJavascript(
+                "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
+                null
+              )
+              Thread {
+                val choices = simChoicesJson()
+                val permissionGranted = !choices.optBoolean("permissionNeeded", true)
+                runOnUiThread {
+                  if (!isFinishing && !isDestroyed) {
+                    target.evaluateJavascript(
+                      "window.onServerSimPermissionResult && window.onServerSimPermissionResult($permissionGranted, $choices)",
+                      null
+                    )
+                  }
+                }
+              }.start()
+            }
           }
         }
 
@@ -117,18 +142,15 @@ class ServerSetupWebActivity : Activity() {
   private fun loadBundledOnboarding() {
     val html = assets.open("server-web/index.html").bufferedReader().use { it.readText() }
     val css = assets.open("server-web/styles.css").bufferedReader().use { it.readText() }
-    val js = assets.open("server-web/app.js").bufferedReader().use { it.readText() }
+    bundledJavaScript = assets.open("server-web/app.js").bufferedReader().use { it.readText() }
     var page = html
       .replace("<head>", "<head>\n<meta name=\"server-native-bridge\" content=\"true\">")
       .replace("""<link rel="stylesheet" href="styles.css">""", "<style>\n$css\n</style>")
       .replace("""<script defer src="app.js"></script>""", "")
       .replace("target=\"_blank\" rel=\"noopener\"", "target=\"_self\"")
-    // Inline at the end of body: replacing a deferred external script with a normal inline script in head executes before DOM nodes exist.
-    page = page.replace("</body>", "<script>\n$js\n</script>\n</body>")
-    check(page.contains("native-setup") && page.contains("window.ServerAndroid") &&
-      page.contains("server-native-bridge") &&
-      page.indexOf("<script>\n$js\n</script>") > page.indexOf("id=\"native-setup\"")) {
-      "Bundled Server onboarding HTML is missing the SIM-first bridge UI or correct script order."
+    check(page.contains("native-setup") && page.contains("server-native-bridge") &&
+      page.indexOf("id=\"native-setup\"") > page.indexOf("<body>")) {
+      "Bundled Server onboarding HTML is missing the SIM-first bridge UI."
     }
     web.loadDataWithBaseURL("https://$HOST/", page, "text/html", "UTF-8", null)
   }
@@ -440,6 +462,13 @@ class ServerSetupWebActivity : Activity() {
     @JavascriptInterface fun openCallingSettings() {
       runOnUiThread {
         try {
+          try {
+            // Register before opening system settings; otherwise there is no Server account to enable.
+            ServerTelecomRegistry.register(this@ServerSetupWebActivity)
+          } catch (_: Exception) {
+            runJs("window.onServerSettingsError && window.onServerSettingsError()")
+            return@runOnUiThread
+          }
           if (ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity)) {
             ServerIncomingCallService.start(this@ServerSetupWebActivity)
             prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()

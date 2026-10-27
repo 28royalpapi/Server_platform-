@@ -88,8 +88,8 @@ jobs:
           # API 34 supports the Android 11+ subscription-slot API used by the app.
           arch: x86_64
           profile: pixel_2
-          ram-size: 3072M
-          cores: 2
+          ram-size: 4096M
+          cores: 4
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader -feature -Vulkan -no-snapshot -no-snapshot-save
