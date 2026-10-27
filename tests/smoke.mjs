@@ -75,7 +75,7 @@ assert.match(iosView,/model.requestPhoneLinkCode\(\)/);
 assert.match(iosView,/model.verifyAndLinkPhone\(\)/);
 assert.match(iosView,/Allow Server calls on this number/);
 assert.match(iosModel,/set_number_call_consent/);
-assert.match(iosModel,/result\["user"\] as\? \[String, Any\] \?\? result\["profile"\] as\? \[String, Any\]/);
+assert.ok(iosModel.includes('let profile = result["user"] as? [String, Any] ?? result["profile"] as? [String, Any] ?? [:]'),"iOS reads profile data from the backend user response");
 assert.match(iosView,/model.linkedPhone/);
 assert.match(iosView,/INStartAudioCallIntent/);
 assert.match(iosInfo,/NSUserActivityTypes/);
