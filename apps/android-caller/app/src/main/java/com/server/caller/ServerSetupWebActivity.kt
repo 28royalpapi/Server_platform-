@@ -87,35 +87,33 @@ class ServerSetupWebActivity : Activity() {
           super.onPageFinished(view, url)
           val target = view ?: return
           val path = Uri.parse(url.orEmpty()).path.orEmpty()
-          if (!url.isNullOrBlank() && url.startsWith("https://$HOST/") &&
-              path in setOf("", "/", "/index.html") && !onboardingBootstrapped) {
-            onboardingBootstrapped = true
-            // Explicitly run the bundled website script after the DOM is present.
-            target.evaluateJavascript(
-              "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
-              null
-            )
-            target.evaluateJavascript(bundledJavaScript) {
-              target.evaluateJavascript(
-                "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
-                null
-              )
-              Thread {
-                val choices = simChoicesJson()
-                val permissionGranted = !choices.optBoolean("permissionNeeded", true)
-                runOnUiThread {
-                  if (!isFinishing && !isDestroyed) {
-                    target.evaluateJavascript(
-                      "window.onServerSimPermissionResult && window.onServerSimPermissionResult($permissionGranted, $choices)",
-                      null
-                    )
-                  }
+          if (url.isNullOrBlank() || !url.startsWith("https://$HOST/") ||
+              path !in setOf("", "/", "/index.html") || onboardingBootstrapped) return
+          onboardingBootstrapped = true
+          // loadBundledOnboarding already includes app.js after the HTML body. Do not
+          // evaluate it a second time: global `const` declarations would throw and
+          // duplicate event listeners can leave SIM-selection state out of sync.
+          target.evaluateJavascript(
+            "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
+            null
+          )
+          Thread {
+            val choices = simChoicesJson()
+            // Only notify the website after permission is already granted. A fresh
+            // visit must keep the explicit permission button usable, not report a
+            // denial merely because Android has not asked the user yet.
+            if (!choices.optBoolean("permissionNeeded", true)) {
+              runOnUiThread {
+                if (!isFinishing && !isDestroyed) {
+                  target.evaluateJavascript(
+                    "window.onServerSimPermissionResult && window.onServerSimPermissionResult(true, $choices)",
+                    null
+                  )
                 }
-              }.start()
+              }
             }
-          }
+          }.start()
         }
-
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
           val uri = request?.url ?: return true
           val isTrustedHost = uri.scheme == "https" && uri.host == HOST

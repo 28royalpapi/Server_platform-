@@ -29,7 +29,12 @@ class CallerSmokeTest {
     try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
     try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
     context.getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
-      .putBoolean("server_open_dialer_after_account_enable", false).commit()
+      .putBoolean("server_open_dialer_after_account_enable", false)
+      .remove("selected_sim_subscription_id")
+      .remove("selected_sim_slot")
+      .remove("selected_sim_carrier")
+      .remove("selected_sim_phone")
+      .commit()
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     assertNotNull("Server does not expose a launcher entry", launchIntent)
     assertEquals("The launcher must open the website onboarding bridge",
@@ -59,6 +64,8 @@ class CallerSmokeTest {
       val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
       assertEquals("Selecting a SIM in the website must persist its selected subscription id",
         expectedId, savedPrefs.getInt("selected_sim_subscription_id", -1))
+      assertTrue("The website did not update its visible selection status",
+        device.wait(Until.hasObject(By.textContains("Selected SIM")), 5_000))
       if (activeSim == null) {
         assertEquals("The emulator fixture must be labelled as a mock rather than a carrier line",
           "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
