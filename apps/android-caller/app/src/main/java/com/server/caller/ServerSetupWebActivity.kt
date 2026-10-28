@@ -211,6 +211,33 @@ class ServerSetupWebActivity : Activity() {
     }
   }
 
+  private fun requestServerGateway(body: JSONObject, accessToken: String): JSONObject {
+    val url = BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-gateway"
+    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+      requestMethod = "POST"
+      connectTimeout = 15000
+      readTimeout = 20000
+      doOutput = true
+      setRequestProperty("content-type", "application/json")
+      setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+      setRequestProperty("authorization", "Bearer " + accessToken)
+    }
+    return try {
+      conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+      val status = conn.responseCode
+      val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+      val response = stream?.use { input -> BufferedReader(InputStreamReader(input)).readText() }.orEmpty()
+      val result = try { JSONObject(response) } catch (_: Exception) { JSONObject() }
+      if (status !in 200..299) {
+        if (result.optString("error").isBlank()) result.put("error", "HTTP_" + status)
+        result.put("ok", false)
+      }
+      result.put("http_status", status)
+    } finally {
+      conn.disconnect()
+    }
+  }
+
   private fun callbackToWebsite(name: String, result: JSONObject) {
     runJs("window.$name && window.$name($result)")
   }
@@ -394,6 +421,19 @@ class ServerSetupWebActivity : Activity() {
       Thread {
         val result = registerDevice(acceptedTerms)
         runJs("window.onServerSetupResult && window.onServerSetupResult($result)")
+      }.start()
+    }
+
+    @JavascriptInterface fun createSmsGatewayPairingCode() {
+      Thread {
+        val access = prefs.getString("access_token", null).orEmpty()
+        val result = if (!Regex("^[0-9a-f]{64}$").matches(access)) {
+          JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+        } else {
+          try { requestServerGateway(JSONObject().put("action", "create_pairing_code"), access) }
+          catch (_: Exception) { JSONObject().put("ok", false).put("error", "GATEWAY_PAIRING_UNAVAILABLE") }
+        }
+        callbackToWebsite("onServerGatewayPairingCode", result)
       }.start()
     }
 

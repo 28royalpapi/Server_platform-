@@ -34,6 +34,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const phoneLinkStatus = document.querySelector("#phone-link-status");
   const skipPhoneLinkButton = document.querySelector("#skip-phone-link");
   const allowNumberCalls = document.querySelector("#allow-number-calls");
+  const createGatewayPairingButton = document.querySelector("#create-sms-gateway-pairing-code");
+  const gatewayPairingResult = document.querySelector("#sms-gateway-pairing-result");
+  const gatewayPairingCode = document.querySelector("#sms-gateway-pairing-code");
+  const gatewayPairingExpiry = document.querySelector("#sms-gateway-pairing-expiry");
   let selectedSubscriptionId = null;
   let pendingPhoneNumber = "";
   let phoneLinkVerified = false;
@@ -221,6 +225,38 @@ if (isNativeSetup && nativeSetup && stepForm) {
     if (!window.ServerAndroid) { phoneLinkInput.disabled = false; requestPhoneCodeButton.disabled = false; showPhoneLinkStatus("Android calling integration is not connected."); return; }
     window.ServerAndroid.requestPhoneLinkOtp(number);
   });
+
+  createGatewayPairingButton?.addEventListener("click", () => {
+    if (!window.ServerAndroid?.createSmsGatewayPairingCode) {
+      showPhoneLinkStatus("Open Server onboarding from the Android integration before pairing an SMS gateway.");
+      return;
+    }
+    createGatewayPairingButton.disabled = true;
+    createGatewayPairingButton.textContent = "Generating one-time code…";
+    showPhoneLinkStatus("Generating a secure pairing code. It is valid for 10 minutes.");
+    window.ServerAndroid.createSmsGatewayPairingCode();
+  });
+
+  window.onServerGatewayPairingCode = (result) => {
+    createGatewayPairingButton.disabled = false;
+    createGatewayPairingButton.textContent = "Generate a new SMS gateway pairing code";
+    if (!result?.ok || !/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(String(result?.pairing_code || ""))) {
+      const reason = result?.error || "GATEWAY_PAIRING_UNAVAILABLE";
+      const message = {
+        SESSION_REQUIRED: "Create your Server identity again to establish a fresh authenticated session.",
+        PAIRING_RATE_LIMITED: "Too many pairing codes were requested. Wait before trying again."
+      }[reason] || "Could not create a gateway pairing code (" + reason + ").";
+      showPhoneLinkStatus(message);
+      return;
+    }
+    gatewayPairingCode.textContent = result.pairing_code;
+    const expiry = Date.parse(result.expires_at || "");
+    gatewayPairingExpiry.textContent = Number.isFinite(expiry)
+      ? "Expires at " + new Date(expiry).toLocaleTimeString() + ". Open the Server SIM Gateway app now and claim this code."
+      : "This code expires in 10 minutes. Open the Server SIM Gateway app now and claim it.";
+    gatewayPairingResult.classList.remove("hidden");
+    showPhoneLinkStatus("Pairing code created. Claim it in the Server SIM Gateway app, then grant SMS permission and start the gateway.", true);
+  };
 
   window.onServerPhoneOtpRequested = (result) => {
     requestPhoneCodeButton.disabled = false;

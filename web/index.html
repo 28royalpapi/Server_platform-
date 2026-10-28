@@ -50,6 +50,16 @@
           <section id="phone-link-step" class="phone-link-step">
             <h3>Link your mobile number</h3>
             <p class="fine-print">Verify the same number already on your SIM. When enabled below, other Server users can ring you through Server internet calling using this verified number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
+            <div class="gateway-setup">
+              <h4>Set up SMS verification</h4>
+              <p class="fine-print">Use an Android phone with an active SIM (this phone can be used). Generate a one-time code here, then open the Server SIM Gateway app, enter the code, pair it, grant SMS permission, and start the gateway. The code expires after 10 minutes.</p>
+              <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate SMS gateway pairing code</button>
+              <div id="sms-gateway-pairing-result" class="hidden">
+                <label for="sms-gateway-pairing-code">One-time pairing code</label>
+                <p id="sms-gateway-pairing-code" class="pairing-result"></p>
+                <p id="sms-gateway-pairing-expiry" class="fine-print"></p>
+              </div>
+            </div>
             <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow other Server users to call me over the internet using this verified number.</span></label>
             <label for="link-phone-number">Mobile number</label>
             <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or 08012345678">
