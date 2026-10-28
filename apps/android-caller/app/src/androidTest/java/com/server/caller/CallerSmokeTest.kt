@@ -269,7 +269,7 @@ class CallerSmokeTest {
         if (previousDefaultOutgoing == null) {
           runShellCommand("telecom set-user-selected-outgoing-phone-account")
         } else {
-          val serial = getSystemService(android.os.UserManager::class.java)
+          val serial = context.getSystemService(android.os.UserManager::class.java)
             .getSerialNumberForUser(android.os.Process.myUserHandle())
           val component = previousDefaultOutgoing.componentName.flattenToString()
           val accountId = previousDefaultOutgoing.id
