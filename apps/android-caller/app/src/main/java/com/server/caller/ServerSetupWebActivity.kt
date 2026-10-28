@@ -148,9 +148,14 @@ class ServerSetupWebActivity : Activity() {
       .replace("""<link rel="stylesheet" href="styles.css">""", "<style>\n$css\n</style>")
       .replace("""<script defer src="app.js"></script>""", "")
       .replace("target=\"_blank\" rel=\"noopener\"", "target=\"_self\"")
+    // app.js was a deferred external script. Reinsert it after the body content so
+    // SIM and calling-permission buttons actually receive their event handlers.
+    val inlineScript = "<script>\n" + bundledJavaScript + "\n</script>"
+    page = page.replace("</body>", inlineScript + "\n</body>")
     check(page.contains("native-setup") && page.contains("server-native-bridge") &&
-      page.indexOf("id=\"native-setup\"") > page.indexOf("<body>")) {
-      "Bundled Server onboarding HTML is missing the SIM-first bridge UI."
+      page.indexOf("id=\"native-setup\"") > page.indexOf("<body>") &&
+      page.indexOf(inlineScript) > page.indexOf("id=\"native-setup\"")) {
+      "Bundled Server onboarding HTML is missing the SIM-first bridge UI or app.js script."
     }
     web.loadDataWithBaseURL("https://$HOST/", page, "text/html", "UTF-8", null)
   }

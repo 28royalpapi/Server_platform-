@@ -41,16 +41,31 @@ class CallerSmokeTest {
         device.wait(Until.hasObject(By.text("server")), 20_000))
       assertTrue("SIM-first web onboarding step is not visible",
         device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
-      assertTrue("SIM permission action is not visible",
-        device.wait(Until.hasObject(By.textContains("Allow SIM access and detect SIMs")), 10_000))
-      val emulatorSim = device.wait(Until.findObject(By.textContains("Emulator test SIM")), 10_000)
-      assertNotNull("The debug emulator must expose a clearly-labelled test SIM fixture", emulatorSim)
-      emulatorSim!!.click()
+      val detectButton = device.wait(Until.findObject(By.textContains("Allow SIM access and detect SIMs")), 10_000)
+      assertNotNull("SIM permission/detection button is not visible", detectButton)
+      detectButton!!.click()
+
+      val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
+      val activeSim = try {
+        subscriptionManager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex }.firstOrNull()
+      } catch (_: Exception) { null }
+      val expectedId = activeSim?.subscriptionId ?: -1001
+      val expectedSlot = activeSim?.simSlotIndex?.takeIf { it >= 0 }?.plus(1) ?: 1
+      val visibleLabel = if (activeSim == null) "Emulator test SIM" else "SIM " + expectedSlot + " ·"
+      val simChoice = device.wait(Until.findObject(By.textContains(visibleLabel)), 12_000)
+      assertNotNull("The website did not render an active SIM or labelled emulator test SIM", simChoice)
+      simChoice!!.click()
+
       val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-      assertEquals("Selecting a SIM in the website must persist its chosen subscription id",
-        -1001, savedPrefs.getInt("selected_sim_subscription_id", -1))
-      assertEquals("The emulator fixture must be explicitly labelled as a mock, not a carrier line",
-        "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
+      assertEquals("Selecting a SIM in the website must persist its selected subscription id",
+        expectedId, savedPrefs.getInt("selected_sim_subscription_id", -1))
+      if (activeSim == null) {
+        assertEquals("The emulator fixture must be labelled as a mock rather than a carrier line",
+          "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
+      } else {
+        assertEquals("The selected subscription must persist its real slot",
+          activeSim.simSlotIndex, savedPrefs.getInt("selected_sim_slot", -1))
+      }
       val continueButton = device.wait(Until.findObject(By.textContains("Continue to calling permissions")), 10_000)
       assertNotNull("SIM selection did not advance the web flow", continueButton)
       continueButton!!.click()
