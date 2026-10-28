@@ -188,6 +188,8 @@ class CallerSmokeTest {
 
     try {
       try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO) } catch (_: Exception) {}
+      assertTrue("The test must have microphone permission before exercising a background Telecom call",
+        context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED)
       prefs.edit()
         .putString("access_token", "0".repeat(64))
         .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
@@ -249,7 +251,8 @@ class CallerSmokeTest {
 
       val deadline = System.currentTimeMillis() + 20_000
       while (System.currentTimeMillis() < deadline && prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) Thread.sleep(200)
-      assertTrue("Choosing Server from the preinstalled Phone app did not reach Server’s call engine",
+      val lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
+      assertTrue("Choosing Server from the preinstalled Phone app did not reach Server’s call engine (last stage: " + lastTelecomStage + ")",
         prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L)
       assertEquals("The system dialer telephone number must enter the phone-number call path",
         "phone", prefs.getString("debug_last_call_target_kind", null))

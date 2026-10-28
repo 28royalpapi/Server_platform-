@@ -298,10 +298,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (incoming?.getBooleanExtra("sava_dialer_launch", false) == true) return
     val action = incoming?.getStringExtra("server_action") ?: return
     if (action !in setOf("dial", "incoming", "answer", "decline", "hangup")) return
-    // Call commands run in lifecycleScope and remain alive while the Activity is
-    // backgrounded. Keep the activity available as the current call engine, but
-    // do not leave Server's app screen on top of Android's Phone UI.
-    root.post { if (!isFinishing && !isDestroyed) moveTaskToBack(true) }
+    // The system-owned call UI is already foreground. For an outgoing dial request,
+    // give the queued engine coroutine time to reload the session and enter startCall
+    // before backgrounding this Activity; immediate task-backgrounding can race the
+    // Telecom handoff on Android 14 and OEM task schedulers.
+    val delayMillis = if (action == "dial") 1_500L else 300L
+    root.postDelayed({
+      if (!isFinishing && !isDestroyed) moveTaskToBack(true)
+    }, delayMillis)
   }
 
   private fun handleAppLink(incoming: Intent?) {
@@ -349,14 +353,38 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
+  private fun recordTelecomDebugStage(stage: String) {
+    if (!BuildConfig.DEBUG) return
+    // Diagnostic stages deliberately exclude numbers, tokens, and other user data.
+    prefs.edit()
+      .putString("debug_last_telecom_stage", stage)
+      .putLong("debug_last_telecom_stage_at", System.currentTimeMillis())
+      .apply()
+  }
+
   private fun handleTelecomIntent(intent: Intent?) {
     if (intent == null) return
     when (intent.getStringExtra("server_action")) {
       "dial" -> {
+        recordTelecomDebugStage("dial_intent_received")
         val target = intent.getStringExtra("server_dialed_number").orEmpty()
         if (target.isNotBlank()) {
           pendingDialedNumber = target
-          if (!accessToken.isNullOrBlank()) { pendingDialedNumber = null; targetInput.setText(target); lifecycleScope.launch { delay(250); startCall() } }
+          // Telecom can re-use a background Activity. Reload the current session before
+          // scheduling a call rather than trusting fields from an earlier Activity instance.
+          accessToken = prefs.getString("access_token", accessToken)
+          refreshToken = prefs.getString("refresh_token", refreshToken)
+          accessExpiry = prefs.getLong("access_expiry", accessExpiry)
+          if (!accessToken.isNullOrBlank()) {
+            pendingDialedNumber = null
+            targetInput.setText(target)
+            recordTelecomDebugStage("dial_call_scheduled")
+            lifecycleScope.launch { delay(150); startCall() }
+          } else {
+            recordTelecomDebugStage("dial_waiting_for_sign_in")
+          }
+        } else {
+          recordTelecomDebugStage("dial_target_missing")
         }
       }
       "incoming" -> {
@@ -645,12 +673,19 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private fun startCall(): Job = lifecycleScope.launch {
-    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { askMic.launch(Manifest.permission.RECORD_AUDIO); setStatus("Allow microphone access and tap Call with Server again.", true); return@launch }
+    recordTelecomDebugStage("start_call_entered")
+    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      recordTelecomDebugStage("start_call_microphone_permission_missing")
+      askMic.launch(Manifest.permission.RECORD_AUDIO)
+      setStatus("Allow microphone access and tap Call with Server again.", true)
+      return@launch
+    }
     val typedTarget = targetInput.text.toString().trim()
     val serverId = typedTarget.uppercase()
     val isServerId = Regex("^SVR-[0-9A-F]{10}$").matches(serverId)
     val normalizedPhone = if (isServerId) null else normalizePhoneForServer(typedTarget)
     if (!isServerId && normalizedPhone == null) {
+      recordTelecomDebugStage("start_call_target_invalid")
       setStatus("Enter a Server ID (SVR- plus 10 characters) or a valid phone number, e.g. 08012345678 or +2348012345678.", true)
       return@launch
     }
@@ -658,6 +693,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     // the actual call engine. Instrumentation uses a deliberately invalid token,
     // so this check does not create a backend call or send SMS.
     if (BuildConfig.DEBUG) {
+      recordTelecomDebugStage("call_engine_reached")
       prefs.edit()
         .putLong("debug_last_call_engine_entered_at", System.currentTimeMillis())
         .putString("debug_last_call_target_kind", if (isServerId) "server_id" else "phone")
@@ -687,6 +723,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Server user… waiting for answer.")
       }
     } catch (e: Exception) {
+      recordTelecomDebugStage("call_backend_start_failed")
+      // If Telecom launched this engine, tell the system dialer that the internet
+      // route failed instead of leaving an endless "Dialing via Server" call.
+      ServerTelecomRegistry.markEnded()
       val fallbackPhone = normalizedPhone
       cleanPeer(); callId = null; carrierFallbackPhone = null
       setStatus(e.message ?: "Could not start call.", true)
