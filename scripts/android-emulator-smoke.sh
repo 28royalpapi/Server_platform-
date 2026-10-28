@@ -63,6 +63,16 @@ if [[ "$TEST_STATUS" -ne 0 ]]; then
   exit "$TEST_STATUS"
 fi
 
+echo "Reinstalling the Server caller APK after Android instrumentation cleanup"
+# Android Gradle's connected test runner can uninstall the target package during
+# test cleanup; install the freshly built target before trying to record the UI.
+if ! $TIMEOUT_BIN 90s adb install -r apps/android-caller/app/build/outputs/apk/debug/app-debug.apk; then
+  adb logcat -d -t 1000 > artifacts/server-caller-reinstall-logcat.txt 2>&1 || true
+  echo "Could not reinstall the Server caller APK after instrumentation tests." >&2
+  exit 1
+fi
+adb shell pm path com.server.caller.debug | grep -q '^package:'
+
 echo "Recording the website setup bridge after Android system-call tests"
 adb shell screenrecord --time-limit 18 /sdcard/server-android-launch.mp4 &
 REC_PID=$!
