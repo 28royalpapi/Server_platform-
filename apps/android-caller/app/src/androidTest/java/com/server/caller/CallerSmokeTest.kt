@@ -114,6 +114,11 @@ class CallerSmokeTest {
     return result
   }
 
+  private fun runShellCommand(command: String): String {
+    val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+    return android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+  }
+
   private fun grantPhoneMetadataPermissions(context: Context) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.RECORD_AUDIO)) {
@@ -177,7 +182,7 @@ class CallerSmokeTest {
     val previousPhone = prefs.getString("phone", null)
     val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
-    val previousDefaultOutgoing = telecom.getUserSelectedOutgoingPhoneAccount()
+    val previousDefaultOutgoing = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
     val device = UiDevice.getInstance(instrumentation)
     var testAccountRegistered = false
 
@@ -208,18 +213,10 @@ class CallerSmokeTest {
       ensureAccountEnabled(context, device, testHandle, "Test call provider (mock)")
 
       // A preconfigured default SIM makes Google Phone place calls immediately and
-      // bypass its outgoing-account picker. In Telecom, clearing the user-selected
-      // default is the supported "Ask every time" state; CTS uses the same API
-      // under shell permission identity to establish this system-level test setup.
-      instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.MODIFY_PHONE_STATE)
-      try {
-        telecom.setUserSelectedOutgoingPhoneAccount(null)
-      } finally {
-        instrumentation.uiAutomation.dropShellPermissionIdentity()
-      }
-      assertEquals("The test setup must clear the saved outgoing-account default",
-        null, telecom.getUserSelectedOutgoingPhoneAccount())
-      assertEquals("Multiple enabled tel providers with Ask every time should have no selected default",
+      // bypass its outgoing-account picker. Android CTS uses the Telecom shell command
+      // to select the system-supported "Ask every time" state.
+      runShellCommand("telecom set-user-selected-outgoing-phone-account")
+      assertEquals("Multiple enabled tel providers with Ask every time should have no default outgoing account",
         null, telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL))
       val callCapableAccounts = telecom.callCapablePhoneAccounts
       assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
@@ -266,15 +263,22 @@ class CallerSmokeTest {
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
       ServerTelecomRegistry.register(context)
-      // Restore the emulator's original user preference so this test does not
-      // leave the whole emulator in the "Ask every time" state.
+      // Restore the emulator's effective outgoing account so the test does not
+      // leave its system-level phone settings changed.
       try {
-        instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.MODIFY_PHONE_STATE)
-        telecom.setUserSelectedOutgoingPhoneAccount(previousDefaultOutgoing)
+        if (previousDefaultOutgoing == null) {
+          runShellCommand("telecom set-user-selected-outgoing-phone-account")
+        } else {
+          val serial = getSystemService(android.os.UserManager::class.java)
+            .getSerialNumberForUser(android.os.Process.myUserHandle())
+          val component = previousDefaultOutgoing.componentName.flattenToString()
+          val accountId = previousDefaultOutgoing.id
+          if (component.matches(Regex("^[A-Za-z0-9_.$/]+$")) && accountId.matches(Regex("^[A-Za-z0-9_.-]+$"))) {
+            runShellCommand("telecom set-user-selected-outgoing-phone-account " + component + " " + accountId + " " + serial)
+          }
+        }
       } catch (restoreError: Exception) {
         Log.w("ServerUITest", "Could not restore the original outgoing-account preference: " + restoreError.javaClass.simpleName)
-      } finally {
-        try { instrumentation.uiAutomation.dropShellPermissionIdentity() } catch (_: Exception) {}
       }
       // Do not force-stop the target package from instrumentation cleanup: on
       // Android this can kill the instrumentation process before JUnit reports
