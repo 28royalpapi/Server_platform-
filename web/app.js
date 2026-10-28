@@ -21,6 +21,13 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const detectButton = document.querySelector("#detect-sims");
   const simOptions = document.querySelector("#sim-options");
   const continuePermissions = document.querySelector("#continue-permissions");
+  const simSelectionStatus = document.querySelector("#sim-selection-status");
+  const showSimSelectionStatus = (message, ok = false) => {
+    if (!simSelectionStatus) return;
+    simSelectionStatus.textContent = message;
+    simSelectionStatus.classList.remove("hidden", "ok");
+    if (ok) simSelectionStatus.classList.add("ok");
+  };
   const callStep = document.querySelector("#call-permission-step");
   const terms = document.querySelector("#native-terms");
   const grantCalls = document.querySelector("#grant-call-permissions");
@@ -70,12 +77,16 @@ if (isNativeSetup && nativeSetup && stepForm) {
     continuePermissions.disabled = true;
     selectedSubscriptionId = null;
     if (data?.permissionNeeded) {
-      showStatus("Android permission is needed before Server can read the SIM list.");
+      const message = "Android permission is needed before Server can read the SIM list.";
+      showStatus(message);
+      showSimSelectionStatus(message);
       return;
     }
     const sims = Array.isArray(data?.sims) ? data.sims : [];
     if (!sims.length) {
-      showStatus("Android did not expose any active SIM cards. Server cannot select a SIM on this device.", false);
+      const message = "Android did not expose any active SIM cards. Server cannot select a SIM on this device.";
+      showStatus(message, false);
+      showSimSelectionStatus(message, false);
       return;
     }
     sims.forEach((sim) => {
@@ -92,7 +103,9 @@ if (isNativeSetup && nativeSetup && stepForm) {
       choice.addEventListener("click", () => {
         try {
           if (!window.ServerAndroid.selectSim(Number(sim.id))) {
-            showStatus("The selected SIM is no longer active. Detect SIMs again.");
+            const message = "The selected SIM is no longer active. Detect SIMs again.";
+            showStatus(message);
+            showSimSelectionStatus(message);
             return;
           }
           selectedSubscriptionId = Number(sim.id);
@@ -100,11 +113,15 @@ if (isNativeSetup && nativeSetup && stepForm) {
           choice.classList.add("selected");
           continuePermissions.classList.remove("hidden");
           continuePermissions.disabled = false;
-          // Keep the next required step in view on narrow phone screens.
+          // Keep the next required step and its selection confirmation in view on phones.
+          const selectionMessage = `Selected SIM ${sim.slot} · ${sim.carrier || "Unknown carrier"}.`;
+          showStatus(selectionMessage, true);
+          showSimSelectionStatus(selectionMessage, true);
           continuePermissions.scrollIntoView({ behavior: "smooth", block: "center" });
-          showStatus(`Selected SIM ${sim.slot} · ${sim.carrier || "Unknown carrier"}.`, true);
         } catch {
-          showStatus("Server could not save this SIM selection. Please try again.");
+          const message = "Server could not save this SIM selection. Please try again.";
+          showStatus(message);
+          showSimSelectionStatus(message);
         }
       });
       simOptions.append(choice);
@@ -114,7 +131,12 @@ if (isNativeSetup && nativeSetup && stepForm) {
         continuePermissions.disabled = false;
       }
     });
-    showStatus("Choose the SIM you want Server to use.", true);
+    const currentSelection = sims.find((sim) => sim.selected);
+    const message = currentSelection
+      ? `Selected SIM ${currentSelection.slot} · ${currentSelection.carrier || "Unknown carrier"}.`
+      : "Choose the SIM you want Server to use.";
+    showStatus(message, true);
+    showSimSelectionStatus(message, true);
   };
 
   window.onServerSimPermissionResult = (granted, data) => {
