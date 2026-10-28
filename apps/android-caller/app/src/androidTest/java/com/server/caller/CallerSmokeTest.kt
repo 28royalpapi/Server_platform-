@@ -135,8 +135,21 @@ class CallerSmokeTest {
     if (accountEnabled(context, handle)) return
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    val accountRow = findTextOnScrollableScreen(context, device, label)
-    assertNotNull("Android calling-account settings did not show $label. See ServerUITest hierarchy in logcat.", accountRow)
+
+    // On AOSP Android 14, CHANGE_PHONE_ACCOUNTS first opens a settings landing
+    // page with an "All calling accounts" row. The registered providers are one
+    // level deeper; searching for Server on the landing page can never succeed.
+    var accountRow = device.findObject(By.text(label))
+    if (accountRow == null) {
+      val allAccounts = findTextOnScrollableScreen(context, device, "All calling accounts")
+      if (allAccounts != null) {
+        allAccounts.click()
+        device.wait(Until.hasObject(By.textContains("All calling accounts")), 2_000)
+        Thread.sleep(300)
+      }
+      accountRow = findTextOnScrollableScreen(context, device, label)
+    }
+    assertNotNull("Android calling-account list did not show $label. See ServerUITest hierarchy in logcat.", accountRow)
     accountRow!!.click()
     val deadline = System.currentTimeMillis() + 10_000
     while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) {
