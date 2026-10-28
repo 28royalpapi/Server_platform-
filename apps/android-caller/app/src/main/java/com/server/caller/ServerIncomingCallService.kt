@@ -107,6 +107,15 @@ class ServerIncomingCallService : Service() {
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (error: Exception) {
+        val status = Regex("HTTP (\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+        val tokenExpired = prefs.getLong("access_expiry", 0L) <= System.currentTimeMillis() / 1000
+        // A revoked valid session should stop this service. If refresh failed while
+        // offline and the stored token has expired, keep retrying refresh instead.
+        if ((status == 401 || status == 403) && !tokenExpired) {
+          Log.w(TAG, "Server incoming-call session rejected: HTTP " + status)
+          stopSelf()
+          break
+        }
         Log.w(TAG, "Server incoming-call poll failed: " + error.javaClass.simpleName)
       }
       delay(POLL_INTERVAL_MS)
@@ -125,8 +134,17 @@ class ServerIncomingCallService : Service() {
         catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
       prefs.edit().putString("access_token", token).putLong("access_expiry", expiry).apply()
       token
-    } catch (_: Exception) {
-      null
+    } catch (error: Exception) {
+      val status = Regex("HTTP (\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+      // Authentication/other permanent 4xx errors stop the listener. Network,
+      // rate-limit and server failures are transient: keep the current token and retry.
+      if (status != null && status in 400..499 && status != 429) {
+        Log.w(TAG, "Server session refresh rejected: HTTP " + status)
+        null
+      } else {
+        Log.w(TAG, "Server session refresh deferred: " + error.javaClass.simpleName)
+        current
+      }
     }
   }
 

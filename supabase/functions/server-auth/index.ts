@@ -13,11 +13,14 @@ function client(){
  return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
 }
 function ipHash(req:Request){const ip=(req.headers.get("cf-connecting-ip")||req.headers.get("x-real-ip")||(req.headers.get("x-forwarded-for")||"unknown").split(",")[0].trim()||"unknown").slice(0,160);return sha("server-auth-ip:"+ip);}
-async function bearer(req:Request,db:any){
+async function bearer(req:Request,db:any,allowExpiredForRefresh=false){
  const token=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
  if(!/^[0-9a-f]{64}$/.test(token))return null;
  const hash=await sha(token);
- const {data,error}=await db.from("server_sessions").select("id,user_id,expires_at").eq("token_hash",hash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+ // A client may be offline when its session expires. Permit a short grace window
+ // only for the refresh action; revoked sessions remain rejected for every action.
+ const expiryCutoff=allowExpiredForRefresh?Date.now()-7*24*60*60*1000:Date.now();
+ const {data,error}=await db.from("server_sessions").select("id,user_id,expires_at").eq("token_hash",hash).is("revoked_at",null).gt("expires_at",new Date(expiryCutoff).toISOString()).maybeSingle();
  if(error||!data)return null;
  return {token,hash,...data};
 }
@@ -141,7 +144,7 @@ Deno.serve(async(req:Request)=>{
    if(sessionError)return out({error:"SESSION_CREATE_FAILED"},503);
    return out({ok:true,access_token:access,token_type:"Bearer",expires_at:validUntil,user:{id:profile.user_id,phone:profile.phone_e164,phone_verified_at:profile.phone_verified_at}});
   }
-  const session=await bearer(req,db);if(!session)return out({error:"SESSION_REQUIRED"},401);
+  const session=await bearer(req,db,action==="refresh");if(!session)return out({error:"SESSION_REQUIRED"},401);
   if(action==="link_phone"){
    const to=phone(b.phone),code=typeof b.code==="string"?b.code.trim():"";
    if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
