@@ -71,7 +71,7 @@ final class ServerViewModel: ObservableObject {
             // Calling `accept()` here would request another CXAnswerCallAction recursively.
             Task { await self.acceptFromSystem(incoming) }
         }
-        callKit.onEnd = { [weak self] _ in Task { await self?.endCall() } }
+        callKit.onEnd = { [weak self] uuid in Task { await self?.handleCallKitEnd(uuid) } }
         if isSignedIn { status = "Signed in as \(maskedPhone). Checking Server calls…"; startIncomingPolling() }
         if isSignedIn { Task { await loadNumberCallPreferences() } }
     }
@@ -381,7 +381,16 @@ final class ServerViewModel: ObservableObject {
                 update(route == "guest" ? "Guest invitation queued for SMS delivery. The recipient needs internet and microphone access." : "Calling another Server user…")
             }
             startCallPolling()
-        } catch { await endMedia(); callId = nil; guestInviteMessage = ""; update(error.localizedDescription, error: true) }
+        } catch {
+            if let failedID = callId {
+                _ = try? await api("end", body: ["call_id": failedID])
+                callKit.reportEnded(id: failedID, reason: .failed)
+            }
+            await endMedia()
+            callId = nil
+            guestInviteMessage = ""
+            update(error.localizedDescription, error: true)
+        }
     }
 
     func accept(_ incoming: IncomingCall) async {
@@ -396,7 +405,15 @@ final class ServerViewModel: ObservableObject {
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
             try await startMedia(servers: iceServers)
             update("Incoming call accepted. Negotiating audio…"); startCallPolling()
-        } catch { await endMedia(); callId = nil; update(error.localizedDescription, error: true) }
+        } catch {
+            if let failedID = callId {
+                _ = try? await api("end", body: ["call_id": failedID])
+                callKit.reportEnded(id: failedID, reason: .failed)
+            }
+            callId = nil
+            await endMedia()
+            update(error.localizedDescription, error: true)
+        }
     }
 
     func decline(_ id: String) async {
@@ -405,12 +422,50 @@ final class ServerViewModel: ObservableObject {
 
     private func declineFromSystem(_ incoming: IncomingCall) async {
         incomingCall = nil
-        do { _ = try await api("signal", body: ["call_id": incoming.id, "kind": "hangup", "payload": [:]]) } catch { }
+        do {
+            _ = try await api("signal", body: ["call_id": incoming.id, "kind": "hangup", "payload": [:]])
+        } catch {
+            update("Could not notify the caller that this call was declined.", error: true)
+        }
+        callKit.reportEnded(id: incoming.id, reason: .failed)
+    }
+
+    private func handleCallKitEnd(_ uuid: UUID) async {
+        if let incoming = incomingCall,
+           incoming.id.lowercased() == uuid.uuidString.lowercased() {
+            incomingCall = nil
+            do {
+                _ = try await api("signal", body: ["call_id": incoming.id, "kind": "hangup", "payload": [:]])
+                update("Incoming call declined.")
+            } catch {
+                update("CallKit ended the incoming call, but Server could not notify the caller.", error: true)
+            }
+            return
+        }
+        if let id = callId, id.lowercased() == uuid.uuidString.lowercased() {
+            await endCall()
+        }
+    }
+
+    private func callKitEndReason(for state: String) -> CXCallEndedReason {
+        switch state {
+        case "failed": return .failed
+        case "missed": return .unanswered
+        case "connecting", "active": return .answeredElsewhere
+        default: return .remoteEnded
+        }
     }
 
     func endCall() async {
-        if let id = callId { do { _ = try await api("end", body: ["call_id": id]) } catch { } }
-        callId = nil; pollingTask?.cancel(); pollingTask = nil; await endMedia(); update("Call ended.")
+        if let id = callId {
+            do { _ = try await api("end", body: ["call_id": id]) } catch { }
+            callKit.reportEnded(id: id, reason: .remoteEnded)
+        }
+        callId = nil
+        pollingTask?.cancel()
+        pollingTask = nil
+        await endMedia()
+        update("Call ended.")
     }
 
     func signOut() {
@@ -426,17 +481,52 @@ final class ServerViewModel: ObservableObject {
             while !Task.isCancelled && self.isSignedIn {
                 do {
                     let result = try await self.api("incoming", body: [:])
-                    if let rows = result["calls"] as? [[String: Any]], let first = rows.first,
-                       let id = first["id"] as? String, self.callId == nil {
+                    let rows = result["calls"] as? [[String: Any]] ?? []
+                    if self.callId == nil, let pending = self.incomingCall {
+                        await self.reconcilePendingIncoming(pending, rows: rows)
+                    }
+                    if self.callId == nil, self.incomingCall == nil,
+                       let first = rows.first(where: { ($0["state"] as? String) == "ringing" }),
+                       let id = first["id"] as? String {
                         let from = first["caller_server_id"] as? String ?? first["caller_phone_e164"] as? String ?? "Server user"
-                        if self.incomingCall?.id != id {
-                            self.incomingCall = IncomingCall(id: id, phone: from)
-                            try? await self.callKit.reportIncoming(id: id, handle: from)
-                        }
+                        self.incomingCall = IncomingCall(id: id, phone: from)
+                        try? await self.callKit.reportIncoming(id: id, handle: from)
                     }
                 } catch { /* keep polling; do not log tokens or request bodies */ }
                 try? await Task.sleep(for: .seconds(2))
             }
+        }
+    }
+
+    private func reconcilePendingIncoming(_ pending: IncomingCall, rows: [[String: Any]]) async {
+        if let row = rows.first(where: { ($0["id"] as? String) == pending.id }) {
+            let state = row["state"] as? String ?? "ringing"
+            if state == "connecting" || state == "active" {
+                callKit.reportEnded(id: pending.id, reason: .answeredElsewhere)
+                if incomingCall?.id == pending.id { incomingCall = nil }
+            }
+            return
+        }
+
+        do {
+            let result = try await api("poll", body: ["call_id": pending.id])
+            guard let call = result["call"] as? [String: Any] else {
+                callKit.reportEnded(id: pending.id, reason: .remoteEnded)
+                if incomingCall?.id == pending.id { incomingCall = nil }
+                return
+            }
+            let state = call["state"] as? String ?? "ringing"
+            switch state {
+            case "ringing":
+                return
+            case "connecting", "active", "ended", "failed", "missed":
+                callKit.reportEnded(id: pending.id, reason: callKitEndReason(for: state))
+                if incomingCall?.id == pending.id { incomingCall = nil }
+            default:
+                return
+            }
+        } catch {
+            // A transient poll failure must not dismiss a real incoming call.
         }
     }
 
@@ -455,7 +545,11 @@ final class ServerViewModel: ObservableObject {
                     self.afterSeq = max(self.afterSeq, result["next_after_seq"] as? Int ?? 0)
                     let state = (result["call"] as? [String: Any])?["state"] as? String ?? ""
                     if ["ended", "failed", "missed"].contains(state) {
-                        self.callId = nil; await self.endMedia(); self.update("Call ended."); break
+                        self.callKit.reportEnded(id: id, reason: self.callKitEndReason(for: state))
+                        self.callId = nil
+                        await self.endMedia()
+                        self.update("Call ended.")
+                        break
                     }
                 } catch { self.update(error.localizedDescription, error: true) }
                 try? await Task.sleep(for: .milliseconds(700))
@@ -475,7 +569,12 @@ final class ServerViewModel: ObservableObject {
         case "answer":
             try await rtc.setRemote(signal["payload"] as? [String: Any] ?? [:]); update("Call answered. Negotiating audio…")
         case "ice": try rtc.addIce(signal["payload"] as? [String: Any] ?? [:])
-        case "hangup": callId = nil; pollingTask?.cancel(); await endMedia(); update("The other person ended the call.")
+        case "hangup":
+            if let id = callId { callKit.reportEnded(id: id, reason: .remoteEnded) }
+            callId = nil
+            pollingTask?.cancel()
+            await endMedia()
+            update("The other person ended the call.")
         default: break
         }
     }
@@ -601,6 +700,12 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
                 if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: ()) }
             }
         }
+    }
+
+    func reportEnded(id: String, reason: CXCallEndedReason) {
+        guard let uuid = UUID(uuidString: id), handles[uuid] != nil else { return }
+        provider.reportCall(with: uuid, endedAt: Date(), reason: reason)
+        handles.removeValue(forKey: uuid)
     }
 
     func requestAnswer(id: String) async throws {
