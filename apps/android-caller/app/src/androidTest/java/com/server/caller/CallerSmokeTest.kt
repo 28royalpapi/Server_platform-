@@ -203,7 +203,9 @@ class CallerSmokeTest {
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
       ServerTelecomRegistry.register(context)
-      device.executeShellCommand("am force-stop " + context.packageName)
+      // Do not force-stop the target package from instrumentation cleanup: on
+      // Android this can kill the instrumentation process before JUnit reports
+      // the real call-picker assertion. Returning to Home is enough for cleanup.
       device.pressHome()
     }
   }
