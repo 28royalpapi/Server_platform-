@@ -105,7 +105,7 @@ assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActi
 assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallService"/);
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
-assert.match(androidSetup,/page = page\.replace\("<\\/body>", inlineScript/);
+assert.ok(androidSetup.includes('page = page.replace("</body>", inlineScript + "\\n</body>")'));
 assert.doesNotMatch(androidSetup,/target\.evaluateJavascript\(bundledJavaScript\)/);
 assert.match(androidSetup,/onPageFinished/);
 assert.match(androidSetup,/Register before opening system settings/);
