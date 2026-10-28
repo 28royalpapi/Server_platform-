@@ -177,6 +177,7 @@ class CallerSmokeTest {
     val previousPhone = prefs.getString("phone", null)
     val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
+    val previousDefaultOutgoing = telecom.getUserSelectedOutgoingPhoneAccount()
     val device = UiDevice.getInstance(instrumentation)
     var testAccountRegistered = false
 
@@ -205,6 +206,24 @@ class CallerSmokeTest {
       telecom.registerPhoneAccount(testAccount)
       testAccountRegistered = true
       ensureAccountEnabled(context, device, testHandle, "Test call provider (mock)")
+
+      // A preconfigured default SIM makes Google Phone place calls immediately and
+      // bypass its outgoing-account picker. In Telecom, clearing the user-selected
+      // default is the supported "Ask every time" state; CTS uses the same API
+      // under shell permission identity to establish this system-level test setup.
+      instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.MODIFY_PHONE_STATE)
+      try {
+        telecom.setUserSelectedOutgoingPhoneAccount(null)
+      } finally {
+        instrumentation.uiAutomation.dropShellPermissionIdentity()
+      }
+      assertEquals("The test setup must clear the saved outgoing-account default",
+        null, telecom.getUserSelectedOutgoingPhoneAccount())
+      assertEquals("Multiple enabled tel providers with Ask every time should have no selected default",
+        null, telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL))
+      val callCapableAccounts = telecom.callCapablePhoneAccounts
+      assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
+      assertTrue("The mock provider must be enabled to prove a real multi-provider picker", testHandle in callCapableAccounts)
 
       device.pressHome()
       context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+15550001001"))
@@ -247,6 +266,16 @@ class CallerSmokeTest {
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
       ServerTelecomRegistry.register(context)
+      // Restore the emulator's original user preference so this test does not
+      // leave the whole emulator in the "Ask every time" state.
+      try {
+        instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.MODIFY_PHONE_STATE)
+        telecom.setUserSelectedOutgoingPhoneAccount(previousDefaultOutgoing)
+      } catch (restoreError: Exception) {
+        Log.w("ServerUITest", "Could not restore the original outgoing-account preference: " + restoreError.javaClass.simpleName)
+      } finally {
+        try { instrumentation.uiAutomation.dropShellPermissionIdentity() } catch (_: Exception) {}
+      }
       // Do not force-stop the target package from instrumentation cleanup: on
       // Android this can kill the instrumentation process before JUnit reports
       // the real call-picker assertion. Returning to Home is enough for cleanup.

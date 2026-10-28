@@ -100,7 +100,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           pre-emulator-launch-script: |
-            set -euo pipefail
+            # This hook is launched by /bin/sh, not Bash; pipefail is not POSIX.
+            set -eu
             echo "ADB_PRESTART_START $(date -u +%FT%TZ)"
             adb start-server
             adb devices -l
