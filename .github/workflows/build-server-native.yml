@@ -106,7 +106,9 @@ jobs:
             adb start-server
             adb devices -l
             echo "HOST_ARCH=$(uname -m)"
-            "$ANDROID_HOME/emulator/emulator" -version
+            # Do not call emulator -version here: on Ubuntu images it probes the
+            # QEMU audio library and can return 127 even though emulator-runner
+            # successfully starts the headless emulator with -no-audio.
             echo "ADB_PRESTART_COMPLETE $(date -u +%FT%TZ)"
           script: |
             bash scripts/android-emulator-smoke.sh

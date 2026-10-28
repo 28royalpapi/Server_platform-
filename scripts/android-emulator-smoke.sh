@@ -72,7 +72,22 @@ cleanup_recorder() {
 }
 trap cleanup_recorder EXIT
 sleep 2
-adb shell am start -n com.server.caller.debug/com.server.caller.ServerSetupWebActivity
+# Resolve and open the actual launcher Activity for the debug applicationId.
+# The Activity class lives in the source package, but Android installs with the
+# ".debug" applicationId suffix, so an explicit component can fail with Error type 3.
+if ! $TIMEOUT_BIN 45s adb shell monkey -p com.server.caller.debug -c android.intent.category.LAUNCHER 1; then
+  adb logcat -d -t 800 > artifacts/server-setup-launch-logcat.txt 2>&1 || true
+  adb shell pm list packages | grep -E 'com\\.server\\.caller' > artifacts/server-installed-packages.txt || true
+  echo "Could not launch Server's actual website-onboarding launcher Activity." >&2
+  exit 1
+fi
+sleep 2
+adb shell dumpsys activity activities > artifacts/server-setup-launch-activities.txt 2>&1 || true
+if ! grep -Fq 'com.server.caller.debug' artifacts/server-setup-launch-activities.txt; then
+  adb logcat -d -t 800 > artifacts/server-setup-launch-logcat.txt 2>&1 || true
+  echo "Server website-onboarding Activity did not appear in the Android activity stack." >&2
+  exit 1
+fi
 wait "$REC_PID" || true
 trap - EXIT
 adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 >/dev/null
