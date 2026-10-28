@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
+import android.util.Log
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -18,6 +19,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
@@ -73,14 +75,43 @@ class CallerSmokeTest {
         assertEquals("The selected subscription must persist its real slot",
           activeSim.simSlotIndex, savedPrefs.getInt("selected_sim_slot", -1))
       }
-      val continueButton = device.wait(Until.findObject(By.textContains("Continue to calling permissions")), 10_000)
-      assertNotNull("SIM selection did not advance the web flow", continueButton)
+      val continueButton = findTextOnScrollableScreen(context, device, "Continue to calling permissions")
+      assertNotNull("SIM selection did not advance the web flow. See ServerUITest hierarchy in logcat.", continueButton)
       continueButton!!.click()
-      assertTrue("The website did not advance to the calling-permission step",
-        device.wait(Until.hasObject(By.textContains("Allow Server calling")), 10_000))
+      assertNotNull("The website did not advance to the calling-permission step",
+        findTextOnScrollableScreen(context, device, "Allow Server calling"))
       assertTrue("A custom number-entry dialer unexpectedly appeared",
         !device.hasObject(By.text("Call a number")))
     }
+  }
+
+  private fun findTextOnScrollableScreen(
+    context: Context,
+    device: UiDevice,
+    text: String,
+    exact: Boolean = false
+  ): androidx.test.uiautomator.UiObject2? {
+    fun find() = if (exact) device.findObject(By.text(text)) else device.findObject(By.textContains(text))
+    var result = find()
+    for (attempt in 0 until 8) {
+      if (result != null) return result
+      // System Settings and WebView pages may place a control below the visible
+      // viewport. Search every scroll position, then log the hierarchy on failure.
+      device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5,
+        device.displayWidth / 2, device.displayHeight / 3, 6)
+      Thread.sleep(300)
+      result = find()
+    }
+    if (result == null) {
+      try {
+        val hierarchy = File(context.cacheDir, "server-ui-hierarchy.txt")
+        device.dumpWindowHierarchy(hierarchy)
+        Log.e("ServerUITest", "Could not find [$text]; accessibility hierarchy:\n${hierarchy.readText()}")
+      } catch (e: Exception) {
+        Log.e("ServerUITest", "Could not capture UI hierarchy for [$text]: ${e.javaClass.simpleName}")
+      }
+    }
+    return result
   }
 
   private fun grantPhoneMetadataPermissions(context: Context) {
@@ -104,9 +135,9 @@ class CallerSmokeTest {
     if (accountEnabled(context, handle)) return
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    assertTrue("Android calling-account settings did not show $label",
-      device.wait(Until.hasObject(By.textContains(label)), 15_000))
-    device.findObject(By.text(label)).click()
+    val accountRow = findTextOnScrollableScreen(context, device, label)
+    assertNotNull("Android calling-account settings did not show $label. See ServerUITest hierarchy in logcat.", accountRow)
+    accountRow!!.click()
     val deadline = System.currentTimeMillis() + 10_000
     while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) {
       val toggle = device.findObject(By.clazz("android.widget.Switch"))

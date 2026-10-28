@@ -96,6 +96,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
           choice.classList.add("selected");
           continuePermissions.classList.remove("hidden");
           continuePermissions.disabled = false;
+          // Keep the next required step in view on narrow phone screens.
+          continuePermissions.scrollIntoView({ behavior: "smooth", block: "center" });
           showStatus(`Selected SIM ${sim.slot} · ${sim.carrier || "Unknown carrier"}.`, true);
         } catch {
           showStatus("Server could not save this SIM selection. Please try again.");
