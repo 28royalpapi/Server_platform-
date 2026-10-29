@@ -51,9 +51,29 @@ adb emu gsm data on >/dev/null 2>&1 || true
 adb emu phonenumber 15550001001 >/dev/null 2>&1 || true
 adb shell dumpsys isub > artifacts/server-emulator-subscriptions.txt 2>&1 || true
 
-echo "Running Server website onboarding and system calling-account Android instrumentation tests"
+echo "Starting full Android onboarding-to-system-dialer workflow recording"
+adb shell rm -f /sdcard/server-android-full-workflow.mp4 >/dev/null 2>&1 || true
+adb shell screenrecord --bit-rate 4000000 --time-limit 180 /sdcard/server-android-full-workflow.mp4 > artifacts/server-android-full-workflow-screenrecord.log 2>&1 &
+FULL_WORKFLOW_REC_PID=$!
+sleep 2
+
+echo "Running Server website onboarding, permission, contact-selection, and system calling-account Android instrumentation tests"
 TEST_STATUS=0
 $TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
+
+# Stop and preserve the video before handling test failure, so a red run still
+# gives us the actual screen flow that failed instead of only a report.
+kill -INT "$FULL_WORKFLOW_REC_PID" >/dev/null 2>&1 || true
+wait "$FULL_WORKFLOW_REC_PID" >/dev/null 2>&1 || true
+if ! $TIMEOUT_BIN 30s adb pull /sdcard/server-android-full-workflow.mp4 artifacts/server-android-full-workflow.mp4; then
+  echo "ERROR: full emulator workflow recording could not be retrieved." >&2
+  TEST_STATUS=1
+fi
+if [[ -f artifacts/server-android-full-workflow.mp4 ]]; then
+  echo "ANDROID_WORKFLOW_VIDEO_CAPTURED: artifacts/server-android-full-workflow.mp4"
+  ls -lh artifacts/server-android-full-workflow.mp4
+fi
+
 # Preserve Android diagnostics if an acceptance assertion fails.
 adb logcat -d -t 12000 > artifacts/server-android-tests-logcat.txt 2>&1 || true
 adb shell dumpsys telecom > artifacts/server-android-tests-telecom.txt 2>&1 || true
