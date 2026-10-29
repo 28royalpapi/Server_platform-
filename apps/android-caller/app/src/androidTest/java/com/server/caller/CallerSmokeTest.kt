@@ -14,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -63,7 +64,11 @@ class CallerSmokeTest {
       val visibleLabel = if (activeSim == null) "Emulator test SIM" else "SIM " + expectedSlot + " ·"
       val simChoice = device.wait(Until.findObject(By.textContains(visibleLabel)), 12_000)
       assertNotNull("The website did not render an active SIM or labelled emulator test SIM", simChoice)
-      simChoice!!.click()
+      // WebView rerenders the SIM list immediately after it handles a native-bridge
+      // event. UiObject2 can become stale between lookup and click, so always query
+      // a fresh accessibility node and retry this interaction if that race occurs.
+      assertTrue("The SIM option became stale while onboarding refreshed its list",
+        clickTextWithRetry(device, visibleLabel))
 
       val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
       assertEquals("Selecting a SIM in the website must persist its selected subscription id",
@@ -105,6 +110,31 @@ class CallerSmokeTest {
     } finally {
       ServerTelecomRegistry.markEnded(callId)
     }
+  }
+
+  private fun clickTextWithRetry(
+    device: UiDevice,
+    text: String,
+    exact: Boolean = false,
+    timeoutMs: Long = 5000L
+  ): Boolean {
+    val selector = if (exact) By.text(text) else By.textContains(text)
+    val deadline = System.currentTimeMillis() + timeoutMs
+    while (System.currentTimeMillis() < deadline) {
+      val candidate = device.findObject(selector)
+      if (candidate == null) {
+        Thread.sleep(100)
+        continue
+      }
+      try {
+        candidate.click()
+        return true
+      } catch (_: StaleObjectException) {
+        // A new WebView accessibility tree is being published; re-query below.
+        Thread.sleep(120)
+      }
+    }
+    return false
   }
 
   private fun findTextOnScrollableScreen(
