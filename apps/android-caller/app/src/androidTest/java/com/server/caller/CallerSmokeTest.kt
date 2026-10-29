@@ -102,10 +102,46 @@ class CallerSmokeTest {
 
     try {
       assertEquals("A newly reported incoming call should ring", Connection.STATE_RINGING, connection.state)
-      ServerTelecomRegistry.reconcileIncoming(setOf(callId))
+      ServerTelecomRegistry.reconcileIncoming(mapOf(callId to "ringing"))
       assertEquals("A call still present in the backend must keep ringing", Connection.STATE_RINGING, connection.state)
-      ServerTelecomRegistry.reconcileIncoming(emptySet())
+      ServerTelecomRegistry.reconcileIncoming(emptyMap())
       assertEquals("A vanished unanswered backend call must clear the system ringing connection",
+        Connection.STATE_DISCONNECTED, connection.state)
+    } finally {
+      ServerTelecomRegistry.markEnded(callId)
+    }
+  }
+
+  @Test fun ringingConnectionIsClearedWhenBackendSaysCallWasAnsweredElsewhere() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val callId = "smoke-" + UUID.randomUUID().toString()
+    val connection = ServerTelecomConnection(context)
+    connection.setExtras(Bundle().apply { putString("server_call_id", callId) })
+    connection.setRinging()
+    ServerTelecomRegistry.attach(connection, callId)
+
+    try {
+      ServerTelecomRegistry.reconcileIncoming(mapOf(callId to "connecting"))
+      assertEquals("A ring answered elsewhere must leave the local incoming UI",
+        Connection.STATE_DISCONNECTED, connection.state)
+    } finally {
+      ServerTelecomRegistry.markEnded(callId)
+    }
+  }
+
+  @Test fun activeTelecomCallIsRetainedUntilBackendEndsIt() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val callId = "smoke-" + UUID.randomUUID().toString()
+    val connection = ServerTelecomConnection(context)
+    connection.setExtras(Bundle().apply { putString("server_call_id", callId) })
+    connection.setActive()
+    ServerTelecomRegistry.attach(connection, callId)
+
+    try {
+      ServerTelecomRegistry.reconcileIncoming(mapOf(callId to "active"))
+      assertEquals("An active backend call must keep its Telecom connection", Connection.STATE_ACTIVE, connection.state)
+      ServerTelecomRegistry.reconcileIncoming(emptyMap())
+      assertEquals("A finished backend call must disconnect even an already active Telecom connection",
         Connection.STATE_DISCONNECTED, connection.state)
     } finally {
       ServerTelecomRegistry.markEnded(callId)

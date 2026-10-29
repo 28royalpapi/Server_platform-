@@ -113,7 +113,7 @@ Deno.serve(async(req:Request)=>{
   return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call});
  }
  if(action==="incoming"){
-   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
+   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","active"]).order("created_at",{ascending:false}).limit(20);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
    const {data:profiles}=ids.length?await db.from("server_profiles").select("user_id,phone_e164,server_id").in("user_id",ids):{data:[]};

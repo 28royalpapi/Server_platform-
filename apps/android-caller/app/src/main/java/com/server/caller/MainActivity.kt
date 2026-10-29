@@ -742,6 +742,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         val calls = result.optJSONArray("calls") ?: JSONArray()
         for (i in 0 until calls.length()) {
           val call = calls.optJSONObject(i) ?: continue
+          if (call.optString("state") != "ringing") continue
           val id = call.optString("id")
           if (id.isNotBlank() && id !in shownIncoming && id != callId) {
             shownIncoming.add(id)

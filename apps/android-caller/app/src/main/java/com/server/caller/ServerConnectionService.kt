@@ -108,15 +108,17 @@ object ServerTelecomRegistry {
   }
 
   /**
-   * A backend call that was ringing but disappears from the authoritative incoming
-   * list has ended or was answered elsewhere. Clear only still-ringing Telecom
-   * connections; an answered call must remain connected while media negotiation runs.
+   * Reconcile Telecom call lifecycles against the backend's authoritative incoming
+   * call states. Ringing connections disappear when the call was answered elsewhere
+   * or is no longer ringing; answered connections remain until the backend drops them.
    */
-  fun reconcileIncoming(liveCallIds: Set<String>) {
+  fun reconcileIncoming(incomingCallStates: Map<String, String>) {
     incomingConnections.entries.toList().forEach { (callId, connection) ->
-      if (callId !in liveCallIds &&
-          connection.state == Connection.STATE_RINGING &&
-          incomingConnections.remove(callId, connection)) {
+      val backendState = incomingCallStates[callId]
+      val ended = backendState == null
+      val answeredElsewhere = connection.state == Connection.STATE_RINGING &&
+        backendState != null && backendState != "ringing"
+      if ((ended || answeredElsewhere) && incomingConnections.remove(callId, connection)) {
         connection.markRemoteEnded()
       }
     }

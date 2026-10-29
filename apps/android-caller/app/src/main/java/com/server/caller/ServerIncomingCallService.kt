@@ -85,12 +85,19 @@ class ServerIncomingCallService : Service() {
         val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
         val rows = result.optJSONArray("calls")
         if (rows != null) {
-          val liveCallIds = mutableSetOf<String>()
+          val incomingCallStates = linkedMapOf<String, String>()
           for (i in 0 until rows.length()) {
             val row = rows.optJSONObject(i) ?: continue
             val callId = row.optString("id")
             if (callId.isBlank()) continue
-            liveCallIds.add(callId)
+            val state = row.optString("state")
+            incomingCallStates[callId] = state
+
+            // A call that this device did not previously report should only be
+            // presented as an incoming ring while the backend still says ringing.
+            // "connecting" may mean it was answered on another device; "active"
+            // keeps an already answered Telecom connection alive until hangup.
+            if (state != "ringing") continue
             val reported = prefs.getStringSet(KEY_REPORTED_IDS, emptySet()).orEmpty()
             if (callId in reported) continue
 
@@ -106,8 +113,8 @@ class ServerIncomingCallService : Service() {
             }
           }
           // Reconcile only after a successful authoritative response. A transient
-          // network error must not dismiss calls that are still ringing.
-          ServerTelecomRegistry.reconcileIncoming(liveCallIds)
+          // network error must not dismiss calls that are still ringing or active.
+          ServerTelecomRegistry.reconcileIncoming(incomingCallStates)
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
