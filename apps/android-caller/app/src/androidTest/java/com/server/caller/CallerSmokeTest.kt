@@ -30,10 +30,8 @@ class CallerSmokeTest {
   @Test fun launcherOpensWebsiteOnboardingInsteadOfCustomDialer() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    // Start from a clean permission state so the screen recording captures
-    // Android's real runtime permission prompt, not a silently pre-granted permission.
-    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
-    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
+    // Permissions are reset by ADB before instrumentation starts. Revoking them
+    // through UiAutomation inside a running test can terminate the instrumentation UID.
     context.getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
       .putBoolean("server_open_dialer_after_account_enable", false)
       .remove("selected_sim_subscription_id")
