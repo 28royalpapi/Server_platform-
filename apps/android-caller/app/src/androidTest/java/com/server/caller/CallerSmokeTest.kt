@@ -30,75 +30,104 @@ class CallerSmokeTest {
   @Test fun launcherOpensWebsiteOnboardingInsteadOfCustomDialer() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    // Permissions are reset by ADB before instrumentation starts. Revoking them
-    // through UiAutomation inside a running test can terminate the instrumentation UID.
     context.getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
       .putBoolean("server_open_dialer_after_account_enable", false)
-      .remove("selected_sim_subscription_id")
-      .remove("selected_sim_slot")
-      .remove("selected_sim_carrier")
-      .remove("selected_sim_phone")
-      .commit()
+      .remove("selected_sim_subscription_id").remove("selected_sim_slot")
+      .remove("selected_sim_carrier").remove("selected_sim_phone")
+      .remove("server_phone_number_linked").remove("server_linked_phone")
+      .remove("allow_number_based_server_calls").remove("server_id")
+      .remove("access_token").remove("access_expiry").commit()
+
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     assertNotNull("Server does not expose a launcher entry", launchIntent)
-    assertEquals("The launcher must open the website onboarding bridge",
-      ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
+    assertEquals("Server launcher entry changed", ServerSetupWebActivity::class.java.name,
+      launchIntent!!.component?.className)
 
-    ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
-      val device = UiDevice.getInstance(instrumentation)
-      assertTrue("Website onboarding brand is not visible",
-        device.wait(Until.hasObject(By.text("server")), 20_000))
-      assertTrue("SIM-first web onboarding step is not visible",
-        device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
-      val detectButton = device.wait(Until.findObject(By.textContains("Allow SIM access and detect SIMs")), 10_000)
-      assertNotNull("SIM permission/detection button is not visible", detectButton)
-      detectButton!!.click()
-      var sawAndroidPermissionPrompt = false
-      repeat(3) {
-        val allowButton = device.wait(Until.findObject(By.text("Allow")), 2500)
-        if (allowButton != null) {
-          sawAndroidPermissionPrompt = true
-          allowButton.click()
-          Thread.sleep(450)
-        }
-      }
-      assertTrue("The emulator must show Android's actual SIM permission prompt", sawAndroidPermissionPrompt)
-
-      val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
-      val activeSim = try {
-        subscriptionManager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex }.firstOrNull()
-      } catch (_: Exception) { null }
-      val expectedId = activeSim?.subscriptionId ?: -1001
-      val expectedSlot = activeSim?.simSlotIndex?.takeIf { it >= 0 }?.plus(1) ?: 1
-      val visibleLabel = if (activeSim == null) "Emulator test SIM" else "SIM " + expectedSlot + " ·"
-      val simChoice = device.wait(Until.findObject(By.textContains(visibleLabel)), 12_000)
-      assertNotNull("The website did not render an active SIM or labelled emulator test SIM", simChoice)
-      // WebView rerenders the SIM list immediately after it handles a native-bridge
-      // event. UiObject2 can become stale between lookup and click, so always query
-      // a fresh accessibility node and retry this interaction if that race occurs.
-      assertTrue("The SIM option became stale while onboarding refreshed its list",
-        clickTextWithRetry(device, visibleLabel))
-
-      val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-      assertEquals("Selecting a SIM in the website must persist its selected subscription id",
-        expectedId, savedPrefs.getInt("selected_sim_subscription_id", -1))
-      assertTrue("The website did not update its visible selection status",
-        device.wait(Until.hasObject(By.textContains("Selected SIM")), 5_000))
-      if (activeSim == null) {
-        assertEquals("The emulator fixture must be labelled as a mock rather than a carrier line",
-          "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
-      } else {
-        assertEquals("The selected subscription must persist its real slot",
-          activeSim.simSlotIndex, savedPrefs.getInt("selected_sim_slot", -1))
-      }
-      val continueButton = findTextOnScrollableScreen(context, device, "Continue to calling permissions")
-      assertNotNull("SIM selection did not advance the web flow. See ServerUITest hierarchy in logcat.", continueButton)
-      continueButton!!.click()
-      assertNotNull("The website did not advance to the calling-permission step",
-        findTextOnScrollableScreen(context, device, "Allow Server calling"))
-      assertTrue("A custom number-entry dialer unexpectedly appeared",
-        !device.hasObject(By.text("Call a number")))
+    val device = UiDevice.getInstance(instrumentation)
+    context.startActivity(launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    assertTrue("The launcher must open Chrome", device.wait(Until.hasObject(By.pkg("com.android.chrome")), 30_000))
+    val firstRunDeadline = System.currentTimeMillis() + 25_000
+    while (System.currentTimeMillis() < firstRunDeadline &&
+      !device.hasObject(By.textContains("Choose on your phone"))) {
+      val choice = listOf("Accept & continue", "Use without an account", "No thanks",
+        "Continue without an account").asSequence().mapNotNull { device.findObject(By.text(it)) }.firstOrNull()
+      if (choice != null) { try { choice.click() } catch (_: StaleObjectException) {}; Thread.sleep(300) }
+      else Thread.sleep(200)
     }
+    assertTrue("Chrome did not display the deployed Vercel onboarding website",
+      device.wait(Until.hasObject(By.textContains("Choose on your phone")), 20_000))
+    assertEquals("The deployed onboarding page must be visible in Chrome", "com.android.chrome", device.currentPackageName)
+
+    val cta = device.wait(Until.findObject(By.textContains("Continue setup on this phone")), 12_000)
+    assertNotNull("The Vercel site must expose the native setup handoff", cta)
+    cta!!.click()
+    var nativeVisible = device.wait(Until.hasObject(By.textContains("Choose your SIM")), 5_000)
+    if (!nativeVisible) {
+      (device.wait(Until.findObject(By.text("Open")), 2_000)
+        ?: device.wait(Until.findObject(By.text("Open in Server")), 1_000))?.click()
+      nativeVisible = device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000)
+    }
+    assertTrue("Chrome's server://sim-setup link did not open the native SIM permissions bridge", nativeVisible)
+
+    val detect = device.wait(Until.findObject(By.textContains("Allow SIM access and detect SIMs")), 10_000)
+    assertNotNull("The SIM access action is missing from onboarding", detect)
+    detect!!.click()
+    var sawSimPermission = false
+    repeat(3) {
+      val choices = listOf("While using the app", "Allow only while using the app", "Only this time", "Allow")
+      val deadline = System.currentTimeMillis() + 2_500
+      while (System.currentTimeMillis() < deadline) {
+        val option = choices.asSequence().mapNotNull { device.findObject(By.text(it)) }.firstOrNull()
+        if (option != null) { try { option.click(); sawSimPermission = true } catch (_: StaleObjectException) {}; Thread.sleep(350); break }
+        Thread.sleep(100)
+      }
+    }
+    assertTrue("The emulator did not show Android's real SIM permission prompt", sawSimPermission)
+
+    val subManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
+    val activeSim = try { subManager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex }.firstOrNull() } catch (_: Exception) { null }
+    val expectedId = activeSim?.subscriptionId ?: -1001
+    val visibleLabel = if (activeSim == null) "Emulator test SIM" else "SIM " + (activeSim.simSlotIndex + 1) + " ·"
+    assertNotNull("The SIM choice is absent", device.wait(Until.findObject(By.textContains(visibleLabel)), 12_000))
+    assertTrue("The selected SIM option became stale", clickTextWithRetry(device, visibleLabel))
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    assertEquals("SIM selection must persist", expectedId, prefs.getInt("selected_sim_subscription_id", -1))
+    assertTrue("The website must confirm the selected SIM", device.wait(Until.hasObject(By.textContains("Selected SIM")), 5_000))
+
+    val continuePermissions = findTextOnScrollableScreen(context, device, "Continue to calling permissions")
+    assertNotNull("The onboarding page did not advance to calling permissions", continuePermissions)
+    continuePermissions!!.click()
+    val legal = findTextOnScrollableScreen(context, device, "I accept the Terms of Service")
+    assertNotNull("Legal acceptance checkbox is missing", legal)
+    legal!!.click()
+    val grantCalls = findTextOnScrollableScreen(context, device, "Create Server identity and grant permissions")
+    assertNotNull("Calling permissions action is missing", grantCalls)
+    grantCalls!!.click()
+
+    var sawCallingPermission = false
+    repeat(4) {
+      val choices = listOf("While using the app", "Allow only while using the app", "Only this time", "Allow")
+      val deadline = System.currentTimeMillis() + 5_000
+      while (System.currentTimeMillis() < deadline) {
+        val option = choices.asSequence().mapNotNull { device.findObject(By.text(it)) }.firstOrNull()
+        if (option != null) { try { option.click(); sawCallingPermission = true } catch (_: StaleObjectException) {}; Thread.sleep(350); break }
+        Thread.sleep(100)
+      }
+    }
+    assertTrue("Android did not show microphone/notification permission dialogs", sawCallingPermission)
+    assertTrue("The backend did not create a real Server identity",
+      device.wait(Until.hasObject(By.textContains("Your Server ID:")), 45_000))
+    val skipLink = findTextOnScrollableScreen(context, device, "Skip number verification")
+    assertNotNull("Skipping SMS number verification must be available", skipLink)
+    skipLink!!.click()
+
+    ensureAccountEnabled(context, device, ServerTelecomRegistry.handle(context), "Server")
+    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+    val defaultDialer = telecom.defaultDialerPackage
+    assertNotNull("Android does not expose its default phone dialer", defaultDialer)
+    val deadline = System.currentTimeMillis() + 15_000
+    while (System.currentTimeMillis() < deadline && device.currentPackageName != defaultDialer) Thread.sleep(200)
+    assertEquals("Enabling Server must return onboarding to the normal phone dialer", defaultDialer, device.currentPackageName)
   }
 
   @Test fun vanishedUnansweredIncomingCallIsDisconnectedFromSystemTelecom() {
