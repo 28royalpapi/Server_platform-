@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.ContactsContract
 import android.telecom.Connection
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
@@ -29,10 +30,10 @@ class CallerSmokeTest {
   @Test fun launcherOpensWebsiteOnboardingInsteadOfCustomDialer() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    // Explicitly grant SIM metadata access in the emulator so the test can
-    // cover the selection path after permissions, not stop at the permission gate.
-    try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
-    try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
+    // Start from a clean permission state so the screen recording captures
+    // Android's real runtime permission prompt, not a silently pre-granted permission.
+    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
+    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
     context.getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
       .putBoolean("server_open_dialer_after_account_enable", false)
       .remove("selected_sim_subscription_id")
@@ -54,6 +55,16 @@ class CallerSmokeTest {
       val detectButton = device.wait(Until.findObject(By.textContains("Allow SIM access and detect SIMs")), 10_000)
       assertNotNull("SIM permission/detection button is not visible", detectButton)
       detectButton!!.click()
+      var sawAndroidPermissionPrompt = false
+      repeat(3) {
+        val allowButton = device.wait(Until.findObject(By.text("Allow")), 2500)
+        if (allowButton != null) {
+          sawAndroidPermissionPrompt = true
+          allowButton.click()
+          Thread.sleep(450)
+        }
+      }
+      assertTrue("The emulator must show Android's actual SIM permission prompt", sawAndroidPermissionPrompt)
 
       val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
       val activeSim = try {
@@ -109,6 +120,33 @@ class CallerSmokeTest {
         Connection.STATE_DISCONNECTED, connection.state)
     } finally {
       ServerTelecomRegistry.markEnded(callId)
+    }
+  }
+
+  private fun insertDemoContact(context: Context, displayName: String, phone: String) {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.WRITE_CONTACTS)
+    try {
+      val operations = arrayListOf<android.content.ContentProviderOperation>()
+      val rawContact = operations.size
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+        .build())
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
+        .build())
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
+        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+        .build())
+      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
+    } finally {
+      instrumentation.uiAutomation.dropShellPermissionIdentity()
     }
   }
 
@@ -276,16 +314,25 @@ class CallerSmokeTest {
       assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
       assertTrue("The mock provider must be enabled to prove a real multi-provider picker", testHandle in callCapableAccounts)
 
+      // Create a clearly fake emulator contact and select it through the system
+      // Contacts UI, matching the user's real dialer -> contact -> Server flow.
+      insertDemoContact(context, "Server Demo Contact", "+15550001001")
       device.pressHome()
-      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+15550001001"))
+      context.startActivity(Intent(Intent.ACTION_VIEW, ContactsContract.Contacts.CONTENT_URI)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      val demoContact = device.wait(Until.findObject(By.text("Server Demo Contact")), 15_000)
+      assertNotNull("The Android Contacts app did not show the emulator's Server Demo Contact", demoContact)
+      demoContact!!.click()
 
-      // Exercise the handset’s bundled Phone UI, not TelecomManager.placeCall from
-      // instrumentation, so this test checks the user-visible outgoing-call path.
-      val callButton = device.wait(Until.findObject(By.descContains("Call")), 12_000)
-        ?: device.wait(Until.findObject(By.text("Call")), 2_000)
-      assertNotNull("The preinstalled Phone app did not expose its Call action for a tel: URI", callButton)
-      callButton!!.click()
+      val numberRow = device.wait(Until.findObject(By.textContains("555")), 10_000)
+      assertNotNull("The selected contact's phone number was not visible in Contacts", numberRow)
+      numberRow!!.click()
+
+      // Some Contacts versions open the dialer with the number populated; in
+      // others the number row proceeds directly to the system outgoing-call flow.
+      val callButton = device.wait(Until.findObject(By.descContains("Call")), 6_000)
+        ?: device.wait(Until.findObject(By.text("Call")), 1_500)
+      if (callButton != null) callButton.click()
 
       val chooserDeadline = System.currentTimeMillis() + 15_000
       var serverChoice: androidx.test.uiautomator.UiObject2? = null
