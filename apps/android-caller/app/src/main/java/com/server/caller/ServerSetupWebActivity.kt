@@ -299,7 +299,7 @@ class ServerSetupWebActivity : Activity() {
         .putInt("selected_sim_slot", 0)
         .putString("selected_sim_carrier", "Emulator test SIM (not a real line)")
         .putString("selected_sim_phone", "+15550001001")
-        .apply()
+        .commit()
       return true
     }
     @Suppress("DEPRECATION", "MissingPermission")
@@ -316,7 +316,7 @@ class ServerSetupWebActivity : Activity() {
       .putInt("selected_sim_slot", slot)
       .putString("selected_sim_carrier", carrier)
       .putString("selected_sim_phone", phone)
-      .apply()
+      .commit()
     return true
   }
 
