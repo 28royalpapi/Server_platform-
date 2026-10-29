@@ -941,7 +941,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     activeStateSyncedFor = null
     try { peer?.close() } catch (_: Exception) {}
     peer = null; audioTrack = null; pendingIce.clear()
-    ServerTelecomRegistry.markEnded()
+    ServerTelecomRegistry.markEnded(callId)
     try { audioSource?.dispose() } catch (_: Exception) {}
     audioSource = null
     try { peerFactory?.dispose() } catch (_: Exception) {}
@@ -968,7 +968,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     runOnUiThread {
       when (state) {
         PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
-          ServerTelecomRegistry.markConnected(connectedId)
+          ServerTelecomRegistry.markConnected(callId)
           setStatus("Audio connection established.")
           val connectedId = callId
           if (connectedId != null && activeStateSyncedFor != connectedId) {
