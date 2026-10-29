@@ -69,6 +69,29 @@ class ServerSetupWebActivity : Activity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+
+    // First launch deliberately opens the deployed website in Chrome. The website's
+    // own "Continue setup" action then deep-links back here for SIM and Telecom APIs.
+    if (intent?.action == Intent.ACTION_MAIN) {
+      val website = Uri.parse(ONBOARDING_URL)
+      val openedBrowser = try {
+        startActivity(Intent(Intent.ACTION_VIEW, website).setPackage("com.android.chrome"))
+        true
+      } catch (_: Exception) {
+        try {
+          startActivity(Intent(Intent.ACTION_VIEW, website))
+          true
+        } catch (error: Exception) {
+          Log.e("ServerOnboardingWeb", "No browser is available for deployed onboarding.", error)
+          false
+        }
+      }
+      if (openedBrowser) {
+        finish()
+        return
+      }
+    }
+
     web = WebView(this).apply {
       settings.javaScriptEnabled = true
       settings.domStorageEnabled = true
@@ -550,6 +573,7 @@ class ServerSetupWebActivity : Activity() {
       Build.PRODUCT.contains("sdk", ignoreCase = true)
 
   companion object {
+    private const val ONBOARDING_URL = "https://server-onboarding-ochre.vercel.app/"
     private const val HOST = "server-onboarding-ochre.vercel.app"
     private const val REQUEST_SIM = 5101
     private const val REQUEST_CALL = 5102
