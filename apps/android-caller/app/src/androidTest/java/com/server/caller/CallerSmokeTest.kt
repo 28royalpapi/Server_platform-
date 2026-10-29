@@ -6,7 +6,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.telecom.Connection
-import android.os.Bundle
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import android.util.Log
