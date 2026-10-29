@@ -136,6 +136,8 @@ assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/Intent\.ACTION_DIAL/);
+assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
+assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
 assert.doesNotMatch(androidTelecom,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
 assert.match(iosView,/model.handleAppHandoff/);

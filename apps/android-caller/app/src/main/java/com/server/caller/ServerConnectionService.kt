@@ -17,6 +17,8 @@ import android.telecom.TelecomManager
 object ServerTelecomRegistry {
   private const val ACCOUNT_ID = "server-internet-calling"
   @Volatile private var currentConnection: ServerTelecomConnection? = null
+  @Volatile private var currentConnectionCallId: String? = null
+  private val incomingConnections = java.util.concurrent.ConcurrentHashMap<String, ServerTelecomConnection>()
 
   fun handle(context: Context): PhoneAccountHandle = PhoneAccountHandle(
     ComponentName(context, ServerConnectionService::class.java), ACCOUNT_ID
@@ -65,16 +67,72 @@ object ServerTelecomRegistry {
     context.startActivity(intent)
   }
 
-  internal fun attach(connection: ServerTelecomConnection) { currentConnection = connection }
-  fun markConnected() { currentConnection?.markConnected() }
-  fun markEnded() { currentConnection?.markEnded(); currentConnection = null }
+  internal fun attach(connection: ServerTelecomConnection, callId: String? = null) {
+    if (!callId.isNullOrBlank()) {
+      incomingConnections[callId] = connection
+    } else {
+      currentConnection = connection
+      currentConnectionCallId = null
+    }
+  }
 
-  fun reportIncoming(context: Context, callId: String, phone: String) {
+  internal fun detach(connection: ServerTelecomConnection) {
+    if (currentConnection === connection) {
+      currentConnection = null
+      currentConnectionCallId = null
+    }
+    incomingConnections.entries.removeIf { it.value === connection }
+  }
+
+  fun setCurrentCallId(callId: String?) {
+    currentConnectionCallId = callId
+  }
+
+  fun markConnected(callId: String? = null) {
+    if (!callId.isNullOrBlank()) {
+      incomingConnections[callId]?.let { it.markConnected(); return }
+      if (currentConnectionCallId != callId) return
+    }
+    currentConnection?.markConnected()
+  }
+
+  fun markEnded(callId: String? = null) {
+    if (!callId.isNullOrBlank()) {
+      incomingConnections.remove(callId)?.let { it.markEnded(); return }
+      if (currentConnectionCallId != callId) return
+    }
+    val connection = currentConnection
+    currentConnection = null
+    currentConnectionCallId = null
+    connection?.markEnded()
+  }
+
+  /**
+   * A backend call that was ringing but disappears from the authoritative incoming
+   * list has ended or was answered elsewhere. Clear only still-ringing Telecom
+   * connections; an answered call must remain connected while media negotiation runs.
+   */
+  fun reconcileIncoming(liveCallIds: Set<String>) {
+    incomingConnections.entries.toList().forEach { (callId, connection) ->
+      if (callId !in liveCallIds &&
+          connection.state == Connection.STATE_RINGING &&
+          incomingConnections.remove(callId, connection)) {
+        connection.markRemoteEnded()
+      }
+    }
+  }
+
+  fun reportIncoming(context: Context, callId: String, callerIdentity: String) {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val extras = Bundle().apply {
-      putParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, Uri.parse("tel:$phone"))
       putString("server_call_id", callId)
-      putString("server_remote_phone", phone)
+      putString("server_caller_id", callerIdentity.take(80))
+      // A Server ID is not a telephone number. Only attach a tel: address when
+      // the backend supplied a valid E.164 number; never create tel:SVR-... URIs.
+      if (callerIdentity.matches(Regex("^\\+[1-9][0-9]{7,14}$"))) {
+        putParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, Uri.parse("tel:$callerIdentity"))
+        putString("server_remote_phone", callerIdentity)
+      }
     }
     telecom.addNewIncomingCall(handle(context), extras)
   }
@@ -99,17 +157,29 @@ class ServerConnectionService : ConnectionService() {
 
   override fun onCreateIncomingConnection(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest): Connection {
     val extras = request.extras ?: Bundle()
-    val phone = extras.getString("server_remote_phone") ?: request.address?.schemeSpecificPart.orEmpty()
+    val requestPhone = request.address?.schemeSpecificPart.orEmpty()
+    val phone = (extras.getString("server_remote_phone") ?: requestPhone)
+      .takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }.orEmpty()
+    val callerIdentity = extras.getString("server_caller_id").orEmpty()
+      .ifBlank { phone.ifBlank { "Server caller" } }
     val callId = extras.getString("server_call_id").orEmpty()
+    val address = phone.takeIf { it.isNotBlank() }?.let { Uri.parse("tel:$it") }
     return ServerTelecomConnection(this).apply {
-      setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
-      setCallerDisplayName(if (phone.isBlank()) "Server caller" else phone, TelecomManager.PRESENTATION_ALLOWED)
+      setAddress(address, if (address != null) TelecomManager.PRESENTATION_ALLOWED else TelecomManager.PRESENTATION_UNKNOWN)
+      setCallerDisplayName(callerIdentity, TelecomManager.PRESENTATION_ALLOWED)
       setAudioModeIsVoip(true)
-      setExtras(Bundle().apply { putString("server_call_id", callId); putString("server_remote_phone", phone) })
+      setExtras(Bundle().apply {
+        putString("server_call_id", callId)
+        putString("server_caller_id", callerIdentity)
+        if (phone.isNotBlank()) putString("server_remote_phone", phone)
+      })
       setRinging()
-      ServerTelecomRegistry.attach(this)
+      ServerTelecomRegistry.attach(this, callId)
       ServerTelecomRegistry.openApp(this@ServerConnectionService, Bundle().apply {
-        putString("server_action", "incoming"); putString("server_call_id", callId); putString("server_remote_phone", phone)
+        putString("server_action", "incoming")
+        putString("server_call_id", callId)
+        putString("server_caller_id", callerIdentity)
+        if (phone.isNotBlank()) putString("server_remote_phone", phone)
       })
     }
   }
@@ -124,12 +194,15 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
     ServerTelecomRegistry.openApp(app, Bundle().apply {
       putString("server_action", "answer")
       putString("server_call_id", extras?.getString("server_call_id").orEmpty())
+      putString("server_caller_id", extras?.getString("server_caller_id").orEmpty())
       putString("server_remote_phone", address?.schemeSpecificPart.orEmpty())
     })
   }
 
   override fun onReject() {
-    setDisconnected(DisconnectCause(DisconnectCause.REJECTED)); destroy()
+    setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
+    ServerTelecomRegistry.detach(this)
+    destroy()
     ServerTelecomRegistry.openApp(app, Bundle().apply {
       putString("server_action", "decline")
       putString("server_call_id", extras?.getString("server_call_id").orEmpty())
@@ -137,7 +210,9 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   }
 
   override fun onDisconnect() {
-    setDisconnected(DisconnectCause(DisconnectCause.LOCAL)); destroy()
+    setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
+    ServerTelecomRegistry.detach(this)
+    destroy()
     ServerTelecomRegistry.openApp(app, Bundle().apply {
       putString("server_action", "hangup")
       putString("server_call_id", extras?.getString("server_call_id").orEmpty())
@@ -145,5 +220,16 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   }
 
   fun markConnected() { setActive() }
-  fun markEnded() { setDisconnected(DisconnectCause(DisconnectCause.LOCAL)); destroy() }
+
+  fun markEnded() {
+    setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
+    ServerTelecomRegistry.detach(this)
+    destroy()
+  }
+
+  fun markRemoteEnded() {
+    setDisconnected(DisconnectCause(DisconnectCause.REMOTE))
+    ServerTelecomRegistry.detach(this)
+    destroy()
+  }
 }

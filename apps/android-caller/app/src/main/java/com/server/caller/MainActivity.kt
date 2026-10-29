@@ -389,7 +389,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       }
       "incoming" -> {
         val id = intent.getStringExtra("server_call_id").orEmpty()
-        val phone = intent.getStringExtra("server_remote_phone") ?: "Server caller"
+        val phone = intent.getStringExtra("server_remote_phone")
+          ?: intent.getStringExtra("server_caller_id") ?: "Server caller"
         if (id.isNotBlank()) { shownIncoming.add(id); setStatus("Incoming Server from ${mask(phone)}. Answer or decline using the phone app's calling UI.") }
       }
       "answer" -> {
@@ -704,7 +705,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callButton.isEnabled = false
     try {
       val started = api("start", payload)
-      callId = started.getString("call_id"); activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
+      callId = started.getString("call_id"); ServerTelecomRegistry.setCurrentCallId(callId)
+      activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
       callStartedAt = System.currentTimeMillis()
       carrierFallbackOfferedFor = null
       val mappedPhone = started.optJSONObject("call")?.optString("callee_phone_e164").orEmpty()
@@ -726,7 +728,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       recordTelecomDebugStage("call_backend_start_failed")
       // If Telecom launched this engine, tell the system dialer that the internet
       // route failed instead of leaving an endless "Dialing via Server" call.
-      ServerTelecomRegistry.markEnded()
+      ServerTelecomRegistry.markEnded(callId)
       val fallbackPhone = normalizedPhone
       cleanPeer(); callId = null; carrierFallbackPhone = null
       setStatus(e.message ?: "Could not start call.", true)
@@ -966,7 +968,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     runOnUiThread {
       when (state) {
         PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
-          ServerTelecomRegistry.markConnected()
+          ServerTelecomRegistry.markConnected(connectedId)
           setStatus("Audio connection established.")
           val connectedId = callId
           if (connectedId != null && activeStateSyncedFor != connectedId) {

@@ -85,10 +85,12 @@ class ServerIncomingCallService : Service() {
         val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
         val rows = result.optJSONArray("calls")
         if (rows != null) {
+          val liveCallIds = mutableSetOf<String>()
           for (i in 0 until rows.length()) {
             val row = rows.optJSONObject(i) ?: continue
             val callId = row.optString("id")
             if (callId.isBlank()) continue
+            liveCallIds.add(callId)
             val reported = prefs.getStringSet(KEY_REPORTED_IDS, emptySet()).orEmpty()
             if (callId in reported) continue
 
@@ -103,6 +105,9 @@ class ServerIncomingCallService : Service() {
               Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
             }
           }
+          // Reconcile only after a successful authoritative response. A transient
+          // network error must not dismiss calls that are still ringing.
+          ServerTelecomRegistry.reconcileIncoming(liveCallIds)
         }
       } catch (cancelled: CancellationException) {
         throw cancelled

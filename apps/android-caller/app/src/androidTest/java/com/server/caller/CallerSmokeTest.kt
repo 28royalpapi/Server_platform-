@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.telecom.Connection
+import android.os.Bundle
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import android.util.Log
@@ -20,6 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
@@ -82,6 +85,26 @@ class CallerSmokeTest {
         findTextOnScrollableScreen(context, device, "Allow Server calling"))
       assertTrue("A custom number-entry dialer unexpectedly appeared",
         !device.hasObject(By.text("Call a number")))
+    }
+  }
+
+  @Test fun vanishedUnansweredIncomingCallIsDisconnectedFromSystemTelecom() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val callId = "smoke-" + UUID.randomUUID().toString()
+    val connection = ServerTelecomConnection(context)
+    connection.setExtras(Bundle().apply { putString("server_call_id", callId) })
+    connection.setRinging()
+    ServerTelecomRegistry.attach(connection, callId)
+
+    try {
+      assertEquals("A newly reported incoming call should ring", Connection.STATE_RINGING, connection.state)
+      ServerTelecomRegistry.reconcileIncoming(setOf(callId))
+      assertEquals("A call still present in the backend must keep ringing", Connection.STATE_RINGING, connection.state)
+      ServerTelecomRegistry.reconcileIncoming(emptySet())
+      assertEquals("A vanished unanswered backend call must clear the system ringing connection",
+        Connection.STATE_DISCONNECTED, connection.state)
+    } finally {
+      ServerTelecomRegistry.markEnded(callId)
     }
   }
 
