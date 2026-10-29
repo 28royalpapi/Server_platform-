@@ -120,6 +120,11 @@ class CallerSmokeTest {
     val skipLink = findTextOnScrollableScreen(context, device, "Skip number verification")
     assertNotNull("Skipping SMS number verification must be available", skipLink)
     skipLink!!.click()
+    // The website's skip action opens Calling accounts itself. Return once to the
+    // bridge so the helper can navigate to that system page only once; the pending
+    // handoff flag remains set and the activity opens the normal dialer after enable.
+    Thread.sleep(900)
+    if (device.currentPackageName.orEmpty().contains("settings", ignoreCase = true)) device.pressBack()
 
     ensureAccountEnabled(context, device, ServerTelecomRegistry.handle(context), "Server")
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
