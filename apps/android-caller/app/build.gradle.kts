@@ -21,7 +21,11 @@ android {
   buildFeatures { buildConfig = true }
   buildTypes {
     debug { applicationIdSuffix = ".debug" }
-    release { isMinifyEnabled = false }
+    release {
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -42,15 +46,3 @@ dependencies {
   androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }
 
-
-// Bundle the same web onboarding interface into the Android companion as a reliable
-// fallback when the production website has not yet deployed the latest web commit.
-val copyServerOnboardingAssets by tasks.registering(Copy::class) {
-  from(rootProject.projectDir.resolve("../../web")) {
-    include("index.html", "app.js", "styles.css", "terms.html", "privacy.html")
-  }
-  into(layout.projectDirectory.dir("src/main/assets/server-web"))
-}
-tasks.named("preBuild").configure {
-  dependsOn(copyServerOnboardingAssets)
-}
