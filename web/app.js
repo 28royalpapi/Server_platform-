@@ -76,11 +76,15 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.requestCallPermissions();
   });
 
-  window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted) => {
+  window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted, accountStatusPermissionGranted = true) => {
     grantCalls.disabled = false;
-    grantCalls.textContent = "Create Server identity and grant permissions →";
+    grantCalls.textContent = "Create Server identity and allow calling →";
     if (!microphoneGranted) {
       showStatus("Microphone permission is required for Server calls. Allow it and try again.");
+      return;
+    }
+    if (!accountStatusPermissionGranted) {
+      showStatus("Android requires Phone Number permission to verify Server's own calling-account status on this version. Allow it to continue. Server does not scan or select SIM cards.");
       return;
     }
     showStatus("Permissions granted. Creating your Server identity without SMS OTP…");
