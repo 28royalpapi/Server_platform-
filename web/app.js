@@ -39,7 +39,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   let phoneLinkVerified = false;
   let persistedNumberConsent = false;
 
-  const normalizePhone =  const normalizePhone = (raw) => {
+  const normalizePhone = (raw) => {
     const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
     let candidate = value;
     if (candidate.startsWith("00")) candidate = "+" + candidate.slice(2);
