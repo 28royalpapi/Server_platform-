@@ -70,7 +70,7 @@ class CallerSmokeTest {
     val legal = findTextOnScrollableScreen(context, device, "I accept the Terms of Service")
     assertNotNull("Legal acceptance checkbox is missing", legal)
     legal!!.click()
-    val grantCalls = findTextOnScrollableScreen(context, device, "Create Server identity and grant permissions")
+    val grantCalls = findTextOnScrollableScreen(context, device, "Create Server identity and allow calling")
     assertNotNull("Calling permissions action is missing", grantCalls)
     grantCalls!!.click()
 
