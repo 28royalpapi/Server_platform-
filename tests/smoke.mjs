@@ -111,7 +111,7 @@ assert.match(iosModel,/to_server_id/);
 assert.match(handoff,/HANDOFF_EXPIRED_OR_ALREADY_USED/);
 assert.match(handoff,/server_sessions/);
 assert.match(app,/server:\/\/device-setup/,"Both native companions use the device-first setup handoff");
-assert.match(ios,/url\.host == "device-setup"/,"iOS accepts the device-first setup handoff");
+assert.match(iosModel,/url\.host == "device-setup"/,"iOS accepts the device-first setup handoff");
 assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
