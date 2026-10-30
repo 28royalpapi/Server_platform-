@@ -90,7 +90,7 @@ class ServerSetupWebActivity : Activity() {
           onboardingBootstrapped = true
           // loadBundledOnboarding already includes app.js after the HTML body. Do not
           // evaluate it a second time: global `const` declarations would throw and
-          // duplicate event listeners can leave SIM-selection state out of sync.
+          // Duplicate listeners can leave the onboarding state out of sync.
           target.evaluateJavascript(
             "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
             null
