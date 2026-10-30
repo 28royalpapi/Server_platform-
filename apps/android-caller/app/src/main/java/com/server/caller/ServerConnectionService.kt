@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
@@ -46,15 +47,26 @@ object ServerTelecomRegistry {
     }
     val account = accountBuilder.build()
     telecom.registerPhoneAccount(account)
-    // Account registration should survive a later revocation of phone-number metadata permission.
-    return try { telecom.getPhoneAccount(handle)?.isEnabled == true }
-    catch (_: SecurityException) { false }
+    return isEnabled(app)
   }
 
+  /**
+   * Android 15+ exposes this app's own registered PhoneAccounts without a phone-number
+   * permission. Android 12–14 require READ_PHONE_NUMBERS for getPhoneAccount().
+   */
   fun isEnabled(context: Context): Boolean {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    return try { telecom.getPhoneAccount(handle(context))?.isEnabled == true }
-    catch (_: SecurityException) { false }
+    val accountHandle = handle(context)
+    return try {
+      val account = if (Build.VERSION.SDK_INT >= 35) {
+        telecom.getRegisteredPhoneAccounts().firstOrNull { it.accountHandle == accountHandle }
+      } else {
+        telecom.getPhoneAccount(accountHandle)
+      }
+      account?.isEnabled == true
+    } catch (_: SecurityException) {
+      false
+    }
   }
 
   fun openApp(context: Context, extras: Bundle) {
