@@ -187,7 +187,7 @@ class CallerSmokeTest {
 
   private fun grantPhoneMetadataPermissions(context: Context) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    for (permission in listOf(android.Manifest.permission.RECORD_AUDIO)) {
+    for (permission in listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_PHONE_NUMBERS)) {
       try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission) } catch (_: Exception) {}
     }
   }
@@ -235,6 +235,8 @@ class CallerSmokeTest {
 
   @Test fun preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
+    // The test inspects global Telecom defaults; the shipped connector does not request READ_PHONE_STATE.
+    instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.READ_PHONE_STATE)
     val context = instrumentation.targetContext
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
@@ -358,16 +360,14 @@ class CallerSmokeTest {
     }
   }
 
-  @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
+  @Test fun serverRegistersAsSystemManagedPhoneAccountWithoutCellularSIMMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     grantPhoneMetadataPermissions(context)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val handle = ServerTelecomRegistry.handle(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-    val previousNumber = prefs.getString("selected_sim_phone", null)
-
     try {
-      prefs.edit().putString("selected_sim_phone", "+2348012345678").commit()
+      prefs.edit().remove("selected_sim_phone").commit()
       ServerTelecomRegistry.register(context)
       val account = telecom.getPhoneAccount(handle)
 
@@ -380,12 +380,9 @@ class CallerSmokeTest {
         account.supportedUriSchemes.contains(PhoneAccount.SCHEME_TEL))
       assertTrue("Server must not masquerade as a cellular SIM",
         (account.capabilities and PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION) == 0)
-      assertEquals("The selected SIM number must be carried as account metadata",
-        Uri.parse("tel:+2348012345678"), account.address)
+      assertEquals("No cellular SIM address is required for Server internet calling", null, account.address)
     } finally {
-      val edit = prefs.edit()
-      if (previousNumber == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousNumber)
-      edit.commit()
+      prefs.edit().remove("selected_sim_phone").commit()
       ServerTelecomRegistry.register(context)
     }
   }
