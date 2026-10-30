@@ -131,7 +131,9 @@ class ServerSetupWebActivity : Activity() {
       val micGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
       val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted)")
+      val accountStatusGranted = Build.VERSION.SDK_INT >= 35 ||
+        checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
+      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, $accountStatusGranted)")
     }
   }
 
@@ -266,10 +268,17 @@ class ServerSetupWebActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
           needed.add(Manifest.permission.POST_NOTIFICATIONS)
         }
+        // Android 12–14 require READ_PHONE_NUMBERS to inspect the user's own PhoneAccount.
+        // It is not used to enumerate subscriptions or obtain a SIM line number.
+        if (Build.VERSION.SDK_INT < 35 &&
+            checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) {
+          needed.add(Manifest.permission.READ_PHONE_NUMBERS)
+        }
         if (needed.isEmpty()) {
           val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
           val notifications = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications)")
+          val accountStatus = Build.VERSION.SDK_INT >= 35 || checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
+          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications, $accountStatus)")
         } else requestPermissions(needed.toTypedArray(), REQUEST_CALL)
       }
     }
