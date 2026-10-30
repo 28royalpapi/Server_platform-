@@ -262,7 +262,6 @@ class CallerSmokeTest {
         .putString("access_token", "0".repeat(64))
         .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
         .putString("phone", "+15550001001")
-        .putString("selected_sim_phone", "+15550001001")
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_call_target_kind")
         .commit()
@@ -357,6 +356,7 @@ class CallerSmokeTest {
       // Android this can kill the instrumentation process before JUnit reports
       // the real call-picker assertion. Returning to Home is enough for cleanup.
       device.pressHome()
+      instrumentation.uiAutomation.dropShellPermissionIdentity()
     }
   }
 
