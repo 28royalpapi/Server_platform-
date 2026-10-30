@@ -7,7 +7,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.widget.Toast
 import android.net.Uri
@@ -17,7 +16,6 @@ import android.os.Bundle
 import java.util.UUID
 import java.security.SecureRandom
 import android.widget.CheckBox
-import android.telephony.SubscriptionManager
 import android.os.Build
 import android.view.Gravity
 import android.view.View
@@ -65,20 +63,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var accessExpiry: Long = 0
   private var currentPhone = ""
 
-  private lateinit var simChoices: LinearLayout
   private lateinit var termsCheck: CheckBox
   private lateinit var continueSetupButton: Button
-  private lateinit var simSetupHint: TextView
   private var currentServerId = ""
-  private var selectedSimSubscriptionId = -1
-  private var selectedSimSlot: Int? = null
-  private var selectedSimCarrier = ""
-  private var selectedSimPhone = ""
-  private var hasActiveSimChoices = false
 
-  private val askSimPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-    renderSimChoices()
-  }
   private var callId: String? = null
   private var callStartedAt = 0L
   private var carrierFallbackPhone: String? = null
@@ -127,10 +115,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     accessExpiry = prefs.getLong("access_expiry", 0L)
     currentPhone = prefs.getString("phone", "") ?: ""
     currentServerId = prefs.getString("server_id", "") ?: ""
-    selectedSimSlot = prefs.getInt("selected_sim_slot", -1).takeIf { it >= 0 }
-    selectedSimCarrier = prefs.getString("selected_sim_carrier", "") ?: ""
-    selectedSimPhone = prefs.getString("selected_sim_phone", "") ?: ""
-    selectedSimSubscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
     buildUi()
     if (!configured()) setStatus("Add the Server Supabase URL and publishable key to the build configuration.", true)
     else if (!accessToken.isNullOrBlank()) showSignedIn()
@@ -308,7 +292,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (uri.host == "sim-setup") {
       authPanel.visibility = View.VISIBLE
       callPanel.visibility = View.GONE
-      setStatus("Continue Server setup on the website. No SIM selection is required.")
+      setStatus("Continue Server setup on the website. No SIM selection or GSM airtime is required for Server-to-Server calls.")
       return
     }
     if (uri.host != "setup") return
@@ -399,76 +383,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private fun mask(value: String) = if (value.length > 6) value.take(4) + "••••" + value.takeLast(3) else value
-
-  private fun ensureSimPermissions() {
-    val needed = mutableListOf<String>()
-    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
-    if (checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_NUMBERS)
-    if (needed.isNotEmpty()) askSimPermissions.launch(needed.toTypedArray()) else renderSimChoices()
-  }
-
-  @Suppress("MissingPermission", "DEPRECATION")
-  private fun renderSimChoices() {
-    if (!::simChoices.isInitialized) return
-    simChoices.removeAllViews()
-    val savedSubscriptionId = selectedSimSubscriptionId
-    val savedSlot = selectedSimSlot
-    val savedCarrier = selectedSimCarrier
-    val savedPhone = selectedSimPhone
-    selectedSimSubscriptionId = -1
-    selectedSimSlot = null
-    selectedSimCarrier = ""
-    selectedSimPhone = ""
-    hasActiveSimChoices = false
-    val permissions = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
-      checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
-    if (!permissions) {
-      simSetupHint.text = "SIM access has not been granted yet. Tap Detect SIM cards / grant permission to see your SIM slots, carriers and any number Android exposes."
-      continueSetupButton.text = "SIM required — cannot continue"
-      continueSetupButton.isEnabled = false
-      return
-    }
-    val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-    val subscriptions = try { manager.activeSubscriptionInfoList.orEmpty() } catch (_: SecurityException) { emptyList() }
-    hasActiveSimChoices = subscriptions.isNotEmpty()
-    if (subscriptions.any { it.subscriptionId == savedSubscriptionId } && savedSlot != null) {
-      selectedSimSubscriptionId = savedSubscriptionId
-      selectedSimSlot = savedSlot
-      selectedSimCarrier = savedCarrier
-      selectedSimPhone = savedPhone
-    }
-    if (subscriptions.isEmpty()) {
-      simSetupHint.text = "No active SIM was exposed by Android. Insert or activate a SIM, then detect SIMs again. Server setup cannot continue without selecting one."
-      continueSetupButton.text = "SIM required — cannot continue"
-      continueSetupButton.isEnabled = false
-      return
-    }
-    simSetupHint.text = "Choose one SIM explicitly. The number may be hidden by Android or your carrier; Server does not use it as proof of ownership."
-    for (info in subscriptions.sortedBy { it.simSlotIndex }) {
-      val carrier = info.carrierName?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "Unknown carrier"
-      val number = try {
-        if (Build.VERSION.SDK_INT >= 33) manager.getPhoneNumber(info.subscriptionId) else info.number
-      } catch (_: Exception) { "" }?.trim().orEmpty()
-      val slot = info.simSlotIndex
-      val labelText = "SIM ${slot + 1} · $carrier" + if (number.isNotBlank()) "\n$number" else "\nNumber not exposed by Android"
-      val choice = button(labelText) {
-        selectedSimSubscriptionId = info.subscriptionId
-        selectedSimSlot = slot
-        selectedSimCarrier = carrier
-        selectedSimPhone = number
-        prefs.edit().putInt("selected_sim_subscription_id", info.subscriptionId)
-          .putInt("selected_sim_slot", slot).putString("selected_sim_carrier", carrier)
-          .putString("selected_sim_phone", number).apply()
-        continueSetupButton.text = "Continue with SIM ${slot + 1} — no SMS OTP"
-        continueSetupButton.isEnabled = termsCheck.isChecked
-        setStatus("Selected SIM ${slot + 1} ($carrier). Server will not clone or claim its number.")
-      }
-      choice.setBackgroundTintList(android.content.res.ColorStateList.valueOf(if (slot == selectedSimSlot) 0xFF0DAA62.toInt() else 0xFF18C879.toInt()))
-      simChoices.addView(choice, matchWrap())
-    }
-    continueSetupButton.text = if (selectedSimSlot != null) "Continue with selected SIM — no SMS OTP" else "Select a SIM to continue"
-    continueSetupButton.isEnabled = termsCheck.isChecked && selectedSimSlot != null
-  }
 
   private fun deviceCredential(): Pair<String, String> {
     val existingId = prefs.getString("installation_id", null)
@@ -617,18 +531,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
-  private fun selectedCellularAccount(): PhoneAccountHandle? {
-    val subscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
-    if (subscriptionId < 0) return null
-    return try {
-      val telecom = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-      telecom.callCapablePhoneAccounts.firstOrNull { handle ->
-        handle != ServerTelecomRegistry.handle(this) &&
-          (handle.id == subscriptionId.toString() || handle.id.endsWith(":$subscriptionId"))
-      }
-    } catch (_: Exception) { null }
-  }
-
   /** Presents a user-confirmed route into the normal carrier dialer; it never silently places a paid call. */
   private fun notifyCarrierFallback(number: String, reason: String) {
     if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(number)) return
@@ -641,7 +543,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         ).apply { description = "Lets you switch to a normal carrier call when Server cannot reach a user." })
       }
       val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).apply {
-        selectedCellularAccount()?.let { putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       }
       val pending = PendingIntent.getActivity(
