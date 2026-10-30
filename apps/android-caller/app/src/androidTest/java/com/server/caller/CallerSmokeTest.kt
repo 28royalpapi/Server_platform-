@@ -382,4 +382,5 @@ class CallerSmokeTest {
       edit.commit()
       ServerTelecomRegistry.register(context)
     }
-  }}
+  }
+}
