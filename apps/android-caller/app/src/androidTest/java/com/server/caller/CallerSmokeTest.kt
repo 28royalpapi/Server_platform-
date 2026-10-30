@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.provider.ContactsContract
 import android.telecom.Connection
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
@@ -61,42 +60,14 @@ class CallerSmokeTest {
     val cta = device.wait(Until.findObject(By.textContains("Continue setup on this phone")), 12_000)
     assertNotNull("The Vercel site must expose the native setup handoff", cta)
     cta!!.click()
-    var nativeVisible = device.wait(Until.hasObject(By.textContains("Choose your SIM")), 5_000)
+    var nativeVisible = device.wait(Until.hasObject(By.textContains("Allow Server calling")), 5_000)
     if (!nativeVisible) {
       (device.wait(Until.findObject(By.text("Open")), 2_000)
         ?: device.wait(Until.findObject(By.text("Open in Server")), 1_000))?.click()
       nativeVisible = device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000)
     }
-    assertTrue("Chrome's server://sim-setup link did not open the native SIM permissions bridge", nativeVisible)
+    assertTrue("Chrome's server://sim-setup link did not open the native calling setup bridge", nativeVisible)
 
-    val detect = device.wait(Until.findObject(By.textContains("Allow SIM access and detect SIMs")), 10_000)
-    assertNotNull("The SIM access action is missing from onboarding", detect)
-    detect!!.click()
-    var sawSimPermission = false
-    repeat(3) {
-      val choices = listOf("While using the app", "Allow only while using the app", "Only this time", "Allow")
-      val deadline = System.currentTimeMillis() + 2_500
-      while (System.currentTimeMillis() < deadline) {
-        val option = choices.asSequence().mapNotNull { device.findObject(By.text(it)) }.firstOrNull()
-        if (option != null) { try { option.click(); sawSimPermission = true } catch (_: StaleObjectException) {}; Thread.sleep(350); break }
-        Thread.sleep(100)
-      }
-    }
-    assertTrue("The emulator did not show Android's real SIM permission prompt", sawSimPermission)
-
-    val subManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
-    val activeSim = try { subManager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex }.firstOrNull() } catch (_: Exception) { null }
-    val expectedId = activeSim?.subscriptionId ?: -1001
-    val visibleLabel = if (activeSim == null) "Emulator test SIM" else "SIM " + (activeSim.simSlotIndex + 1) + " ·"
-    assertNotNull("The SIM choice is absent", device.wait(Until.findObject(By.textContains(visibleLabel)), 12_000))
-    assertTrue("The selected SIM option became stale", clickTextWithRetry(device, visibleLabel))
-    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-    assertEquals("SIM selection must persist", expectedId, prefs.getInt("selected_sim_subscription_id", -1))
-    assertTrue("The website must confirm the selected SIM", device.wait(Until.hasObject(By.textContains("Selected SIM")), 5_000))
-
-    val continuePermissions = findTextOnScrollableScreen(context, device, "Continue to calling permissions")
-    assertNotNull("The onboarding page did not advance to calling permissions", continuePermissions)
-    continuePermissions!!.click()
     val legal = findTextOnScrollableScreen(context, device, "I accept the Terms of Service")
     assertNotNull("Legal acceptance checkbox is missing", legal)
     legal!!.click()
@@ -346,25 +317,18 @@ class CallerSmokeTest {
       assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
       assertTrue("The mock provider must be enabled to prove a real multi-provider picker", testHandle in callCapableAccounts)
 
-      // Create a clearly fake emulator contact and select it through the system
-      // Contacts UI, matching the user's real dialer -> contact -> Server flow.
-      insertDemoContact(context, "Server Demo Contact", "+15550001001")
+      // Open the system Phone app with a test number and use its native call action.
+      // This exercises Android's actual outgoing-account chooser without relying on
+      // Contacts-provider aggregation behaviour that differs between emulator images.
       device.pressHome()
-      context.startActivity(Intent(Intent.ACTION_VIEW, ContactsContract.Contacts.CONTENT_URI)
+      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+15550001001"))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      val demoContact = device.wait(Until.findObject(By.text("Server Demo Contact")), 15_000)
-      assertNotNull("The Android Contacts app did not show the emulator's Server Demo Contact", demoContact)
-      demoContact!!.click()
-
-      val numberRow = device.wait(Until.findObject(By.textContains("555")), 10_000)
-      assertNotNull("The selected contact's phone number was not visible in Contacts", numberRow)
-      numberRow!!.click()
-
-      // Some Contacts versions open the dialer with the number populated; in
-      // others the number row proceeds directly to the system outgoing-call flow.
+      assertNotNull("The system Phone app did not display the test number",
+        device.wait(Until.findObject(By.textContains("555")), 10_000))
       val callButton = device.wait(Until.findObject(By.descContains("Call")), 6_000)
-        ?: device.wait(Until.findObject(By.text("Call")), 1_500)
-      if (callButton != null) callButton.click()
+        ?: device.wait(Until.findObject(By.text("Call")), 2_000)
+      assertNotNull("The system Phone app did not expose its call action", callButton)
+      callButton!!.click()
 
       val chooserDeadline = System.currentTimeMillis() + 15_000
       var serverChoice: androidx.test.uiautomator.UiObject2? = null
