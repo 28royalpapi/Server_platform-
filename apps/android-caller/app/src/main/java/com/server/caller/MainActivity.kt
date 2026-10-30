@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     // call command and immediately yield the visible surface back to the system dialer.
     // The native caller must not replace the user's normal phone/call UI.
     yieldToSystemPhoneUi(intent)
-    // Ask for SIM and microphone permissions only after an explicit user action.
+    // Microphone and calling-account approvals are requested only in context.
   }
 
   private fun configured(): Boolean = BuildConfig.SUPABASE_URL.startsWith("https://") &&
