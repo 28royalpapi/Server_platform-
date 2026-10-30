@@ -87,14 +87,26 @@ class ServerSetupWebActivity : Activity() {
           val path = Uri.parse(url.orEmpty()).path.orEmpty()
           if (url.isNullOrBlank() || !url.startsWith("https://$HOST/") ||
               path !in setOf("", "/", "/index.html") || onboardingBootstrapped) return
-          onboardingBootstrapped = true
-          // loadBundledOnboarding already includes app.js after the HTML body. Do not
-          // evaluate it a second time: global `const` declarations would throw and
-          // Duplicate listeners can leave the onboarding state out of sync.
+
+          // A native release can reach users before the website deploy does.
+          // Never continue with an older page that still requires SIM selection.
           target.evaluateJavascript(
-            "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
-            null
-          )
+            "(document.querySelector('meta[name=\\\"server-onboarding-version\\\"]')?.content || '')"
+          ) { rawVersion ->
+            val version = rawVersion?.trim('"')
+            if (version != ONBOARDING_VERSION) {
+              if (!usingBundledFallback) {
+                usingBundledFallback = true
+                loadBundledOnboarding()
+              }
+              return@evaluateJavascript
+            }
+            onboardingBootstrapped = true
+            target.evaluateJavascript(
+              "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
+              null
+            )
+          }
         }
         override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
           super.onReceivedError(view, request, error)
@@ -421,6 +433,7 @@ class ServerSetupWebActivity : Activity() {
 
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
+    private const val ONBOARDING_VERSION = "sim-free-1"
     private const val REQUEST_CALL = 5102
   }
 }
