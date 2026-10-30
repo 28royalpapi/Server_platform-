@@ -33,7 +33,7 @@
       <div id="native-setup" class="hidden">
         <div class="step-title"><span class="step-number">01</span><div><h2>Set up Server calling</h2><p>No SIM selection is required. Server uses your existing Wi-Fi or mobile-data connection for free Server-to-Server calls. Your phone number stays with your mobile operator.</p></div></div>
         <div id="call-permission-step">
-          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for live call audio. Notifications help Server alert you when another Server user calls.</p></div></div>
+          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for live call audio. Notifications help Server alert you when another Server user calls. Android 12–14 also require Phone Number permission so Server can check whether its own calling account is enabled; Server does not enumerate or select SIMs.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Create Server identity and allow calling <span aria-hidden="true">→</span></button>
