@@ -7,27 +7,14 @@ const stepForm = document.querySelector(".step-form");
 const nativeSetup = document.querySelector("#native-setup");
 const isAndroidWebView = isAndroid && navigator.userAgent.toLowerCase().includes("; wv");
 const isNativeSetup = !!window.ServerAndroid || isAndroidWebView || document.querySelector('meta[name="server-native-bridge"]')?.content === "true";
-
 function showStatus(message, ok = false) {
   statusEl.textContent = message;
   statusEl.classList.remove("hidden", "ok");
   if (ok) statusEl.classList.add("ok");
 }
-
 if (isNativeSetup && nativeSetup && stepForm) {
   stepForm.classList.add("hidden");
   nativeSetup.classList.remove("hidden");
-
-  const detectButton = document.querySelector("#detect-sims");
-  const simOptions = document.querySelector("#sim-options");
-  const continuePermissions = document.querySelector("#continue-permissions");
-  const simSelectionStatus = document.querySelector("#sim-selection-status");
-  const showSimSelectionStatus = (message, ok = false) => {
-    if (!simSelectionStatus) return;
-    simSelectionStatus.textContent = message;
-    simSelectionStatus.classList.remove("hidden", "ok");
-    if (ok) simSelectionStatus.classList.add("ok");
-  };
   const callStep = document.querySelector("#call-permission-step");
   const terms = document.querySelector("#native-terms");
   const grantCalls = document.querySelector("#grant-call-permissions");
@@ -45,133 +32,28 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const gatewayPairingResult = document.querySelector("#sms-gateway-pairing-result");
   const gatewayPairingCode = document.querySelector("#sms-gateway-pairing-code");
   const gatewayPairingExpiry = document.querySelector("#sms-gateway-pairing-expiry");
-  let selectedSubscriptionId = null;
   let pendingPhoneNumber = "";
   let phoneLinkVerified = false;
   let persistedNumberConsent = false;
-
   const normalizePhone = (raw) => {
-    const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
+    const value = String(raw || "").trim().replace(/[()\\s.-]/g, "");
     let candidate = value;
     if (candidate.startsWith("00")) candidate = "+" + candidate.slice(2);
     else if (!candidate.startsWith("+")) {
-      const digits = candidate.replace(/\D/g, "");
+      const digits = candidate.replace(/\\D/g, "");
       if (digits.startsWith("234") && digits.length === 13) candidate = "+" + digits;
       else if (digits.length === 11 && digits.startsWith("0")) candidate = "+234" + digits.slice(1);
       else if (digits.length === 10 && /^[789]/.test(digits)) candidate = "+234" + digits;
       else return null;
     }
-    return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
+    return /^\\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
   };
-
   const showPhoneLinkStatus = (message, ok = false) => {
     if (!phoneLinkStatus) return;
     phoneLinkStatus.textContent = message;
     phoneLinkStatus.classList.remove("hidden", "ok");
     if (ok) phoneLinkStatus.classList.add("ok");
   };
-
-  const showSims = (data) => {
-    simOptions.replaceChildren();
-    continuePermissions.classList.add("hidden");
-    continuePermissions.disabled = true;
-    selectedSubscriptionId = null;
-    if (data?.permissionNeeded) {
-      const message = "Android permission is needed before Server can read the SIM list.";
-      showStatus(message);
-      showSimSelectionStatus(message);
-      return;
-    }
-    const sims = Array.isArray(data?.sims) ? data.sims : [];
-    if (!sims.length) {
-      const message = "Android did not expose any active SIM cards. Server cannot select a SIM on this device.";
-      showStatus(message, false);
-      showSimSelectionStatus(message, false);
-      return;
-    }
-    sims.forEach((sim) => {
-      const choice = document.createElement("button");
-      choice.type = "button";
-      choice.className = "sim-choice" + (sim.selected ? " selected" : "");
-      const title = document.createElement("strong");
-      title.textContent = `SIM ${sim.slot} · ${sim.carrier || "Unknown carrier"}`;
-      const number = document.createElement("span");
-      number.textContent = sim.numberAvailable && sim.number
-        ? sim.number
-        : "Phone number not exposed by Android / carrier";
-      choice.append(title, number);
-      choice.addEventListener("click", () => {
-        try {
-          if (!window.ServerAndroid.selectSim(Number(sim.id))) {
-            const message = "The selected SIM is no longer active. Detect SIMs again.";
-            showStatus(message);
-            showSimSelectionStatus(message);
-            return;
-          }
-          selectedSubscriptionId = Number(sim.id);
-          simOptions.querySelectorAll(".sim-choice").forEach((item) => item.classList.remove("selected"));
-          choice.classList.add("selected");
-          continuePermissions.classList.remove("hidden");
-          continuePermissions.disabled = false;
-          // Keep the next required step and its selection confirmation in view on phones.
-          const selectionMessage = `Selected SIM ${sim.slot} · ${sim.carrier || "Unknown carrier"}.`;
-          showStatus(selectionMessage, true);
-          showSimSelectionStatus(selectionMessage, true);
-          continuePermissions.scrollIntoView({ behavior: "smooth", block: "center" });
-        } catch {
-          const message = "Server could not save this SIM selection. Please try again.";
-          showStatus(message);
-          showSimSelectionStatus(message);
-        }
-      });
-      simOptions.append(choice);
-      if (sim.selected) {
-        selectedSubscriptionId = Number(sim.id);
-        continuePermissions.classList.remove("hidden");
-        continuePermissions.disabled = false;
-      }
-    });
-    const currentSelection = sims.find((sim) => sim.selected);
-    const message = currentSelection
-      ? `Selected SIM ${currentSelection.slot} · ${currentSelection.carrier || "Unknown carrier"}.`
-      : "Choose the SIM you want Server to use.";
-    showStatus(message, true);
-    showSimSelectionStatus(message, true);
-  };
-
-  window.onServerSimPermissionResult = (granted, data) => {
-    detectButton.disabled = false;
-    detectButton.textContent = "Allow SIM access and detect SIMs →";
-    if (!granted) {
-      showStatus("SIM access was not granted. Allow Phone State and Phone Number permissions to continue.");
-      return;
-    }
-    try {
-      const choices = data || JSON.parse(window.ServerAndroid.getSimChoices());
-      showSims(choices);
-    } catch {
-      showStatus("Server could not read the SIM list. Try detecting SIMs again.");
-    }
-  };
-
-  detectButton?.addEventListener("click", () => {
-    detectButton.disabled = true;
-    detectButton.textContent = "Waiting for Android permission…";
-    showStatus("Android will ask permission to read the SIM slots and any number the carrier exposes.");
-    if (!window.ServerAndroid) { showStatus("Server is still connecting to Android. Please tap again."); detectButton.disabled = false; detectButton.textContent = "Allow SIM access and detect SIMs →"; return; }
-    window.ServerAndroid.requestSimPermissions();
-  });
-
-  continuePermissions?.addEventListener("click", () => {
-    if (selectedSubscriptionId === null) {
-      showStatus("Choose a SIM before continuing.");
-      return;
-    }
-    callStep.classList.remove("hidden");
-    continuePermissions.classList.add("hidden");
-    showStatus("SIM selected. Next, grant microphone permission for calling and accept the legal terms.", true);
-  });
-
   terms?.addEventListener("change", () => {
     grantCalls.disabled = !terms.checked;
   });
@@ -372,7 +254,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     showPhoneLinkStatus(persistedNumberConsent ? "Permission saved. Server users can ring you through Server internet calling at this verified number." : "Permission revoked. Calls by Server ID still work, but this number will not route to your Server identity.", true);
   };
   skipPhoneLinkButton?.addEventListener("click", () => {
-    showStatus("Continuing without a verified number. Calls by Server ID remain available; the normal phone number will not route to Server until you verify it and explicitly allow number-based Server calls.", true);
+    showStatus("Continuing with your Server ID. You can link a phone number later if you want.", true);
     if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
     window.ServerAndroid.openCallingSettings();
   });
@@ -435,19 +317,19 @@ button?.addEventListener("click", () => {
       fallback?.classList.remove("hidden");
       button.disabled = false;
       button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
-      fallback.textContent = "Open this website on your Android phone to run the SIM-selection flow. Desktop browsers cannot access phone SIMs or register calling accounts.";
-      showStatus("Phone SIM selection is supported only through the operating system's mobile integration.");
+      fallback.textContent = "Install the Server Android calling component on your phone to connect Server with Android's system calling interface.";
+      showStatus("Server calling integration is available through the native phone component.");
     }
     return;
   }
-  showStatus("Opening the phone integration to complete the SIM and system-dialer steps. It will display this web onboarding, not a separate number-entry app.");
+  showStatus("Opening the phone integration to complete the system-calling setup. It will display this web onboarding, not a separate number-entry app.");
   const started = Date.now();
   window.location.href = "server://sim-setup";
   window.setTimeout(() => {
     if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
       fallback?.classList.remove("hidden");
       fallback.textContent = "The Server phone-integration component did not open. Browser security prevents a website from reading SIM subscriptions or adding a calling account to Android’s dialer. The component is required only to bridge those operating-system APIs; the onboarding UI remains this website.";
-      showStatus("Android did not open the system integration component. SIM selection cannot be completed in the browser alone.");
+      showStatus("Android did not open the system integration component. Android system calling cannot be registered by a browser alone.");
     }
     button.disabled = false;
     button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
