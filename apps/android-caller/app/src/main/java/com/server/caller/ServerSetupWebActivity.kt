@@ -259,7 +259,7 @@ class ServerSetupWebActivity : Activity() {
   }
 
   private inner class Bridge {
-    @JavascriptInterface fun requestCallPermissions()    @JavascriptInterface fun requestCallPermissions() {
+    @JavascriptInterface fun requestCallPermissions() {
       runOnUiThread {
         val needed = arrayListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.RECORD_AUDIO)
