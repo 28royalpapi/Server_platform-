@@ -65,7 +65,9 @@ jobs:
           set -euo pipefail
           echo "BUILD_SERVER_CALLER_START $(date -u +%FT%TZ)"
           timeout 480s gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
-          echo "BUILD_SERVER_CALLER_COMPLETE $(date -u +%FT%TZ)"
+          echo "BUILD_SERVER_CALLER_DEBUG_COMPLETE $(date -u +%FT%TZ)"
+          timeout 480s gradle -p apps/android-caller bundleRelease --no-daemon --console=plain --stacktrace
+          echo "BUILD_SERVER_CALLER_RELEASE_BUNDLE_COMPLETE $(date -u +%FT%TZ)"
           timeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SIM_GATEWAY_COMPLETE $(date -u +%FT%TZ)"
       - name: Compile Android instrumentation tests before booting emulator
@@ -83,6 +85,7 @@ jobs:
           name: server-android-debug-apks
           path: |
             apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/bundle/release/app-release.aab
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
       - name: Run Android phone emulator UI smoke test
