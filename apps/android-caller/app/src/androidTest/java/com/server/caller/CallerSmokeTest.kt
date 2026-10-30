@@ -1,6 +1,5 @@
 package com.server.caller
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -64,7 +63,7 @@ class CallerSmokeTest {
     if (!nativeVisible) {
       (device.wait(Until.findObject(By.text("Open")), 2_000)
         ?: device.wait(Until.findObject(By.text("Open in Server")), 1_000))?.click()
-      nativeVisible = device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000)
+      nativeVisible = device.wait(Until.hasObject(By.textContains("Allow Server calling")), 20_000)
     }
     assertTrue("Chrome's server://sim-setup link did not open the native calling setup bridge", nativeVisible)
 
@@ -123,33 +122,6 @@ class CallerSmokeTest {
         Connection.STATE_DISCONNECTED, connection.state)
     } finally {
       ServerTelecomRegistry.markEnded(callId)
-    }
-  }
-
-  private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.WRITE_CONTACTS)
-    try {
-      val operations = arrayListOf<android.content.ContentProviderOperation>()
-      val rawContact = operations.size
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
-        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-        .build())
-      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
-    } finally {
-      instrumentation.uiAutomation.dropShellPermissionIdentity()
     }
   }
 
@@ -214,7 +186,7 @@ class CallerSmokeTest {
 
   private fun grantPhoneMetadataPermissions(context: Context) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.RECORD_AUDIO)) {
+    for (permission in listOf(android.Manifest.permission.RECORD_AUDIO)) {
       try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission) } catch (_: Exception) {}
     }
   }
