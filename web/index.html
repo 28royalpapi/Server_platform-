@@ -16,31 +16,27 @@
       <div><div class="brand-name">server</div><div class="brand-caption">Choose your calling identity</div></div>
     </header>
     <section class="hero">
-      <div class="eyebrow">DEVICE-FIRST SETUP</div>
+      <div class="eyebrow">INTERNET CALLING</div>
       <h1>Choose on your phone.<br><span>Set up without SMS OTP.</span></h1>
-      <p>This website is Server’s onboarding experience. On Android, the phone must hand SIM and system-calling tasks to a small native integration component; it opens this same web flow, then returns you to the normal dialer. A website alone cannot read SIM slots or register a system calling account.</p>
+      <p>This is Server’s onboarding website. A small calling connector handles Android’s system calling integration; no SIM selection or second mobile number is required for Server-to-Server internet calls.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Set up once here, then use your normal phone dialer. A Server ID does not require SMS OTP; linking a mobile number later is optional but helps saved contacts find Server users.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Set up once here, then use your normal phone dialer. Server calls use your internet connection and do not consume GSM airtime.</p></div></div>
         <button class="primary full" id="open-server-app" type="button">Continue setup on this phone <span aria-hidden="true">→</span></button>
-        <p id="fallback" class="fine-print hidden">The phone integration did not open. A regular website cannot access SIM subscriptions or register an account with the system dialer by itself; the native integration component is required for those OS-controlled steps.</p>
+        <p id="fallback" class="fine-print hidden">The Server calling connector did not open. Install Server Calling Connector, then return here to continue.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Keep your current number as your Server calling identity; you do not need to ask your contacts to save a second number. Server can route calls between Server users over the internet when the number is verified and the recipient opts in. Ordinary carrier calls still follow your mobile operator's settings.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
         <p class="fine-print">On iPhone, a website cannot inspect SIM slots. iOS 18.2+ can route Contacts tap-to-call to an alternative default calling app once Apple authorizes Server’s calling-app entitlement and the user chooses Server as the default. This does not add a third cellular SIM.</p>
       </div>
       <div id="native-setup" class="hidden">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Choose your SIM</h2><p>Android needs your permission to reveal the SIM list. After you grant it, choose SIM 1 or SIM 2 here. If the carrier hides the phone number, Server will show that clearly.</p></div></div>
-        <button class="primary full" id="detect-sims" type="button">Allow SIM access and detect SIMs <span aria-hidden="true">→</span></button>
-        <div id="sim-options" class="sim-options" aria-live="polite"></div>
-        <button class="primary full hidden" id="continue-permissions" type="button" disabled>Continue to calling permissions <span aria-hidden="true">→</span></button>
-        <div id="sim-selection-status" class="status hidden" role="status" aria-live="polite"></div>
-        <div id="call-permission-step" class="hidden">
-          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Grant microphone access so Server calls have audio. Notification permission helps the phone show call-related alerts.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Set up Server calling</h2><p>No SIM selection is required. Server uses your existing Wi-Fi or mobile-data connection for free Server-to-Server calls. Your phone number stays with your mobile operator.</p></div></div>
+        <div id="call-permission-step">
+          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for live call audio. Notifications help Server alert you when another Server user calls.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create Server identity and grant permissions <span aria-hidden="true">→</span></button>
+          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create Server identity and allow calling <span aria-hidden="true">→</span></button>
         </div>
         <div id="finish-step" class="hidden">
           <div class="success-mark" aria-hidden="true">✓</div>
