@@ -91,7 +91,7 @@ class ServerSetupWebActivity : Activity() {
           // A native release can reach users before the website deploy does.
           // Never continue with an older page that still requires SIM selection.
           target.evaluateJavascript(
-            "(document.querySelector('meta[name=\\\"server-onboarding-version\\\"]')?.content || '')"
+            "(document.querySelector('meta[name=server-onboarding-version]')?.content || '')"
           ) { rawVersion ->
             val version = rawVersion?.trim('"')
             if (version != ONBOARDING_VERSION) {
