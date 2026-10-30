@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="referrer" content="no-referrer">
-  <title>Server — choose your calling identity</title>
+  <title>Server — your internet calling identity</title>
   <link rel="stylesheet" href="styles.css">
   <script defer src="app.js"></script>
 </head>
@@ -13,17 +13,17 @@
   <main class="shell">
     <header class="brand-row">
       <div class="brand-mark" aria-hidden="true">S</div>
-      <div><div class="brand-name">server</div><div class="brand-caption">Choose your calling identity</div></div>
+      <div><div class="brand-name">server</div><div class="brand-caption">Your internet calling identity</div></div>
     </header>
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
-      <h1>Choose on your phone.<br><span>Set up without SMS OTP.</span></h1>
-      <p>This website is Server’s onboarding experience. On Android, the phone must hand SIM and system-calling tasks to a small native integration component; it opens this same web flow, then returns you to the normal dialer. A website alone cannot read SIM slots or register a system calling account.</p>
+      <h1>One identity.<br><span>Call over the internet.</span></h1>
+      <p>This website is Server’s onboarding experience. A small Android calling component connects Server to the phone’s system calling interface. You do not need to select a SIM or link a mobile number to create a Server identity.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Set up once here, then use your normal phone dialer. A Server ID does not require SMS OTP; linking a mobile number later is optional but helps saved contacts find Server users.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Create a Server ID once. Use Wi-Fi or mobile data from any SIM; Server does not take over your cellular subscription. Linking a phone number later is optional.</p></div></div>
         <button class="primary full" id="open-server-app" type="button">Continue setup on this phone <span aria-hidden="true">→</span></button>
         <p id="fallback" class="fine-print hidden">The phone integration did not open. A regular website cannot access SIM subscriptions or register an account with the system dialer by itself; the native integration component is required for those OS-controlled steps.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Keep your current number as your Server calling identity; you do not need to ask your contacts to save a second number. Server can route calls between Server users over the internet when the number is verified and the recipient opts in. Ordinary carrier calls still follow your mobile operator's settings.</span></div>
@@ -31,22 +31,18 @@
         <p class="fine-print">On iPhone, a website cannot inspect SIM slots. iOS 18.2+ can route Contacts tap-to-call to an alternative default calling app once Apple authorizes Server’s calling-app entitlement and the user chooses Server as the default. This does not add a third cellular SIM.</p>
       </div>
       <div id="native-setup" class="hidden">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Choose your SIM</h2><p>Android needs your permission to reveal the SIM list. After you grant it, choose SIM 1 or SIM 2 here. If the carrier hides the phone number, Server will show that clearly.</p></div></div>
-        <button class="primary full" id="detect-sims" type="button">Allow SIM access and detect SIMs <span aria-hidden="true">→</span></button>
-        <div id="sim-options" class="sim-options" aria-live="polite"></div>
-        <button class="primary full hidden" id="continue-permissions" type="button" disabled>Continue to calling permissions <span aria-hidden="true">→</span></button>
-        <div id="sim-selection-status" class="status hidden" role="status" aria-live="polite"></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>No SIM selection and no SMS OTP are required. Server uses your internet connection; your normal SIMs remain available for ordinary carrier calls.</p></div></div>
         <div id="call-permission-step" class="hidden">
           <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Grant microphone access so Server calls have audio. Notification permission helps the phone show call-related alerts.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create Server identity and grant permissions <span aria-hidden="true">→</span></button>
+          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create my Server ID and enable calling <span aria-hidden="true">→</span></button>
         </div>
         <div id="finish-step" class="hidden">
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Your Server ID is ready. Link and verify the number you already use so Server users can find and call you on that identity. You do not need a second number for Server.</p>
+          <p class="done-text">Your Server ID is ready. You can call other Server users by Server ID. Linking a mobile number is optional and requires separate verification.</p>
 
           <section id="phone-link-step" class="phone-link-step">
             <h3>Link your mobile number</h3>
