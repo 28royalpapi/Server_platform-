@@ -301,7 +301,7 @@ button?.addEventListener("click", () => {
     if (isIOS) {
       showStatus("Opening Server’s iPhone calling integration. The app will continue setup on this phone.");
       const started = Date.now();
-      window.location.href = "server://sim-setup";
+      window.location.href = "server://device-setup";
       window.setTimeout(() => {
         if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
           fallback?.classList.remove("hidden");
