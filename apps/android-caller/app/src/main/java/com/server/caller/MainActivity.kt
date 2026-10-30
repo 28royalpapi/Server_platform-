@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     buildUi()
     if (!configured()) setStatus("Add the Server Supabase URL and publishable key to the build configuration.", true)
     else if (!accessToken.isNullOrBlank()) showSignedIn()
-    else renderSimChoices()
+    else setStatus("Complete Server setup on the Server website. No SIM selection is required.", true)
     handleTelecomIntent(intent)
     handleAppLink(intent)
     // When Android's Phone app launches us as a Telecom call provider, process the
@@ -159,32 +159,25 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     setContentView(scroll)
     root.addView(TextView(this).apply { text = "SERVER"; textSize = 12f; setTextColor(0xFF18C879.toInt()); letterSpacing = .18f })
     root.addView(TextView(this).apply { text = "Calling, made natural"; textSize = 30f; setTextColor(0xFFF3F7FB.toInt()); setPadding(0, dp(6), 0, dp(4)) })
-    root.addView(TextView(this).apply { text = "Choose a carrier SIM for setup. Server itself makes calls over the internet."; textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20)) })
+    root.addView(TextView(this).apply { text = "Server calls use your internet connection. No SIM selection or GSM airtime is required for Server-to-Server calls."; textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20)) })
 
     statusText = TextView(this).apply { textSize = 13f; setTextColor(0xFFFFDFA3.toInt()); setPadding(dp(13), dp(12), dp(13), dp(12)); visibility = View.GONE }
     root.addView(statusText, matchWrap())
 
     authPanel = panel()
     root.addView(authPanel, matchWrap())
-    authPanel.addView(label("Choose the SIM to associate with this device"))
+    authPanel.addView(label("Set up Server calling"))
     authPanel.addView(TextView(this).apply {
-      text = "Server reads SIM details only inside this Android app, with your permission. Selecting a SIM does not clone its number or create a cellular line; Server creates a separate internet-calling identity."
+      text = "Use your existing Wi-Fi or mobile-data connection. Server creates a separate internet-calling identity; it does not clone or replace your mobile SIM."
       textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(12))
     }, matchWrap())
-    simSetupHint = TextView(this).apply {
-      text = "Checking SIM options…"; textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(10))
-    }
-    authPanel.addView(simSetupHint, matchWrap())
-    simChoices = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-    authPanel.addView(simChoices, matchWrap())
-    authPanel.addView(button("Detect SIM cards / grant permission") { ensureSimPermissions() }, matchWrap())
     termsCheck = CheckBox(this).apply {
       text = "I accept Server's Terms of Service and acknowledge its Privacy Notice."
       setTextColor(0xFFE6EDF5.toInt())
       buttonTintList = android.content.res.ColorStateList.valueOf(0xFF18C879.toInt())
     }
     authPanel.addView(termsCheck, matchWrap())
-    continueSetupButton = button("Continue with selected SIM — no SMS OTP") { registerDevice() }.apply {
+    continueSetupButton = button("Create Server identity — no SIM required") { registerDevice() }.apply {
       isEnabled = false
     }
     authPanel.addView(continueSetupButton, matchWrap())
@@ -192,9 +185,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://server-onboarding-ochre.vercel.app/terms.html")))
     }, matchWrap())
     termsCheck.setOnCheckedChangeListener { _, checked ->
-      continueSetupButton.isEnabled = checked && selectedSimSubscriptionId >= 0
-      continueSetupButton.text = if (selectedSimSubscriptionId >= 0) "Continue with selected SIM — no SMS OTP" else "SIM required — cannot continue"
+      continueSetupButton.isEnabled = checked
+      continueSetupButton.text = "Create Server identity — no SIM required"
     }
+
 
     callPanel = panel().apply { visibility = View.GONE }
     root.addView(callPanel, matchWrap())
@@ -314,8 +308,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (uri.host == "sim-setup") {
       authPanel.visibility = View.VISIBLE
       callPanel.visibility = View.GONE
-      renderSimChoices()
-      setStatus("Tap Detect SIM cards / grant permission to choose a mobile SIM. Server setup does not require SMS OTP.")
+      setStatus("Continue Server setup on the website. No SIM selection is required.")
       return
     }
     if (uri.host != "setup") return
@@ -491,7 +484,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private fun registerDevice() = lifecycleScope.launch {
     if (!termsCheck.isChecked) { setStatus("Please accept the Terms and acknowledge the Privacy Notice.", true); return@launch }
-    if (selectedSimSubscriptionId < 0) { setStatus("Select an active SIM before creating your Server identity.", true); return@launch }
     continueSetupButton.isEnabled = false
     try {
       val (installationId, deviceSecret) = deviceCredential()
@@ -502,8 +494,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         .put("accepted_terms", true)
         .put("terms_version", "server-terms-1.0")
         .put("privacy_version", "server-privacy-1.0")
-      selectedSimSlot?.let { payload.put("selected_sim_slot", it) }
-      if (selectedSimCarrier.isNotBlank()) payload.put("selected_sim_carrier", selectedSimCarrier)
       val result = authRequest("/functions/v1/server-auth", payload, false)
       accessToken = result.optString("access_token").takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("Server did not create a device session.")
@@ -520,7 +510,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       setStatus("Setup complete. Your Server ID is $currentServerId. Server is registered as an internet-calling account, not a copied SIM line.")
     } catch (e: Exception) {
       setStatus(e.message ?: "Device-first setup failed.", true)
-      continueSetupButton.isEnabled = termsCheck.isChecked && selectedSimSubscriptionId >= 0
+      continueSetupButton.isEnabled = termsCheck.isChecked
     }
   }
 
@@ -956,8 +946,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     accessToken = null; refreshToken = null; accessExpiry = 0
     prefs.edit().remove("access_token").remove("refresh_token").remove("access_expiry").apply()
     authPanel.visibility = View.VISIBLE; callPanel.visibility = View.GONE
-    ensureSimPermissions()
-    setStatus("Server session cleared on this device.")
+    setStatus("Server session cleared on this device. Complete setup again on the Server website.")
   }
 
   override fun onDestroy() { cleanPeer(); incomingJob?.cancel(); super.onDestroy() }
