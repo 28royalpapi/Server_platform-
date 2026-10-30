@@ -322,11 +322,6 @@ class ServerSetupWebActivity : Activity() {
 
   private fun registerDevice(acceptedTerms: Boolean): JSONObject {
     if (!acceptedTerms) return JSONObject().put("ok", false).put("error", "Accept the Terms and Privacy Notice first.")
-    val chosenSubscription = prefs.getInt("selected_sim_subscription_id", -1)
-    val emulatorTestChoice = chosenSubscription == EMULATOR_TEST_SIM_ID && BuildConfig.DEBUG && isRunningOnEmulator()
-    if (chosenSubscription < 0 && !emulatorTestChoice) {
-      return JSONObject().put("ok", false).put("error", "Choose an active SIM before continuing.")
-    }
     return try {
       val installationId = prefs.getString("installation_id", null)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
       val deviceSecret = prefs.getString("device_secret", null)?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
@@ -337,8 +332,6 @@ class ServerSetupWebActivity : Activity() {
         .put("action", "register_device")
         .put("installation_id", installationId)
         .put("device_secret", deviceSecret)
-        .put("selected_sim_slot", prefs.getInt("selected_sim_slot", 0))
-        .put("selected_sim_carrier", prefs.getString("selected_sim_carrier", "Unknown carrier"))
         .put("accepted_terms", true)
         .put("terms_version", "server-terms-1.0")
         .put("privacy_version", "server-privacy-1.0")
@@ -377,7 +370,6 @@ class ServerSetupWebActivity : Activity() {
       } catch (_: Exception) { false }
       JSONObject().put("ok", true).put("serverId", serverId)
         .put("phoneAccountRegistered", accountRegistered)
-        .put("selectedSimNumber", prefs.getString("selected_sim_phone", "").orEmpty())
     } catch (e: Exception) {
       JSONObject().put("ok", false).put("error", e.message ?: "Device registration failed.")
     }
