@@ -71,14 +71,18 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.requestCallPermissions();
   });
 
-  window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted) => {
+  window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted, phoneStateGranted) => {
     grantCalls.disabled = false;
     grantCalls.textContent = "Create my Server ID and enable calling →";
     if (!microphoneGranted) {
       showStatus("Microphone permission is required for Server calls. Allow it and try again.");
       return;
     }
-    showStatus("Permissions granted. Creating your Server identity without SMS OTP…");
+    if (!phoneStateGranted) {
+      showStatus("Android's Phone permission is required to register Server with the system calling interface. Server does not read your phone number or inspect SIM slots.");
+      return;
+    }
+    showStatus("Permissions granted. Creating your Server identity…");
     grantCalls.disabled = true;
     if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.completeSetup(Boolean(terms?.checked));
