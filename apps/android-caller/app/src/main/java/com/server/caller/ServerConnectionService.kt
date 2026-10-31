@@ -24,12 +24,11 @@ object ServerTelecomRegistry {
     ComponentName(context, ServerConnectionService::class.java), ACCOUNT_ID
   )
 
-  fun register(context: Context): Boolean {
+  internal fun buildPhoneAccount(context: Context): PhoneAccount {
     val app = context.applicationContext
-    val telecom = app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val handle = handle(app)
     // A phone number is attached only after the user explicitly verifies and
-    // links it. Server ID calling works independently of SIM metadata.
+    // opts into number-based Server calls. Server ID calling never needs SIM metadata.
     val sessionPrefs = app.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val linkedPhone = if (
       sessionPrefs.getBoolean("server_phone_number_linked", false) &&
@@ -40,23 +39,27 @@ object ServerTelecomRegistry {
     val observedNumber = linkedPhone.filter { it.isDigit() || it == '+' }
     val accountBuilder = PhoneAccount.builder(handle, "Server")
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
-      // Tell Telecom explicitly that Server handles telephone-number URIs. This is
-      // an internet-calling account; it must never be registered as a cellular SIM.
       .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
       .setShortDescription("Server internet calling account; not a cellular SIM")
     if (observedNumber.isNotBlank()) {
       accountBuilder.setAddress(Uri.parse("tel:$observedNumber"))
     }
-    val account = accountBuilder.build()
-    telecom.registerPhoneAccount(account)
-    // Account registration should survive a later revocation of phone-number metadata permission.
-    return try { telecom.getPhoneAccount(handle)?.isEnabled == true }
-    catch (_: SecurityException) { false }
+    return accountBuilder.build()
+  }
+
+  fun register(context: Context): Boolean {
+    val app = context.applicationContext
+    val telecom = app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+    telecom.registerPhoneAccount(buildPhoneAccount(app))
+    // getPhoneAccount() is protected by READ_PHONE_NUMBERS on modern Android.
+    // The enabled account is instead discovered via the call-capable list, which
+    // requires READ_PHONE_STATE and contains only accounts the user enabled.
+    return isEnabled(app)
   }
 
   fun isEnabled(context: Context): Boolean {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    return try { telecom.getPhoneAccount(handle(context))?.isEnabled == true }
+    return try { telecom.callCapablePhoneAccounts.contains(handle(context)) }
     catch (_: SecurityException) { false }
   }
 
