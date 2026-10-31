@@ -25,15 +25,15 @@
       <div class="step-form">
         <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Create a Server ID once. Use Wi-Fi or mobile data from any SIM; Server does not take over your cellular subscription. Linking a phone number later is optional.</p></div></div>
         <button class="primary full" id="open-server-app" type="button">Continue setup on this phone <span aria-hidden="true">→</span></button>
-        <p id="fallback" class="fine-print hidden">The phone integration did not open. A regular website cannot access SIM subscriptions or register an account with the system dialer by itself; the native integration component is required for those OS-controlled steps.</p>
-        <div class="next-note"><strong>Important about your number</strong><span>Keep your current number as your Server calling identity; you do not need to ask your contacts to save a second number. Server can route calls between Server users over the internet when the number is verified and the recipient opts in. Ordinary carrier calls still follow your mobile operator's settings.</span></div>
+        <p id="fallback" class="fine-print hidden">The phone integration did not open. A browser cannot register an account with Android's system calling interface by itself; install the Server calling component and try again.</p>
+        <div class="next-note"><strong>Important about your number</strong><span>Your Server ID is your internet-calling identity. Your existing mobile number and carrier service remain unchanged. You can optionally verify and link a number later, with your permission, so other Server users can find you that way.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-        <p class="fine-print">On iPhone, a website cannot inspect SIM slots. iOS 18.2+ can route Contacts tap-to-call to an alternative default calling app once Apple authorizes Server’s calling-app entitlement and the user chooses Server as the default. This does not add a third cellular SIM.</p>
+        <p class="fine-print">On iPhone, the native Server app is required for Apple’s calling-app integration. Availability depends on Apple-authorised calling-app capabilities and the user’s iOS settings.</p>
       </div>
       <div id="native-setup" class="hidden">
         <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>No SIM selection and no SMS OTP are required. Server uses your internet connection; your normal SIMs remain available for ordinary carrier calls.</p></div></div>
         <div id="call-permission-step" class="hidden">
-          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Grant microphone access so Server calls have audio. Notification permission helps the phone show call-related alerts.</p></div></div>
+          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio, Phone access so Android can register Server as a system calling account, and notifications for call alerts. Server does not read your phone number or enumerate SIM slots.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Create my Server ID and enable calling <span aria-hidden="true">→</span></button>
@@ -44,12 +44,13 @@
           <p id="server-id" class="pairing-result"></p>
           <p class="done-text">Your Server ID is ready. You can call other Server users by Server ID. Linking a mobile number is optional and requires separate verification.</p>
 
-          <section id="phone-link-step" class="phone-link-step">
+          <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
+          <section id="phone-link-step" class="phone-link-step hidden">
             <h3>Link your mobile number</h3>
             <p class="fine-print">Verify the same number already on your SIM. When enabled below, other Server users can ring you through Server internet calling using this verified number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
             <div class="gateway-setup">
               <h4>Set up SMS verification</h4>
-              <p class="fine-print">Use an Android phone with an active SIM (this phone can be used). Generate a one-time code here, then open the Server SIM Gateway app, enter the code, pair it, grant SMS permission, and start the gateway. The code expires after 10 minutes.</p>
+              <p class="fine-print">Phone-number verification is optional and uses a separate SMS gateway. You do not need to complete it to use your Server ID. The code expires after 10 minutes.</p>
               <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate SMS gateway pairing code</button>
               <div id="sms-gateway-pairing-result" class="hidden">
                 <label for="sms-gateway-pairing-code">One-time pairing code</label>
