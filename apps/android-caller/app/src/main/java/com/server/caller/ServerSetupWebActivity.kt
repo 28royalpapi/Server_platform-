@@ -89,27 +89,11 @@ class ServerSetupWebActivity : Activity() {
           onboardingBootstrapped = true
           // loadBundledOnboarding already includes app.js after the HTML body. Do not
           // evaluate it a second time: global `const` declarations would throw and
-          // duplicate event listeners can leave SIM-selection state out of sync.
+          // duplicate event listeners can leave setup state out of sync.
           target.evaluateJavascript(
             "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
             null
           )
-          Thread {
-            val choices = simChoicesJson()
-            // Only notify the website after permission is already granted. A fresh
-            // visit must keep the explicit permission button usable, not report a
-            // denial merely because Android has not asked the user yet.
-            if (!choices.optBoolean("permissionNeeded", true)) {
-              runOnUiThread {
-                if (!isFinishing && !isDestroyed) {
-                  target.evaluateJavascript(
-                    "window.onServerSimPermissionResult && window.onServerSimPermissionResult(true, $choices)",
-                    null
-                  )
-                }
-              }
-            }
-          }.start()
         }
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
           val uri = request?.url ?: return true
@@ -143,7 +127,7 @@ class ServerSetupWebActivity : Activity() {
       .replace("""<script defer src="app.js"></script>""", "")
       .replace("target=\"_blank\" rel=\"noopener\"", "target=\"_self\"")
     // app.js was a deferred external script. Reinsert it after the body content so
-    // SIM and calling-permission buttons actually receive their event handlers.
+    // native permission and account-creation controls receive their event handlers.
     val inlineScript = "<script>\n" + bundledJavaScript + "\n</script>"
     page = page.replace("</body>", inlineScript + "\n</body>")
     check(page.contains("native-setup") && page.contains("server-native-bridge") &&
