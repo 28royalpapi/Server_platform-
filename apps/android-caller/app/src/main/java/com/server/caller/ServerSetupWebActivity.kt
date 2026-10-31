@@ -351,6 +351,7 @@ class ServerSetupWebActivity : Activity() {
           prefs.edit().putBoolean("server_phone_number_linked", true)
             .putString("server_linked_phone", result.optString("phone", to))
             .putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+          try { ServerTelecomRegistry.register(this@ServerSetupWebActivity) } catch (_: Exception) {}
         }
         callbackToWebsite("onServerPhoneLinkResult", result)
       }.start()
@@ -370,7 +371,10 @@ class ServerSetupWebActivity : Activity() {
           try { requestServerAuth(JSONObject().put("action", "set_number_call_consent").put("allow_number_based_server_calls", allowNumberCalls), access) }
           catch (_: Exception) { JSONObject().put("ok", false).put("error", "NUMBER_CALL_CONSENT_SAVE_FAILED") }
         }
-        if (result.optBoolean("ok")) prefs.edit().putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+        if (result.optBoolean("ok")) {
+          prefs.edit().putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+          try { ServerTelecomRegistry.register(this@ServerSetupWebActivity) } catch (_: Exception) {}
+        }
         callbackToWebsite("onServerNumberCallConsentResult", result)
       }.start()
     }
