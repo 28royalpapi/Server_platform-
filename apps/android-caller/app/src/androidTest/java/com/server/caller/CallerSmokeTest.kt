@@ -359,6 +359,7 @@ class CallerSmokeTest {
     val previousNumber = prefs.getString("selected_sim_phone", null)
     val previousLinked = prefs.getBoolean("server_phone_number_linked", false)
     val previousLinkedPhone = prefs.getString("server_linked_phone", null)
+    val previousNumberConsent = prefs.getBoolean("allow_number_based_server_calls", false)
 
     try {
       // A legacy SIM-derived number must never be silently attached to Server.
@@ -372,7 +373,15 @@ class CallerSmokeTest {
 
       // Only an explicitly verified-and-linked number may be shown as Telecom metadata.
       prefs.edit().putBoolean("server_phone_number_linked", true)
-        .putString("server_linked_phone", "+2348012345678").commit()
+        .putString("server_linked_phone", "+2348012345678")
+        .putBoolean("allow_number_based_server_calls", false).commit()
+      ServerTelecomRegistry.register(context)
+      account = telecom.getPhoneAccount(handle)
+      assertNotNull("Android Telecom did not retain the Server calling account", account)
+      assertEquals("Verified number must remain private until the user opts into number-based calls",
+        null, account!!.address)
+
+      prefs.edit().putBoolean("allow_number_based_server_calls", true).commit()
       ServerTelecomRegistry.register(context)
       account = telecom.getPhoneAccount(handle)
       assertNotNull("Android Telecom did not retain the Server calling account", account)
@@ -384,13 +393,20 @@ class CallerSmokeTest {
         account.supportedUriSchemes.contains(PhoneAccount.SCHEME_TEL))
       assertTrue("Server must not masquerade as a cellular SIM",
         (account.capabilities and PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION) == 0)
-      assertEquals("Only the explicitly linked number should be exposed as account metadata",
+      assertEquals("Only the explicitly linked and consented number should be exposed as account metadata",
         Uri.parse("tel:+2348012345678"), account.address)
+
+      prefs.edit().putBoolean("allow_number_based_server_calls", false).commit()
+      ServerTelecomRegistry.register(context)
+      account = telecom.getPhoneAccount(handle)
+      assertEquals("Revoking number-call consent must remove the number from Telecom metadata",
+        null, account?.address)
     } finally {
       val edit = prefs.edit()
       if (previousNumber == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousNumber)
       edit.putBoolean("server_phone_number_linked", previousLinked)
       if (previousLinkedPhone == null) edit.remove("server_linked_phone") else edit.putString("server_linked_phone", previousLinkedPhone)
+      edit.putBoolean("allow_number_based_server_calls", previousNumberConsent)
       edit.commit()
       ServerTelecomRegistry.register(context)
     }
