@@ -72,7 +72,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     grantCalls.disabled = true;
     grantCalls.textContent = "Waiting for Android permissions…";
-    showStatus("Android will request microphone permission and, where available, notification permission.");
+    showStatus("Android will request microphone permission, Phone access for Telecom registration, and notifications where supported.");
     if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.requestCallPermissions();
   });
@@ -285,11 +285,11 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.openCallingSettings();
   });
   document.querySelector("#open-phone-dialer")?.addEventListener("click", () => {
+    if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
     if (!window.ServerAndroid.isCallingAccountEnabled()) {
       showStatus("Server is not enabled yet. Open phone settings, enable Server under calling accounts, then return here.");
       return;
     }
-    if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
     window.ServerAndroid.openPhoneDialer();
   });
 
@@ -331,7 +331,7 @@ button?.addEventListener("click", () => {
   window.setTimeout(() => {
     if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
       fallback?.classList.remove("hidden");
-      fallback.textContent = "The Server phone-integration component did not open. Browser security prevents a website from reading SIM subscriptions or adding a calling account to Android’s dialer. The component is required only to bridge those operating-system APIs; the onboarding UI remains this website.";
+      fallback.textContent = "The Server phone-integration component did not open. Browser security prevents a website from registering an account with Android’s system dialer. The component is required only to bridge those operating-system APIs; the onboarding UI remains this website.";
       showStatus("Android did not open the system integration component. Android system calling cannot be registered by a browser alone.");
     }
     button.disabled = false;
