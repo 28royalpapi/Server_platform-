@@ -283,14 +283,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.openPhoneDialer();
   });
 
-  // If permission has already been granted on this phone, prefill the SIM choices.
-  try {
-    if (!window.ServerAndroid) throw new Error("Android bridge is not ready");
-    const existing = JSON.parse(window.ServerAndroid.getSimChoices());
-    if (!existing.permissionNeeded && existing.sims?.length) showSims(existing);
-  } catch {
-    // The explicit Detect SIMs button remains available.
-  }
+
 }
 
 button?.addEventListener("click", () => {
