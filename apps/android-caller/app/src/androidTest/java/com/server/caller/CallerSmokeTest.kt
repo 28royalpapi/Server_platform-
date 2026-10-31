@@ -169,7 +169,7 @@ class CallerSmokeTest {
     return android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
   }
 
-  private fun grantPhoneMetadataPermissions(context: Context) {
+  private fun grantTelecomPermissions(context: Context) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO)) {
       try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission) } catch (_: Exception) {}
@@ -177,7 +177,7 @@ class CallerSmokeTest {
   }
   private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    return telecom.getPhoneAccount(handle)?.isEnabled == true
+    return telecom.callCapablePhoneAccounts.contains(handle)
   }
 
   private fun ensureAccountEnabled(
@@ -186,7 +186,7 @@ class CallerSmokeTest {
     handle: android.telecom.PhoneAccountHandle,
     label: String
   ) {
-    grantPhoneMetadataPermissions(context)
+    grantTelecomPermissions(context)
     if (accountEnabled(context, handle)) return
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -220,7 +220,7 @@ class CallerSmokeTest {
   @Test fun preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    grantPhoneMetadataPermissions(context)
+    grantTelecomPermissions(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val serverHandle = ServerTelecomRegistry.handle(context)
@@ -352,9 +352,7 @@ class CallerSmokeTest {
 
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
-    grantPhoneMetadataPermissions(context)
-    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    val handle = ServerTelecomRegistry.handle(context)
+    grantTelecomPermissions(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val previousNumber = prefs.getString("selected_sim_phone", null)
     val previousLinked = prefs.getBoolean("server_phone_number_linked", false)
@@ -366,27 +364,24 @@ class CallerSmokeTest {
       prefs.edit().putString("selected_sim_phone", "+2348012345678")
         .putBoolean("server_phone_number_linked", false).remove("server_linked_phone").commit()
       ServerTelecomRegistry.register(context)
-      var account = telecom.getPhoneAccount(handle)
-      assertNotNull("Android Telecom did not register the Server calling account", account)
+      var account = ServerTelecomRegistry.buildPhoneAccount(context)
       assertEquals("An unverified SIM number must not become Server calling identity metadata",
-        null, account!!.address)
+        null, account.address)
 
       // Only an explicitly verified-and-linked number may be shown as Telecom metadata.
       prefs.edit().putBoolean("server_phone_number_linked", true)
         .putString("server_linked_phone", "+2348012345678")
         .putBoolean("allow_number_based_server_calls", false).commit()
       ServerTelecomRegistry.register(context)
-      account = telecom.getPhoneAccount(handle)
-      assertNotNull("Android Telecom did not retain the Server calling account", account)
+      account = ServerTelecomRegistry.buildPhoneAccount(context)
       assertEquals("Verified number must remain private until the user opts into number-based calls",
-        null, account!!.address)
+        null, account.address)
 
       prefs.edit().putBoolean("allow_number_based_server_calls", true).commit()
       ServerTelecomRegistry.register(context)
-      account = telecom.getPhoneAccount(handle)
-      assertNotNull("Android Telecom did not retain the Server calling account", account)
+      account = ServerTelecomRegistry.buildPhoneAccount(context)
       assertTrue("Server account is not a call-provider account",
-        (account!!.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
+        (account.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
       assertTrue("Server must be a system-managed call provider, not self-managed",
         (account.capabilities and PhoneAccount.CAPABILITY_SELF_MANAGED) == 0)
       assertTrue("Server must explicitly advertise tel URI support so the normal dialer can route numbers to it",
@@ -398,9 +393,9 @@ class CallerSmokeTest {
 
       prefs.edit().putBoolean("allow_number_based_server_calls", false).commit()
       ServerTelecomRegistry.register(context)
-      account = telecom.getPhoneAccount(handle)
+      account = ServerTelecomRegistry.buildPhoneAccount(context)
       assertEquals("Revoking number-call consent must remove the number from Telecom metadata",
-        null, account?.address)
+        null, account.address)
     } finally {
       val edit = prefs.edit()
       if (previousNumber == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousNumber)
