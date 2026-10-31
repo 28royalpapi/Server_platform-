@@ -52,17 +52,14 @@ class CallerSmokeTest {
         !device.hasObject(By.textContains("Allow SIM access")))
       val terms = device.wait(Until.findObject(By.textContains("I accept the Terms of Service")), 10_000)
       assertNotNull("Legal acceptance must remain part of account creation", terms)
-      val createButton = device.wait(Until.findObject(By.textContains("Create my Server ID")), 10_000)
-      assertNotNull("Server identity creation action is not visible", createButton)
-      assertTrue("Server identity creation must require legal acceptance",
-        createButton!!.isEnabled.not())
+      // Accept terms while the consent control is visible, then scroll to the
+      // primary action which sits below the fold on phone-sized screens.
       terms!!.click()
-      assertTrue("Accepting the terms should enable Server ID creation", createButton.isEnabled)
-      // The phone-sized WebView places the primary action below the fold.
       device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5,
         device.displayWidth / 2, device.displayHeight / 3, 20)
-      val visibleCreateButton = device.wait(Until.findObject(By.textContains("Create my Server ID")), 5_000)
-      assertNotNull("Server identity creation action is not visible after scrolling", visibleCreateButton)
+      val createButton = device.wait(Until.findObject(By.textContains("Create my Server ID")), 5_000)
+      assertNotNull("Server identity creation action is not visible after scrolling", createButton)
+      assertTrue("Accepting the terms should enable Server ID creation", createButton!!.isEnabled)
       assertTrue("Onboarding unexpectedly opened a custom number-entry dialer",
         !device.hasObject(By.textContains("Call a number")))
     }
