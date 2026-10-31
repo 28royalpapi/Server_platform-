@@ -437,18 +437,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
-  private fun selectedCellularAccount(): PhoneAccountHandle? {
-    val subscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
-    if (subscriptionId < 0) return null
-    return try {
-      val telecom = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-      telecom.callCapablePhoneAccounts.firstOrNull { handle ->
-        handle != ServerTelecomRegistry.handle(this) &&
-          (handle.id == subscriptionId.toString() || handle.id.endsWith(":$subscriptionId"))
-      }
-    } catch (_: Exception) { null }
-  }
-
   /** Presents a user-confirmed route into the normal carrier dialer; it never silently places a paid call. */
   private fun notifyCarrierFallback(number: String, reason: String) {
     if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(number)) return
@@ -461,7 +449,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         ).apply { description = "Lets you switch to a normal carrier call when Server cannot reach a user." })
       }
       val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).apply {
-        selectedCellularAccount()?.let { putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
+        // Let Android and the user choose their normal carrier account, if needed.
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       }
       val pending = PendingIntent.getActivity(
@@ -766,7 +754,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     accessToken = null; refreshToken = null; accessExpiry = 0
     prefs.edit().remove("access_token").remove("refresh_token").remove("access_expiry").apply()
     authPanel.visibility = View.VISIBLE; callPanel.visibility = View.GONE
-    ensureSimPermissions()
+    showSetupRequired()
     setStatus("Server session cleared on this device.")
   }
 
