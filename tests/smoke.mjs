@@ -68,9 +68,19 @@ assert.match(app,/userAgent\.toLowerCase\(\)\.includes\("; wv"\)/);
 assert.match(app,/setNumberCallConsent/);
 assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
-assert.match(androidMain,/READ_PHONE_NUMBERS/);
-assert.match(androidMain,/SubscriptionManager/);
-assert.match(androidMain,/registerDevice\(\)/);
+assert.doesNotMatch(androidMain,/READ_PHONE_NUMBERS|SubscriptionManager|selected_sim_/,
+  "the Android call engine does not enumerate or depend on a selected SIM");
+assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|simChoicesJson|requestSimPermissions|selectSim/,
+  "the Android onboarding bridge does not read SIM subscriptions or phone numbers");
+assert.match(androidSetup,/registerDevice\(acceptedTerms: Boolean\)/,
+  "Server ID registration is performed by the website's native permission bridge");
+assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,
+  "Android phone-state access is requested only for its Telecom system-account API");
+assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
+  "Server must not request permission to read SIM phone numbers");
+assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
+  "a legacy SIM number must not become Server's calling-account address");
+assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
 assert.match(iosModel,/func requestPhoneLinkCode\(\) async/);
@@ -110,7 +120,7 @@ assert.doesNotMatch(iosView,/CNContactStore/);
 assert.match(iosModel,/to_server_id/);
 assert.match(handoff,/HANDOFF_EXPIRED_OR_ALREADY_USED/);
 assert.match(handoff,/server_sessions/);
-assert.match(app,/server:\/\/sim-setup/);
+assert.match(app,/server:\/\/device-setup/);
 assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
@@ -130,9 +140,10 @@ assert.match(app,/onServerGatewayPairingCode/,"website handles pairing-code resu
 assert.match(html,/sms-gateway-pairing-code/,"onboarding UI can display the one-time gateway code");
 assert.doesNotMatch(androidManifest,/DialerActivity/);
 assert.match(androidManifest,/android:name="android.intent.action.MAIN"/);
-assert.match(androidSetup,/SubscriptionManager/);
-assert.match(androidSetup,/activeSubscriptionInfoList/);
-assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
+assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList|selectSim/,
+  "Android setup must not inspect or select a SIM subscription");
+assert.match(androidSetup,/requestCallPermissions/);
+assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/ContactsContract\.Contacts\.CONTENT_URI/,"outgoing-call acceptance uses the Android Contacts UI");
@@ -169,7 +180,8 @@ assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("Intent(Intent.ACTION_SENDTO"),"Android opens a user-confirmed SMS composer for manual guest invites");
 assert.ok(androidMain.includes("private fun notifyCarrierFallback"),"Android exposes a carrier-call fallback notification");
 assert.ok(androidMain.includes("30_000"),"Android offers the carrier fallback after an unanswered ring");
-assert.ok(androidMain.includes("EXTRA_PHONE_ACCOUNT_HANDLE"),"Android tries to preserve the selected SIM for carrier fallback");
+assert.doesNotMatch(androidMain,/EXTRA_PHONE_ACCOUNT_HANDLE|selectedCellularAccount/,
+  "carrier fallback leaves SIM selection to Android and the user");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
 assert.match(androidMain,/deliveryMode == "manual_sms"/);
 assert.match(iosModel,/guestInviteMessage/);
@@ -183,10 +195,10 @@ assert.match(config,/hzuovekqsjtpvmbuybxs\.supabase\.co/);
 assert.doesNotMatch(app,/request_otp|verify_otp/);
 assert.doesNotMatch(app,/server-handoff|server-auth/);
 assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
-assert.match(app,/server:\/\/sim-setup/);
+assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 console.log("Server backend/web contract checks: PASS");
-console.log("Checks include device-first identity, native SIM selection, consent, Server-ID routing, legacy OTP safeguards, guest WebRTC and public-key hygiene.");
+console.log("Checks include SIM-independent identity, OS permissions, consent-based number linking, Server-ID routing, legacy OTP safeguards, guest WebRTC and public-key hygiene.");
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");

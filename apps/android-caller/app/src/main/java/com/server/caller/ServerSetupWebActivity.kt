@@ -8,8 +8,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.telephony.SubscriptionInfo
-import android.telephony.SubscriptionManager
 import android.webkit.JavascriptInterface
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -18,7 +16,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -28,8 +25,8 @@ import java.security.SecureRandom
 import java.util.UUID
 
 /**
- * Hosts the same Server onboarding website with a narrowly-scoped Android SIM/permission bridge.
- * It exists for setup only; actual calls are routed through Android Telecom and the system dialer.
+ * Hosts the Server onboarding website with a narrowly-scoped microphone/notification permission bridge.
+ * SIM subscriptions are not inspected. Calls are routed through Android Telecom and the system dialer.
  */
 class ServerSetupWebActivity : Activity() {
   private lateinit var web: WebView
@@ -92,27 +89,11 @@ class ServerSetupWebActivity : Activity() {
           onboardingBootstrapped = true
           // loadBundledOnboarding already includes app.js after the HTML body. Do not
           // evaluate it a second time: global `const` declarations would throw and
-          // duplicate event listeners can leave SIM-selection state out of sync.
+          // duplicate event listeners can leave setup state out of sync.
           target.evaluateJavascript(
             "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
             null
           )
-          Thread {
-            val choices = simChoicesJson()
-            // Only notify the website after permission is already granted. A fresh
-            // visit must keep the explicit permission button usable, not report a
-            // denial merely because Android has not asked the user yet.
-            if (!choices.optBoolean("permissionNeeded", true)) {
-              runOnUiThread {
-                if (!isFinishing && !isDestroyed) {
-                  target.evaluateJavascript(
-                    "window.onServerSimPermissionResult && window.onServerSimPermissionResult(true, $choices)",
-                    null
-                  )
-                }
-              }
-            }
-          }.start()
         }
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
           val uri = request?.url ?: return true
@@ -133,9 +114,8 @@ class ServerSetupWebActivity : Activity() {
   }
 
   /**
-   * The phone's first-party site may still be on an older deployment. Bundle the
-   * current HTML/CSS/JS in the APK so the SIM flow works immediately after the
-   * website's "Open Server" hand-off, without depending on deployment propagation.
+   * Bundle the current website HTML/CSS/JS in the APK so the onboarding flow stays
+   * consistent when the native permission bridge is opened.
    */
   private fun loadBundledOnboarding() {
     val html = assets.open("server-web/index.html").bufferedReader().use { it.readText() }
@@ -147,30 +127,25 @@ class ServerSetupWebActivity : Activity() {
       .replace("""<script defer src="app.js"></script>""", "")
       .replace("target=\"_blank\" rel=\"noopener\"", "target=\"_self\"")
     // app.js was a deferred external script. Reinsert it after the body content so
-    // SIM and calling-permission buttons actually receive their event handlers.
+    // native permission and account-creation controls receive their event handlers.
     val inlineScript = "<script>\n" + bundledJavaScript + "\n</script>"
     page = page.replace("</body>", inlineScript + "\n</body>")
     check(page.contains("native-setup") && page.contains("server-native-bridge") &&
       page.indexOf("id=\"native-setup\"") > page.indexOf("<body>") &&
       page.indexOf(inlineScript) > page.indexOf("id=\"native-setup\"")) {
-      "Bundled Server onboarding HTML is missing the SIM-first bridge UI or app.js script."
+      "Bundled Server onboarding HTML is missing the native calling bridge UI or app.js script."
     }
     web.loadDataWithBaseURL("https://$HOST/", page, "text/html", "UTF-8", null)
   }
 
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-    when (requestCode) {
-      REQUEST_SIM -> {
-        val granted = hasSimPermissions()
-        runJs("window.onServerSimPermissionResult && window.onServerSimPermissionResult($granted)")
-      }
-      REQUEST_CALL -> {
-        val micGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
-          checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted)")
-      }
+    if (requestCode == REQUEST_CALL) {
+      val micGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+      val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+      val phoneStateGranted = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, $phoneStateGranted)")
     }
   }
 
@@ -242,91 +217,8 @@ class ServerSetupWebActivity : Activity() {
     runJs("window.$name && window.$name($result)")
   }
 
-  private fun hasSimPermissions(): Boolean =
-    checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
-    checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
-
-  private fun simChoicesJson(): JSONObject {
-    if (!hasSimPermissions()) return JSONObject().put("permissionNeeded", true).put("sims", JSONArray())
-    @Suppress("DEPRECATION", "MissingPermission")
-    val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-    @Suppress("DEPRECATION", "MissingPermission")
-    val subscriptions = try { manager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex } }
-      catch (_: SecurityException) { emptyList() }
-    val selectedId = prefs.getInt("selected_sim_subscription_id", -1)
-    val rows = JSONArray()
-    // The stock Android Emulator can simulate modem events, but it does not let
-    // an ordinary app manufacture a carrier-backed SubscriptionInfo record. For
-    // debug emulator runs only, expose a clearly-labelled test fixture so we can
-    // exercise the website selection flow without claiming a real SIM is present.
-    if (subscriptions.isEmpty() && BuildConfig.DEBUG && isRunningOnEmulator()) {
-      rows.put(JSONObject()
-        .put("id", EMULATOR_TEST_SIM_ID)
-        .put("slot", 1)
-        .put("carrier", "Emulator test SIM (not a real line)")
-        .put("number", "+15550001001")
-        .put("numberAvailable", true)
-        .put("selected", selectedId == EMULATOR_TEST_SIM_ID)
-        .put("testOnly", true))
-    }
-    subscriptions.forEachIndexed { index, info ->
-      val carrier = info.carrierName?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "Unknown carrier"
-      val phone = readPhoneNumber(manager, info)
-      val slot = if (info.simSlotIndex >= 0) info.simSlotIndex + 1 else index + 1
-      rows.put(JSONObject()
-        .put("id", info.subscriptionId)
-        .put("slot", slot)
-        .put("carrier", carrier)
-        .put("number", phone)
-        .put("numberAvailable", phone.isNotBlank())
-        .put("selected", info.subscriptionId == selectedId))
-    }
-    return JSONObject().put("permissionNeeded", false).put("sims", rows)
-  }
-
-  @Suppress("DEPRECATION", "MissingPermission")
-  private fun readPhoneNumber(manager: SubscriptionManager, info: SubscriptionInfo): String =
-    try {
-      (if (Build.VERSION.SDK_INT >= 33) manager.getPhoneNumber(info.subscriptionId) else info.number)
-        ?.trim().orEmpty().take(32)
-    } catch (_: Exception) { "" }
-
-  private fun chooseSim(subscriptionId: Int): Boolean {
-    if (!hasSimPermissions()) return false
-    if (subscriptionId == EMULATOR_TEST_SIM_ID && BuildConfig.DEBUG && isRunningOnEmulator()) {
-      prefs.edit()
-        .putInt("selected_sim_subscription_id", EMULATOR_TEST_SIM_ID)
-        .putInt("selected_sim_slot", 0)
-        .putString("selected_sim_carrier", "Emulator test SIM (not a real line)")
-        .putString("selected_sim_phone", "+15550001001")
-        .commit()
-      return true
-    }
-    @Suppress("DEPRECATION", "MissingPermission")
-    val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-    @Suppress("DEPRECATION", "MissingPermission")
-    val subs = try { manager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex } }
-      catch (_: SecurityException) { emptyList() }
-    val info = subs.firstOrNull { it.subscriptionId == subscriptionId } ?: return false
-    val slot = if (info.simSlotIndex >= 0) info.simSlotIndex else subs.indexOf(info)
-    val carrier = info.carrierName?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "Unknown carrier"
-    val phone = readPhoneNumber(manager, info)
-    prefs.edit()
-      .putInt("selected_sim_subscription_id", info.subscriptionId)
-      .putInt("selected_sim_slot", slot)
-      .putString("selected_sim_carrier", carrier)
-      .putString("selected_sim_phone", phone)
-      .commit()
-    return true
-  }
-
   private fun registerDevice(acceptedTerms: Boolean): JSONObject {
     if (!acceptedTerms) return JSONObject().put("ok", false).put("error", "Accept the Terms and Privacy Notice first.")
-    val chosenSubscription = prefs.getInt("selected_sim_subscription_id", -1)
-    val emulatorTestChoice = chosenSubscription == EMULATOR_TEST_SIM_ID && BuildConfig.DEBUG && isRunningOnEmulator()
-    if (chosenSubscription < 0 && !emulatorTestChoice) {
-      return JSONObject().put("ok", false).put("error", "Choose an active SIM before continuing.")
-    }
     return try {
       val installationId = prefs.getString("installation_id", null)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
       val deviceSecret = prefs.getString("device_secret", null)?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
@@ -337,8 +229,6 @@ class ServerSetupWebActivity : Activity() {
         .put("action", "register_device")
         .put("installation_id", installationId)
         .put("device_secret", deviceSecret)
-        .put("selected_sim_slot", prefs.getInt("selected_sim_slot", 0))
-        .put("selected_sim_carrier", prefs.getString("selected_sim_carrier", "Unknown carrier"))
         .put("accepted_terms", true)
         .put("terms_version", "server-terms-1.0")
         .put("privacy_version", "server-privacy-1.0")
@@ -377,42 +267,25 @@ class ServerSetupWebActivity : Activity() {
       } catch (_: Exception) { false }
       JSONObject().put("ok", true).put("serverId", serverId)
         .put("phoneAccountRegistered", accountRegistered)
-        .put("selectedSimNumber", prefs.getString("selected_sim_phone", "").orEmpty())
     } catch (e: Exception) {
       JSONObject().put("ok", false).put("error", e.message ?: "Device registration failed.")
     }
   }
 
   private inner class Bridge {
-    @JavascriptInterface fun getSimChoices(): String = simChoicesJson().toString()
-
-    @JavascriptInterface fun requestSimPermissions() {
-      runOnUiThread {
-        if (hasSimPermissions()) {
-          val data = simChoicesJson().toString()
-          runJs("window.onServerSimPermissionResult && window.onServerSimPermissionResult(true, $data)")
-        } else {
-          val needed = arrayListOf<String>()
-          if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
-          if (checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_NUMBERS)
-          requestPermissions(needed.toTypedArray(), REQUEST_SIM)
-        }
-      }
-    }
-
-    @JavascriptInterface fun selectSim(subscriptionId: Int): Boolean = chooseSim(subscriptionId)
-
     @JavascriptInterface fun requestCallPermissions() {
       runOnUiThread {
         val needed = arrayListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.RECORD_AUDIO)
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
           needed.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         if (needed.isEmpty()) {
           val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
           val notifications = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications)")
+          val phoneState = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications, $phoneState)")
         } else requestPermissions(needed.toTypedArray(), REQUEST_CALL)
       }
     }
@@ -478,6 +351,7 @@ class ServerSetupWebActivity : Activity() {
           prefs.edit().putBoolean("server_phone_number_linked", true)
             .putString("server_linked_phone", result.optString("phone", to))
             .putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+          try { ServerTelecomRegistry.register(this@ServerSetupWebActivity) } catch (_: Exception) {}
         }
         callbackToWebsite("onServerPhoneLinkResult", result)
       }.start()
@@ -497,7 +371,10 @@ class ServerSetupWebActivity : Activity() {
           try { requestServerAuth(JSONObject().put("action", "set_number_call_consent").put("allow_number_based_server_calls", allowNumberCalls), access) }
           catch (_: Exception) { JSONObject().put("ok", false).put("error", "NUMBER_CALL_CONSENT_SAVE_FAILED") }
         }
-        if (result.optBoolean("ok")) prefs.edit().putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+        if (result.optBoolean("ok")) {
+          prefs.edit().putBoolean("allow_number_based_server_calls", result.optBoolean("allow_number_based_server_calls", allowNumberCalls)).apply()
+          try { ServerTelecomRegistry.register(this@ServerSetupWebActivity) } catch (_: Exception) {}
+        }
         callbackToWebsite("onServerNumberCallConsentResult", result)
       }.start()
     }
@@ -551,8 +428,6 @@ class ServerSetupWebActivity : Activity() {
 
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
-    private const val REQUEST_SIM = 5101
     private const val REQUEST_CALL = 5102
-    private const val EMULATOR_TEST_SIM_ID = -1001
   }
 }
