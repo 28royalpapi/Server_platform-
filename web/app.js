@@ -16,6 +16,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   stepForm.classList.add("hidden");
   nativeSetup.classList.remove("hidden");
   const callStep = document.querySelector("#call-permission-step");
+  callStep?.classList.remove("hidden");
   const terms = document.querySelector("#native-terms");
   const grantCalls = document.querySelector("#grant-call-permissions");
   const finishStep = document.querySelector("#finish-step");
@@ -36,17 +37,17 @@ if (isNativeSetup && nativeSetup && stepForm) {
   let phoneLinkVerified = false;
   let persistedNumberConsent = false;
   const normalizePhone = (raw) => {
-    const value = String(raw || "").trim().replace(/[()\\s.-]/g, "");
+    const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
     let candidate = value;
     if (candidate.startsWith("00")) candidate = "+" + candidate.slice(2);
     else if (!candidate.startsWith("+")) {
-      const digits = candidate.replace(/\\D/g, "");
+      const digits = candidate.replace(/\D/g, "");
       if (digits.startsWith("234") && digits.length === 13) candidate = "+" + digits;
       else if (digits.length === 11 && digits.startsWith("0")) candidate = "+234" + digits.slice(1);
       else if (digits.length === 10 && /^[789]/.test(digits)) candidate = "+234" + digits;
       else return null;
     }
-    return /^\\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
+    return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
   };
   const showPhoneLinkStatus = (message, ok = false) => {
     if (!phoneLinkStatus) return;
@@ -72,7 +73,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
 
   window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted) => {
     grantCalls.disabled = false;
-    grantCalls.textContent = "Create Server identity and grant permissions →";
+    grantCalls.textContent = "Create my Server ID and enable calling →";
     if (!microphoneGranted) {
       showStatus("Microphone permission is required for Server calls. Allow it and try again.");
       return;
@@ -95,9 +96,6 @@ if (isNativeSetup && nativeSetup && stepForm) {
     pendingPhoneNumber = "";
     phoneCodeStep?.classList.add("hidden");
     if (phoneCodeInput) phoneCodeInput.value = "";
-    if (phoneLinkInput && result.selectedSimNumber && !phoneLinkInput.value) {
-      phoneLinkInput.value = result.selectedSimNumber;
-    }
     try {
       const savedNumberPreferences = JSON.parse(window.ServerAndroid.getNumberCallPreferences());
       if (savedNumberPreferences.phoneLinked && savedNumberPreferences.phone) {
@@ -110,7 +108,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
         showPhoneLinkStatus(persistedNumberConsent ? "This verified number is linked and permitted to receive Server internet calls." : "This verified number is linked, but Server calls by number are currently off.");
       }
     } catch { /* First-time number linking remains available. */ }
-    showStatus("Server identity created. Verify your existing SIM number and choose whether Server users may reach you on it, then enable Server under Android Calling accounts.", true);
+    showStatus("Server identity created. Phone-number linking is optional; enable Server under Android Calling accounts to finish setup.", true);
   };
 
   requestPhoneCodeButton?.addEventListener("click", () => {
