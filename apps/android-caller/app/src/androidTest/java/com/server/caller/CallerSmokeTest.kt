@@ -58,6 +58,11 @@ class CallerSmokeTest {
         createButton!!.isEnabled.not())
       terms!!.click()
       assertTrue("Accepting the terms should enable Server ID creation", createButton.isEnabled)
+      // The phone-sized WebView places the primary action below the fold.
+      device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5,
+        device.displayWidth / 2, device.displayHeight / 3, 20)
+      val visibleCreateButton = device.wait(Until.findObject(By.textContains("Create my Server ID")), 5_000)
+      assertNotNull("Server identity creation action is not visible after scrolling", visibleCreateButton)
       assertTrue("Onboarding unexpectedly opened a custom number-entry dialer",
         !device.hasObject(By.textContains("Call a number")))
     }
