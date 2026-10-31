@@ -30,6 +30,9 @@ class CallerSmokeTest {
   @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
+    assertEquals("Server must not request access to SIM phone numbers",
+      android.content.pm.PackageManager.PERMISSION_DENIED,
+      context.checkSelfPermission("android.permission.READ_PHONE_NUMBERS"))
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     assertNotNull("Server does not expose a launcher entry", launchIntent)
     assertEquals("The launcher must open the Server website onboarding bridge",
