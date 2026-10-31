@@ -144,7 +144,8 @@ class ServerSetupWebActivity : Activity() {
       val micGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
       val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted)")
+      val phoneStateGranted = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, $phoneStateGranted)")
     }
   }
 
@@ -276,13 +277,15 @@ class ServerSetupWebActivity : Activity() {
       runOnUiThread {
         val needed = arrayListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.RECORD_AUDIO)
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
           needed.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         if (needed.isEmpty()) {
           val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
           val notifications = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications)")
+          val phoneState = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications, $phoneState)")
         } else requestPermissions(needed.toTypedArray(), REQUEST_CALL)
       }
     }
