@@ -220,6 +220,7 @@ class CallerSmokeTest {
   @Test fun preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
+    grantPhoneMetadataPermissions(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val serverHandle = ServerTelecomRegistry.handle(context)
