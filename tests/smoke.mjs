@@ -140,9 +140,10 @@ assert.match(app,/onServerGatewayPairingCode/,"website handles pairing-code resu
 assert.match(html,/sms-gateway-pairing-code/,"onboarding UI can display the one-time gateway code");
 assert.doesNotMatch(androidManifest,/DialerActivity/);
 assert.match(androidManifest,/android:name="android.intent.action.MAIN"/);
-assert.match(androidSetup,/SubscriptionManager/);
-assert.match(androidSetup,/activeSubscriptionInfoList/);
-assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
+assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList|selectSim/,
+  "Android setup must not inspect or select a SIM subscription");
+assert.match(androidSetup,/requestCallPermissions/);
+assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/ContactsContract\.Contacts\.CONTENT_URI/,"outgoing-call acceptance uses the Android Contacts UI");
@@ -179,7 +180,8 @@ assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("Intent(Intent.ACTION_SENDTO"),"Android opens a user-confirmed SMS composer for manual guest invites");
 assert.ok(androidMain.includes("private fun notifyCarrierFallback"),"Android exposes a carrier-call fallback notification");
 assert.ok(androidMain.includes("30_000"),"Android offers the carrier fallback after an unanswered ring");
-assert.ok(androidMain.includes("EXTRA_PHONE_ACCOUNT_HANDLE"),"Android tries to preserve the selected SIM for carrier fallback");
+assert.doesNotMatch(androidMain,/EXTRA_PHONE_ACCOUNT_HANDLE|selectedCellularAccount/,
+  "carrier fallback leaves SIM selection to Android and the user");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
 assert.match(androidMain,/deliveryMode == "manual_sms"/);
 assert.match(iosModel,/guestInviteMessage/);
