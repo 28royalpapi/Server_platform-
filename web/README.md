@@ -6,7 +6,7 @@ The website is the onboarding experience and is also bundled into the Android in
 
 A normal website or PWA cannot enumerate mobile subscriptions or register itself as a phone-dialer calling account. Android requires installed native code to register TelecomManager/ConnectionService. Server's connector does not use SubscriptionManager or request READ_PHONE_NUMBERS. On iOS, SIM-slot details are not exposed to websites; system calling integration requires an installed native application with the applicable Apple calling-app entitlement and CallKit/LiveCommunicationKit. The website is the UX, but a native integration component is technically required for the OS-controlled portion of this journey.
 
-Server does not ask the user to select a SIM, enumerate SIM slots or read SIM phone numbers. The native connector requests microphone permission, Android READ_PHONE_STATE for Telecom account registration, and notifications where supported. That permission is not used to read the user's phone number. Server is a separate internet-calling identity and can be exposed as an Android calling account where the phone's dialer supports third-party providers.
+Server does not ask the user to select a SIM, enumerate SIM slots or read SIM phone numbers. The native connector requests microphone permission, Android READ_PHONE_STATE to check whether the user enabled Server in the system call-capable account list, and notifications where supported. That permission is not used to read the user's phone number. Server is a separate internet-calling identity and can be exposed as an Android calling account where the phone's dialer supports third-party providers.
 
 ## Registration and calls
 
