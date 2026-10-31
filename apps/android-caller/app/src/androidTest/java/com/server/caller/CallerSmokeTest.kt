@@ -27,79 +27,36 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @Test fun launcherOpensWebsiteOnboardingInsteadOfCustomDialer() {
+  @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    // Start from a clean permission state so the screen recording captures
-    // Android's real runtime permission prompt, not a silently pre-granted permission.
-    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
-    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
-    context.getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
-      .putBoolean("server_open_dialer_after_account_enable", false)
-      .remove("selected_sim_subscription_id")
-      .remove("selected_sim_slot")
-      .remove("selected_sim_carrier")
-      .remove("selected_sim_phone")
-      .commit()
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     assertNotNull("Server does not expose a launcher entry", launchIntent)
-    assertEquals("The launcher must open the website onboarding bridge",
+    assertEquals("The launcher must open the Server website onboarding bridge",
       ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
 
     ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
       val device = UiDevice.getInstance(instrumentation)
-      assertTrue("Website onboarding brand is not visible",
+      assertTrue("Server onboarding brand is not visible",
         device.wait(Until.hasObject(By.text("server")), 20_000))
-      assertTrue("SIM-first web onboarding step is not visible",
-        device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
-      val detectButton = device.wait(Until.findObject(By.textContains("Allow SIM access and detect SIMs")), 10_000)
-      assertNotNull("SIM permission/detection button is not visible", detectButton)
-      detectButton!!.click()
-      var sawAndroidPermissionPrompt = false
-      repeat(3) {
-        val allowButton = device.wait(Until.findObject(By.text("Allow")), 2500)
-        if (allowButton != null) {
-          sawAndroidPermissionPrompt = true
-          allowButton.click()
-          Thread.sleep(450)
-        }
-      }
-      assertTrue("The emulator must show Android's actual SIM permission prompt", sawAndroidPermissionPrompt)
-
-      val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
-      val activeSim = try {
-        subscriptionManager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex }.firstOrNull()
-      } catch (_: Exception) { null }
-      val expectedId = activeSim?.subscriptionId ?: -1001
-      val expectedSlot = activeSim?.simSlotIndex?.takeIf { it >= 0 }?.plus(1) ?: 1
-      val visibleLabel = if (activeSim == null) "Emulator test SIM" else "SIM " + expectedSlot + " ·"
-      val simChoice = device.wait(Until.findObject(By.textContains(visibleLabel)), 12_000)
-      assertNotNull("The website did not render an active SIM or labelled emulator test SIM", simChoice)
-      // WebView rerenders the SIM list immediately after it handles a native-bridge
-      // event. UiObject2 can become stale between lookup and click, so always query
-      // a fresh accessibility node and retry this interaction if that race occurs.
-      assertTrue("The SIM option became stale while onboarding refreshed its list",
-        clickTextWithRetry(device, visibleLabel))
-
-      val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-      assertEquals("Selecting a SIM in the website must persist its selected subscription id",
-        expectedId, savedPrefs.getInt("selected_sim_subscription_id", -1))
-      assertTrue("The website did not update its visible selection status",
-        device.wait(Until.hasObject(By.textContains("Selected SIM")), 5_000))
-      if (activeSim == null) {
-        assertEquals("The emulator fixture must be labelled as a mock rather than a carrier line",
-          "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
-      } else {
-        assertEquals("The selected subscription must persist its real slot",
-          activeSim.simSlotIndex, savedPrefs.getInt("selected_sim_slot", -1))
-      }
-      val continueButton = findTextOnScrollableScreen(context, device, "Continue to calling permissions")
-      assertNotNull("SIM selection did not advance the web flow. See ServerUITest hierarchy in logcat.", continueButton)
-      continueButton!!.click()
-      assertNotNull("The website did not advance to the calling-permission step",
-        findTextOnScrollableScreen(context, device, "Allow Server calling"))
-      assertTrue("A custom number-entry dialer unexpectedly appeared",
-        !device.hasObject(By.text("Call a number")))
+      assertTrue("Server ID-first setup heading is not visible",
+        device.wait(Until.hasObject(By.textContains("Create your Server identity")), 20_000))
+      assertTrue("The setup must explain that SIM selection is not required",
+        device.wait(Until.hasObject(By.textContains("No SIM selection and no SMS OTP are required")), 10_000))
+      assertTrue("The old SIM-selection UI must not appear",
+        !device.hasObject(By.textContains("Choose your SIM")))
+      assertTrue("The old SIM permission button must not appear",
+        !device.hasObject(By.textContains("Allow SIM access")))
+      val terms = device.wait(Until.findObject(By.textContains("I accept the Terms of Service")), 10_000)
+      assertNotNull("Legal acceptance must remain part of account creation", terms)
+      val createButton = device.wait(Until.findObject(By.textContains("Create my Server ID")), 10_000)
+      assertNotNull("Server identity creation action is not visible", createButton)
+      assertTrue("Server identity creation must require legal acceptance",
+        createButton!!.isEnabled.not())
+      terms!!.click()
+      assertTrue("Accepting the terms should enable Server ID creation", createButton.isEnabled)
+      assertTrue("Onboarding unexpectedly opened a custom number-entry dialer",
+        !device.hasObject(By.textContains("Call a number")))
     }
   }
 
@@ -211,7 +168,7 @@ class CallerSmokeTest {
 
   private fun grantPhoneMetadataPermissions(context: Context) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.RECORD_AUDIO)) {
+    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO)) {
       try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission) } catch (_: Exception) {}
     }
   }
@@ -389,20 +346,32 @@ class CallerSmokeTest {
     }
   }
 
-  @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
+  @Test fun serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     grantPhoneMetadataPermissions(context)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val handle = ServerTelecomRegistry.handle(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val previousNumber = prefs.getString("selected_sim_phone", null)
+    val previousLinked = prefs.getBoolean("server_phone_number_linked", false)
+    val previousLinkedPhone = prefs.getString("server_linked_phone", null)
 
     try {
-      prefs.edit().putString("selected_sim_phone", "+2348012345678").commit()
+      // A legacy SIM-derived number must never be silently attached to Server.
+      prefs.edit().putString("selected_sim_phone", "+2348012345678")
+        .putBoolean("server_phone_number_linked", false).remove("server_linked_phone").commit()
       ServerTelecomRegistry.register(context)
-      val account = telecom.getPhoneAccount(handle)
-
+      var account = telecom.getPhoneAccount(handle)
       assertNotNull("Android Telecom did not register the Server calling account", account)
+      assertEquals("An unverified SIM number must not become Server calling identity metadata",
+        null, account!!.address)
+
+      // Only an explicitly verified-and-linked number may be shown as Telecom metadata.
+      prefs.edit().putBoolean("server_phone_number_linked", true)
+        .putString("server_linked_phone", "+2348012345678").commit()
+      ServerTelecomRegistry.register(context)
+      account = telecom.getPhoneAccount(handle)
+      assertNotNull("Android Telecom did not retain the Server calling account", account)
       assertTrue("Server account is not a call-provider account",
         (account!!.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
       assertTrue("Server must be a system-managed call provider, not self-managed",
@@ -411,13 +380,16 @@ class CallerSmokeTest {
         account.supportedUriSchemes.contains(PhoneAccount.SCHEME_TEL))
       assertTrue("Server must not masquerade as a cellular SIM",
         (account.capabilities and PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION) == 0)
-      assertEquals("The selected SIM number must be carried as account metadata",
+      assertEquals("Only the explicitly linked number should be exposed as account metadata",
         Uri.parse("tel:+2348012345678"), account.address)
     } finally {
       val edit = prefs.edit()
       if (previousNumber == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousNumber)
+      edit.putBoolean("server_phone_number_linked", previousLinked)
+      if (previousLinkedPhone == null) edit.remove("server_linked_phone") else edit.putString("server_linked_phone", previousLinkedPhone)
       edit.commit()
       ServerTelecomRegistry.register(context)
     }
   }
+
 }
