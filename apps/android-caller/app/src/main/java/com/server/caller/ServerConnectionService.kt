@@ -31,7 +31,10 @@ object ServerTelecomRegistry {
     // A phone number is attached only after the user explicitly verifies and
     // links it. Server ID calling works independently of SIM metadata.
     val sessionPrefs = app.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-    val linkedPhone = if (sessionPrefs.getBoolean("server_phone_number_linked", false)) {
+    val linkedPhone = if (
+      sessionPrefs.getBoolean("server_phone_number_linked", false) &&
+      sessionPrefs.getBoolean("allow_number_based_server_calls", false)
+    ) {
       sessionPrefs.getString("server_linked_phone", "").orEmpty()
     } else ""
     val observedNumber = linkedPhone.filter { it.isDigit() || it == '+' }
