@@ -306,7 +306,7 @@ button?.addEventListener("click", () => {
     if (isIOS) {
       showStatus("Opening Server’s iPhone calling integration. The app will continue setup on this phone.");
       const started = Date.now();
-      window.location.href = "server://sim-setup";
+      window.location.href = "server://device-setup";
       window.setTimeout(() => {
         if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
           fallback?.classList.remove("hidden");
@@ -327,7 +327,7 @@ button?.addEventListener("click", () => {
   }
   showStatus("Opening the phone integration to complete the system-calling setup. It will display this web onboarding, not a separate number-entry app.");
   const started = Date.now();
-  window.location.href = "server://sim-setup";
+  window.location.href = "server://device-setup";
   window.setTimeout(() => {
     if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
       fallback?.classList.remove("hidden");
