@@ -27,6 +27,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const requestPhoneCodeButton = document.querySelector("#request-phone-link-code");
   const verifyPhoneButton = document.querySelector("#verify-link-phone");
   const phoneLinkStatus = document.querySelector("#phone-link-status");
+  const phoneLinkStep = document.querySelector("#phone-link-step");
+  const showPhoneLinkButton = document.querySelector("#show-phone-link");
   const skipPhoneLinkButton = document.querySelector("#skip-phone-link");
   const allowNumberCalls = document.querySelector("#allow-number-calls");
   const createGatewayPairingButton = document.querySelector("#create-sms-gateway-pairing-code");
@@ -55,6 +57,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
     phoneLinkStatus.classList.remove("hidden", "ok");
     if (ok) phoneLinkStatus.classList.add("ok");
   };
+  showPhoneLinkButton?.addEventListener("click", () => {
+    phoneLinkStep?.classList.remove("hidden");
+    showPhoneLinkButton.classList.add("hidden");
+  });
   terms?.addEventListener("change", () => {
     grantCalls.disabled = !terms.checked;
   });
@@ -103,6 +109,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
     try {
       const savedNumberPreferences = JSON.parse(window.ServerAndroid.getNumberCallPreferences());
       if (savedNumberPreferences.phoneLinked && savedNumberPreferences.phone) {
+        phoneLinkStep?.classList.remove("hidden");
+        showPhoneLinkButton?.classList.add("hidden");
         phoneLinkVerified = true;
         persistedNumberConsent = savedNumberPreferences.allowNumberCalls === true;
         if (phoneLinkInput) { phoneLinkInput.value = savedNumberPreferences.phone; phoneLinkInput.disabled = true; }
