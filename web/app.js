@@ -72,7 +72,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     grantCalls.disabled = true;
     grantCalls.textContent = "Waiting for Android permissions…";
-    showStatus("Android will request microphone permission, Phone access for Telecom registration, and notifications where supported.");
+    showStatus("Android will request microphone permission, Phone-state access to check the Android calling-account setting, and notifications where supported.");
     if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.requestCallPermissions();
   });
