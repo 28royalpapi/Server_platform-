@@ -28,15 +28,13 @@ object ServerTelecomRegistry {
     val app = context.applicationContext
     val telecom = app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val handle = handle(app)
-    // Reuse the number Android exposed for the user-selected SIM as the calling
-    // account address when available. This affects the account metadata shown by
-    // the dialer; it does not provision or clone a carrier subscription.
+    // A phone number is attached only after the user explicitly verifies and
+    // links it. Server ID calling works independently of SIM metadata.
     val sessionPrefs = app.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val linkedPhone = if (sessionPrefs.getBoolean("server_phone_number_linked", false)) {
       sessionPrefs.getString("server_linked_phone", "").orEmpty()
     } else ""
-    val observedNumber = (linkedPhone.ifBlank { sessionPrefs.getString("selected_sim_phone", "").orEmpty() })
-      .filter { it.isDigit() || it == '+' }
+    val observedNumber = linkedPhone.filter { it.isDigit() || it == '+' }
     val accountBuilder = PhoneAccount.builder(handle, "Server")
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
       // Tell Telecom explicitly that Server handles telephone-number URIs. This is
