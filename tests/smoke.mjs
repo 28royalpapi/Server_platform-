@@ -88,6 +88,14 @@ assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/
    "system hang-up events must carry their Telecom call ID through to the backend call teardown");
 assert.match(androidTests,/telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState/,
    "system hang-up after activity recreation has an Android instrumentation regression test");
+assert.match(androidManifest,/android\.permission\.ACCESS_NETWORK_STATE/,
+   "the native call engine can distinguish a real internet connection from a disconnected device");
+assert.match(androidMain,/isServerInternetUsable\(networkCapabilities\)/,
+   "outgoing Server calls are blocked before signalling when no validated internet route exists");
+assert.match(androidMain,/Server needs internet to place this call/,
+   "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
+assert.match(androidTests,/serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate/,
+   "network-availability gating has an Android instrumentation test");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
