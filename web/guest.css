@@ -30,3 +30,7 @@
 /* Keep the caller artwork circular across browser layout engines. */
 .guest-caller-art{display:flex;align-items:center;justify-content:center;}
 .guest-caller-avatar{display:flex;flex:0 0 91px;align-items:center;justify-content:center;width:91px;height:91px;}
+
+.guest-alerts-button{display:block;width:100%;margin:13px auto 0;padding:12px 14px;border:1px solid rgba(97,185,154,.32);border-radius:11px;background:rgba(25,78,65,.22);color:#a9e6c9;font:inherit;font-size:12px;font-weight:750;cursor:pointer}
+.guest-alerts-button:disabled{opacity:.55;cursor:wait}
+.guest-alerts-status{margin:8px 0 0;color:#83b8a4;font-size:11px;line-height:1.5}

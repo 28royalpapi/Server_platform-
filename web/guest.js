@@ -4,16 +4,73 @@ const fragmentToken=url.hash.startsWith("#token=")?decodeURIComponent(url.hash.s
 const inviteToken=url.searchParams.get("token")||fragmentToken||"";
 history.replaceState(null,"",location.pathname);
 const statusEl=document.querySelector("#guest-status"),joinButton=document.querySelector("#join-call"),leaveButton=document.querySelector("#leave-call"),audioEl=document.querySelector("#remote-audio"),descriptionEl=document.querySelector("#guest-description");
+const alertsButton=document.querySelector("#enable-guest-alerts"),alertsStatus=document.querySelector("#guest-alerts-status");
 let pc=null,localStream=null,lastSeq=0,polling=false,leaving=false,pendingIce=[],callId="",activeReported=false;
 function status(message,isError=false){statusEl.textContent=message;statusEl.classList.toggle("is-error",isError);statusEl.classList.remove("hidden");}
 async function api(action,extras={}){if(!cfg.supabaseUrl||!cfg.publishableKey||String(cfg.supabaseUrl).includes("YOUR_PROJECT"))throw new Error("Guest calling is not connected to the Server backend.");const response=await fetch(cfg.supabaseUrl+"/functions/v1/server-guest",{method:"POST",headers:{"content-type":"application/json",apikey:cfg.publishableKey},body:JSON.stringify(Object.assign({action,token:inviteToken},extras))});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||("Call service error ("+response.status+")"));return result;}
 async function sendSignal(kind,payload={}){if(leaving)return;try{await api("signal",{call_id:callId,kind,payload});}catch(err){status("Could not send call signal: "+err.message,true);}}
+function alertStatus(message,isError=false){
+ if(!alertsStatus)return;
+ alertsStatus.textContent=message;
+ alertsStatus.classList.remove("hidden");
+ alertsStatus.style.color=isError?"#ffb5a9":"#83b8a4";
+}
+async function enableGuestAlerts(){
+ const fb=cfg.firebase||{};
+ if(!fb.apiKey||!fb.projectId||!fb.messagingSenderId||!fb.appId||!fb.vapidKey){
+  alertStatus("Server browser alerts are not configured on this website yet.",true);
+  return;
+ }
+ if(!("serviceWorker" in navigator)||!("Notification" in window)){
+  alertStatus("This browser does not support web push. Keep this invitation link to answer.",true);
+  return;
+ }
+ alertsButton.disabled=true;
+ alertsButton.textContent="Enabling alerts…";
+ try{
+  const permission=Notification.permission==="granted"?"granted":await Notification.requestPermission();
+  if(permission!=="granted")throw new Error("Notification permission was not granted.");
+  const [{initializeApp,getApps},{getMessaging,isSupported,getToken,onMessage}]=await Promise.all([
+   import("https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js"),
+   import("https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js")
+  ]);
+  if(!(await isSupported()))throw new Error("This browser does not support Firebase Web Messaging.");
+  const app=getApps().length?getApps()[0]:initializeApp(fb);
+  const registration=await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  const messaging=getMessaging(app);
+  const token=await getToken(messaging,{vapidKey:fb.vapidKey,serviceWorkerRegistration:registration});
+  if(!token)throw new Error("The browser did not issue a push subscription.");
+  await api("register_push_token",{push_token:token});
+  alertStatus("Server alerts are enabled on this browser. Future calls to this number can appear here when this browser is online.");
+  alertsButton.textContent="Server call alerts enabled";
+  alertsButton.disabled=true;
+  onMessage(messaging,payload=>{
+   const data=payload.data||{};
+   if(data.type!=="server_guest_incoming_call"||!data.url)return;
+   if(Notification.permission==="granted"){
+    const notification=new Notification("SERVER · Incoming call",{
+     body:(data.caller_label||"A Server user")+" is calling you through Server.",
+     tag:"server-"+(data.call_id||"call"),
+     data:{url:data.url}
+    });
+    notification.onclick=()=>{window.focus();location.href=data.url;notification.close();};
+   }
+  });
+ }catch(error){
+  alertStatus(error.message||"Could not enable browser alerts.",true);
+  alertsButton.disabled=false;
+  alertsButton.textContent="Enable alerts for future Server calls";
+ }
+}
+alertsButton?.addEventListener("click",enableGuestAlerts);
+
 async function loadInvitation(){
  if(!inviteToken||inviteToken.length<48){status("This invitation link is missing its secure token. Ask the caller to send a new invitation.",true);joinButton.disabled=true;return;}
  try{
   const details=await api("inspect");
   const caller=String(details.caller_server_id||"A Server user");
   descriptionEl.textContent=caller+" is calling you through Server. You do not need to install Server or create an account. Tap Answer to join the internet call.";
+  alertsButton?.classList.remove("hidden");
   if(["ended","missed","failed"].includes(details.call?.state)){
     descriptionEl.textContent="This Server call has expired or ended. Ask the caller to start a new call.";
     status("This call is no longer available.",true);
