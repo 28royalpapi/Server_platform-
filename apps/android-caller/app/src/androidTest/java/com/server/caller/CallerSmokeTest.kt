@@ -27,6 +27,7 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
+  // Final QA branch: run Android onboarding, incoming Telecom, and outgoing dialer acceptance tests.
   @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
