@@ -151,6 +151,8 @@ assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+15550001001"\)\)/,
   "outgoing-call acceptance opens Android's real Phone dialer with a test target");
+assert.match(html,/Ask every time/,
+  "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
   "public website provides a direct Android connector installation action");
 assert.match(html,/releases\/download\/server-android-connector-preview\/Server-Android-Connector-preview\.apk/,
