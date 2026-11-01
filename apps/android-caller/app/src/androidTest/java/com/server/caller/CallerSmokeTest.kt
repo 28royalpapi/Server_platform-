@@ -116,6 +116,34 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun android12PhoneAccountCanReceiveServerCallThroughTelecom() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    grantTelecomPermissions(context)
+    val handle = ServerTelecomRegistry.handle(context)
+    val callId = "android12-incoming-" + UUID.randomUUID().toString()
+    val callerIdentity = "SVR-ANDROID12"
+    ServerTelecomRegistry.register(context)
+    enablePhoneAccountWithTestShell(context, handle)
+    try {
+      assertTrue("Android 12 must expose the enabled Server PhoneAccount to Telecom", accountEnabled(context, handle))
+      ServerTelecomRegistry.reportIncoming(context, callId, callerIdentity)
+      val deadline = System.currentTimeMillis() + 12_000
+      var state: Int? = null
+      while (System.currentTimeMillis() < deadline && state == null) {
+        state = ServerTelecomRegistry.incomingConnectionState(callId)
+        Thread.sleep(100)
+      }
+      assertEquals("Android 12 Telecom did not create a ringing Server incoming Connection",
+        Connection.STATE_RINGING, state)
+      assertEquals("Android 12 Telecom did not retain the Server caller identity",
+        callerIdentity, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+    } finally {
+      ServerTelecomRegistry.markEnded(callId)
+      UiDevice.getInstance(instrumentation).pressHome()
+    }
+  }
+
   @Test fun vanishedUnansweredIncomingCallIsDisconnectedFromSystemTelecom() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val callId = "smoke-" + UUID.randomUUID().toString()
@@ -220,6 +248,23 @@ class CallerSmokeTest {
   private fun runShellCommand(command: String): String {
     val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
     return android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+  }
+
+  /**
+   * CTS/AOSP exposes this shell command only to the test harness. Using it here
+   * isolates Telecom call delivery from the separate human Settings navigation
+   * test, whose layout differs across Android releases and OEM dialers.
+   */
+  private fun enablePhoneAccountWithTestShell(context: Context, handle: android.telecom.PhoneAccountHandle) {
+    grantTelecomPermissions(context)
+    val userManager = context.getSystemService(android.os.UserManager::class.java)
+    val serial = userManager.getSerialNumberForUser(android.os.Process.myUserHandle())
+    val component = handle.componentName.flattenToString()
+    val output = runShellCommand("telecom set-phone-account-enabled " + component + " " + handle.id + " " + serial)
+    val deadline = System.currentTimeMillis() + 5_000
+    while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) Thread.sleep(100)
+    assertTrue("Test harness could not enable Server PhoneAccount through Telecom shell. " + output,
+      accountEnabled(context, handle))
   }
 
   private fun grantTelecomPermissions(context: Context) {

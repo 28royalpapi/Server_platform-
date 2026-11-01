@@ -14,6 +14,7 @@ const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
+const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
 const iosEntitlements=read("apps/ios-caller/ServerCaller/ServerCaller.entitlements");
@@ -98,6 +99,9 @@ assert.match(androidMain,/isServerInternetUsable\(networkCapabilities\)/,
    "outgoing Server calls are blocked before signalling when no validated internet route exists");
 assert.match(androidMain,/Server needs internet to place this call/,
    "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
+assert.match(androidTests,/android12PhoneAccountCanReceiveServerCallThroughTelecom/);
+assert.match(androidTests,/enablePhoneAccountWithTestShell/);
+assert.match(nativeWorkflow,/api-level: 31/);
 assert.match(androidTests,/serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate/,
    "network-availability gating has an Android instrumentation test");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
