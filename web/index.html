@@ -23,12 +23,22 @@
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Create a Server ID once. Use Wi-Fi or mobile data from any SIM; Server does not take over your cellular subscription. Linking a phone number later is optional.</p></div></div>
-        <button class="primary full" id="open-server-app" type="button">Continue setup on this phone <span aria-hidden="true">→</span></button>
+        <section id="android-install" class="install-card">
+          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This small Android companion connects the Server website to Android's system calling interface. It does not replace your Phone app, create another number, or inspect your SIM slots.</p></div></div>
+          <a class="primary full install-link" id="download-android-connector" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/Server-Android-Connector-preview.apk">Download the Android connector <span aria-hidden="true">↓</span></a>
+          <ol class="install-steps">
+            <li>Open the downloaded APK from Chrome's download notification or your Downloads folder.</li>
+            <li>When Android asks, allow Chrome or Files to install this app, then approve the Server installation.</li>
+            <li>Return to this same website tab and continue setup below.</li>
+          </ol>
+          <p class="fine-print">This is an Android preview build distributed directly for testing, not a Play Store release. Android may ask you to approve installing apps from this source.</p>
+        </section>
+        <div class="step-title"><span class="step-number">02</span><div><h2>Return here to continue</h2><p>After Server is installed, come back to this page and tap the button. It opens the small connector and shows this same website again, with the native permission bridge enabled.</p></div></div>
+        <button class="primary full" id="open-server-app" type="button">I've installed Server — continue setup <span aria-hidden="true">→</span></button>
         <p id="fallback" class="fine-print hidden">The phone integration did not open. A browser cannot register an account with Android's system calling interface by itself; install the Server calling component and try again.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Your Server ID is your internet-calling identity. Your existing mobile number and carrier service remain unchanged. You can optionally verify and link a number later, with your permission, so other Server users can find you that way.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-        <p class="fine-print">On iPhone, the native Server app is required for Apple’s calling-app integration. Availability depends on Apple-authorised calling-app capabilities and the user’s iOS settings.</p>
+        <p id="ios-install-note" class="fine-print">iPhone uses a separate native Server app and Apple's calling-app permissions. The Android APK above cannot be installed on iPhone; the iOS setup will be released separately.</p>
       </div>
       <div id="native-setup" class="hidden">
         <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>No SIM selection and no SMS OTP are required. Server uses your internet connection; your normal SIMs remain available for ordinary carrier calls.</p></div></div>
