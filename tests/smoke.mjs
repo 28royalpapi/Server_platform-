@@ -156,6 +156,7 @@ assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCall
 assert.match(androidManifest,/com.server.caller.ServerFirebaseMessagingService/);
 assert.match(androidBuild,/isMinifyEnabled = true/);
 assert.match(androidBuild,/isShrinkResources = true/);
+assert.match(androidBuild,/androidx\\.fragment:fragment-ktx:1\\.9\\.1/);
 assert.match(androidProguard,/-keep class org\.webrtc/);
 assert.match(androidFirebase,/onMessageReceived/);
 assert.match(androidFirebase,/server_incoming_call/);
