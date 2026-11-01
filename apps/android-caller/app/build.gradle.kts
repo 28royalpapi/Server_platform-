@@ -12,6 +12,7 @@ android {
     targetSdk = 35
     versionCode = 1
     versionName = "0.1.0"
+    resourceConfigurations += listOf("en")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     val projectUrl = providers.gradleProperty("SERVER_SUPABASE_URL").orElse("https://hzuovekqsjtpvmbuybxs.supabase.co").get()
     val publishableKey = providers.gradleProperty("SERVER_SUPABASE_PUBLISHABLE_KEY").orElse("sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E").get()
@@ -30,7 +31,9 @@ android {
   buildTypes {
     debug { applicationIdSuffix = ".debug" }
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       // Temporary preview signing allows direct Android installation without Play Store.
       // Replace with a persistent private upload key before the production release.
       signingConfig = signingConfigs.getByName("debug")
