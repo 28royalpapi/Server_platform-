@@ -277,25 +277,18 @@ class CallerSmokeTest {
       assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
       assertTrue("The mock provider must be enabled to prove a real multi-provider picker", testHandle in callCapableAccounts)
 
-      // Create a clearly fake emulator contact and select it through the system
-      // Contacts UI, matching the user's real dialer -> contact -> Server flow.
-      insertDemoContact(context, "Server Demo Contact", "+15550001001")
+      // Open Android's real Phone app with a test number already entered.
+      // This avoids depending on the emulator's optional Contacts provider while
+      // still testing the system outgoing-account chooser used after the user taps Call.
       device.pressHome()
-      context.startActivity(Intent(Intent.ACTION_VIEW, ContactsContract.Contacts.CONTENT_URI)
+      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+15550001001"))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      val demoContact = device.wait(Until.findObject(By.text("Server Demo Contact")), 15_000)
-      assertNotNull("The Android Contacts app did not show the emulator's Server Demo Contact", demoContact)
-      demoContact!!.click()
-
-      val numberRow = device.wait(Until.findObject(By.textContains("555")), 10_000)
-      assertNotNull("The selected contact's phone number was not visible in Contacts", numberRow)
-      numberRow!!.click()
-
-      // Some Contacts versions open the dialer with the number populated; in
-      // others the number row proceeds directly to the system outgoing-call flow.
+      val dialerReady = device.wait(Until.hasObject(By.textContains("555")), 12_000)
+      assertTrue("Android's system Phone dialer did not open with the requested number", dialerReady)
       val callButton = device.wait(Until.findObject(By.descContains("Call")), 6_000)
-        ?: device.wait(Until.findObject(By.text("Call")), 1_500)
-      if (callButton != null) callButton.click()
+        ?: device.wait(Until.findObject(By.text("Call")), 2_000)
+      assertNotNull("Android's Phone dialer did not expose its Call action", callButton)
+      callButton!!.click()
 
       val chooserDeadline = System.currentTimeMillis() + 15_000
       var serverChoice: androidx.test.uiautomator.UiObject2? = null
