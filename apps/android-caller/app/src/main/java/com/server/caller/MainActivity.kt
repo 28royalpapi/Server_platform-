@@ -55,10 +55,15 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-/** Server voice calls require a validated internet route, not merely an active radio connection. */
+/** Server voice calls require an actual internet route which Android has validated. */
+internal fun isServerInternetUsable(hasInternetCapability: Boolean, isValidated: Boolean): Boolean =
+  hasInternetCapability && isValidated
+
 internal fun isServerInternetUsable(capabilities: NetworkCapabilities?): Boolean =
-  capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+  isServerInternetUsable(
+    capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+    capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+  )
 
 /** Native Server client. Auth and signalling are genuine Supabase endpoints; no demo OTP is generated here. */
 class MainActivity : ComponentActivity(), PeerConnection.Observer {
