@@ -126,6 +126,9 @@ object ServerTelecomRegistry {
     }
   }
 
+  internal fun incomingConnectionState(callId: String): Int? =
+    incomingConnections[callId]?.state
+
   fun reportIncoming(context: Context, callId: String, callerIdentity: String) {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val extras = Bundle().apply {
