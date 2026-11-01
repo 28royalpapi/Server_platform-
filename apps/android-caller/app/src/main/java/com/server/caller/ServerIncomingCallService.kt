@@ -45,10 +45,10 @@ class ServerIncomingCallService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    if (!ServerTelecomRegistry.isEnabled(this) || prefs.getString("access_token", null).isNullOrBlank()) {
-      stopSelf()
-      return START_NOT_STICKY
-    }
+    // Android starts a foreground service with a strict startup deadline. Promote
+    // it immediately, before making Telecom/session eligibility checks or network
+    // calls; otherwise the OS can terminate the process with
+    // ForegroundServiceDidNotStartInTimeException on a Telecom hand-off.
     try {
       val notification = buildNotification()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -58,6 +58,14 @@ class ServerIncomingCallService : Service() {
       }
     } catch (error: Exception) {
       Log.w(TAG, "Could not start Server call listener: " + error.javaClass.simpleName)
+      stopSelf()
+      return START_NOT_STICKY
+    }
+
+    // The service is safely foregrounded now; it can stop cleanly when the user
+    // has disabled Server or when the local Server session is no longer valid.
+    if (!ServerTelecomRegistry.isEnabled(this) || prefs.getString("access_token", null).isNullOrBlank()) {
+      stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
       return START_NOT_STICKY
     }
