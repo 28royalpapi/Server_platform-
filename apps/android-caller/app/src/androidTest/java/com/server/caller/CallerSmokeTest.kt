@@ -235,18 +235,18 @@ class CallerSmokeTest {
     // On AOSP Android 14, CHANGE_PHONE_ACCOUNTS first opens a settings landing
     // page with an "All calling accounts" row. The registered providers are one
     // level deeper; searching for Server on the landing page can never succeed.
-    var accountRow = device.findObject(By.text(label))
-    if (accountRow == null) {
-      val allAccounts = findTextOnScrollableScreen(context, device, "All calling accounts")
-      if (allAccounts != null) {
-        allAccounts.click()
+    var accountRowVisible = device.wait(Until.hasObject(By.text(label)), 1_000)
+    if (!accountRowVisible) {
+      val openedAllAccounts = clickTextWithRetry(device, "All calling accounts", timeoutMs = 8_000)
+      if (openedAllAccounts) {
         device.wait(Until.hasObject(By.textContains("All calling accounts")), 2_000)
         Thread.sleep(300)
       }
-      accountRow = findTextOnScrollableScreen(context, device, label)
+      accountRowVisible = device.wait(Until.hasObject(By.text(label)), 8_000)
     }
-    assertNotNull("Android calling-account list did not show $label. See ServerUITest hierarchy in logcat.", accountRow)
-    accountRow!!.click()
+    assertTrue("Android calling-account list did not show $label. See ServerUITest hierarchy in logcat.", accountRowVisible)
+    assertTrue("Could not reliably open the $label calling-account settings",
+      clickTextWithRetry(device, label, exact = true, timeoutMs = 8_000))
     val deadline = System.currentTimeMillis() + 10_000
     while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) {
       val toggle = device.findObject(By.clazz("android.widget.Switch"))
