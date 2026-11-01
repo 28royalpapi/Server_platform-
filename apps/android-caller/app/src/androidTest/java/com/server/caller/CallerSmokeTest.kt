@@ -91,10 +91,13 @@ class CallerSmokeTest {
       assertEquals("Android Telecom did not call ServerConnectionService and start a ringing incoming connection",
         Connection.STATE_RINGING, state)
 
-      // The system-owned call UI should identify the Server caller while the
-      // telecom connection is ringing; do not replace it with a Server dialer.
-      val callerVisible = device.wait(Until.hasObject(By.textContains(callerIdentity)), 8_000)
-      assertTrue("Android did not expose the incoming Server caller identity in its call UI", callerVisible)
+      // Verify the caller label was handed to Telecom's Connection object. Some
+      // OEM/system call surfaces display "Unknown" for an internet call without a
+      // shared telephone number, while still showing the Server call provider UI.
+      assertEquals("Telecom did not receive the caller's Server identity as the display name",
+        callerIdentity, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      val serverCallUi = device.wait(Until.hasObject(By.textContains("Incoming call via Server")), 8_000)
+      assertTrue("Android did not expose the incoming call through its system Phone UI", serverCallUi)
     } finally {
       ServerTelecomRegistry.markEnded(callId)
       device.pressHome()
