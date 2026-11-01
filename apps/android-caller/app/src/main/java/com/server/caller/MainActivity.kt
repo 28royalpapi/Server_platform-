@@ -619,7 +619,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     audioTrack?.let { peer?.addTrack(it, listOf("server-audio-stream")) }
     val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
     am.mode = AudioManager.MODE_IN_COMMUNICATION
-    am.isSpeakerphoneOn = true
   }
 
   private suspend fun createLocalDescription(offer: Boolean): JSONObject = suspendCancellableCoroutine { cont ->
@@ -779,7 +778,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     try { audioModule?.release() } catch (_: Exception) {}
     audioModule = null
     val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    am.isSpeakerphoneOn = false; am.mode = AudioManager.MODE_NORMAL
+    am.mode = AudioManager.MODE_NORMAL
   }
   private fun signOut() {
     cleanPeer(); callId = null; incomingJob?.cancel(); incomingJob = null
