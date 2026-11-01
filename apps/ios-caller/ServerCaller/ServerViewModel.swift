@@ -924,6 +924,11 @@ private final class ServerVoIPPushRegistry: NSObject, PKPushRegistryDelegate {
             completion()
             return
         }
-        onIncomingPush(payload.dictionaryPayload, completion)
+        let stringPayload = payload.dictionaryPayload.reduce(into: [String: Any]()) { result, entry in
+            if let key = entry.key as? String {
+                result[key] = entry.value
+            }
+        }
+        onIncomingPush(stringPayload, completion)
     }
 }
