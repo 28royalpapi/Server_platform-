@@ -65,6 +65,42 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    grantTelecomPermissions(context)
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val device = UiDevice.getInstance(instrumentation)
+    val handle = ServerTelecomRegistry.handle(context)
+    val callId = "incoming-" + UUID.randomUUID().toString()
+    val callerIdentity = "SVR-ABCDEF1234"
+
+    ServerTelecomRegistry.register(context)
+    ensureAccountEnabled(context, device, handle, "Server")
+    try {
+      // Exercise Android Telecom's actual incoming-call callback. This is not a
+      // direct unit construction of ServerTelecomConnection: Telecom must invoke
+      // ServerConnectionService.onCreateIncomingConnection for the assertion.
+      ServerTelecomRegistry.reportIncoming(context, callId, callerIdentity)
+      val deadline = System.currentTimeMillis() + 12_000
+      var state: Int? = null
+      while (System.currentTimeMillis() < deadline && state == null) {
+        state = ServerTelecomRegistry.incomingConnectionState(callId)
+        Thread.sleep(100)
+      }
+      assertEquals("Android Telecom did not call ServerConnectionService and start a ringing incoming connection",
+        Connection.STATE_RINGING, state)
+
+      // The system-owned call UI should identify the Server caller while the
+      // telecom connection is ringing; do not replace it with a Server dialer.
+      val callerVisible = device.wait(Until.hasObject(By.textContains(callerIdentity)), 8_000)
+      assertTrue("Android did not expose the incoming Server caller identity in its call UI", callerVisible)
+    } finally {
+      ServerTelecomRegistry.markEnded(callId)
+      device.pressHome()
+    }
+  }
+
   @Test fun vanishedUnansweredIncomingCallIsDisconnectedFromSystemTelecom() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val callId = "smoke-" + UUID.randomUUID().toString()
