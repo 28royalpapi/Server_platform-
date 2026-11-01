@@ -88,7 +88,7 @@ class CallerSmokeTest {
     val callerIdentity = "SVR-ABCDEF1234"
 
     ServerTelecomRegistry.register(context)
-    ensureAccountEnabled(context, device, handle, "Server")
+    enablePhoneAccountWithTestShell(context, handle)
     try {
       // Exercise Android Telecom's actual incoming-call callback. This is not a
       // direct unit construction of ServerTelecomConnection: Telecom must invoke

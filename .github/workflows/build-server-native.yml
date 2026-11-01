@@ -172,7 +172,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |
-            set -euo pipefail
+            # The emulator-runner invokes this through /bin/sh, not Bash.
+            set -eu
             gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
             gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#android12PhoneAccountCanReceiveServerCallThroughTelecom
       - uses: actions/upload-artifact@v4
@@ -183,6 +184,7 @@ jobs:
           if-no-files-found: warn
 
   ios-simulator-build-and-preview:
+    if: github.ref != 'refs/heads/android-finish'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
