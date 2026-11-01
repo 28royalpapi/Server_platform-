@@ -146,7 +146,8 @@ assert.match(androidSetup,/requestCallPermissions/);
 assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
-assert.match(androidTests,/ContactsContract\.Contacts\.CONTENT_URI/,"outgoing-call acceptance uses the Android Contacts UI");
+assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+15550001001"\)\)/,
+  "outgoing-call acceptance opens Android's real Phone dialer with a test target");
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
