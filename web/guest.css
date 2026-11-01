@@ -27,3 +27,6 @@
 .guest-footer{display:flex;justify-content:space-between;gap:15px;max-width:820px;margin:26px auto 0;color:#607987;font-size:9px;font-weight:700;letter-spacing:.08em}
 .hidden{display:none!important}
 @media(max-width:540px){.guest-body{padding:19px 15px 20px}.guest-secure{font-size:8px;padding:7px 8px}.guest-call-card{margin-top:48px;border-radius:25px;padding-top:28px}.guest-caller-art{margin-top:28px}.guest-footer{flex-direction:column;align-items:center;text-align:center;line-height:1.5}}
+/* Keep the caller artwork circular across browser layout engines. */
+.guest-caller-art{display:flex;align-items:center;justify-content:center;}
+.guest-caller-avatar{display:flex;flex:0 0 91px;align-items:center;justify-content:center;width:91px;height:91px;}

@@ -14,6 +14,12 @@ async function loadInvitation(){
   const details=await api("inspect");
   const caller=String(details.caller_server_id||"A Server user");
   descriptionEl.textContent=caller+" is calling you through Server. You do not need to install Server or create an account. Tap Answer to join the internet call.";
+  if(["ended","missed","failed"].includes(details.call?.state)){
+    descriptionEl.textContent="This Server call has expired or ended. Ask the caller to start a new call.";
+    status("This call is no longer available.",true);
+    joinButton.disabled=true;
+    return;
+  }
  }catch(err){
   status("This Server invitation could not be verified: "+err.message,true);
   joinButton.disabled=true;
