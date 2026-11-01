@@ -5,7 +5,7 @@ const inviteToken=url.searchParams.get("token")||fragmentToken||"";
 history.replaceState(null,"",location.pathname);
 const statusEl=document.querySelector("#guest-status"),joinButton=document.querySelector("#join-call"),leaveButton=document.querySelector("#leave-call"),audioEl=document.querySelector("#remote-audio"),descriptionEl=document.querySelector("#guest-description");
 let pc=null,localStream=null,lastSeq=0,polling=false,leaving=false,pendingIce=[],callId="",activeReported=false;
-function status(message,isError=false){statusEl.textContent=message;statusEl.classList.remove("hidden","ok");if(!isError)statusEl.classList.add("ok");}
+function status(message,isError=false){statusEl.textContent=message;statusEl.classList.toggle("is-error",isError);statusEl.classList.remove("hidden");}
 async function api(action,extras={}){if(!cfg.supabaseUrl||!cfg.publishableKey||String(cfg.supabaseUrl).includes("YOUR_PROJECT"))throw new Error("Guest calling is not connected to the Server backend.");const response=await fetch(cfg.supabaseUrl+"/functions/v1/server-guest",{method:"POST",headers:{"content-type":"application/json",apikey:cfg.publishableKey},body:JSON.stringify(Object.assign({action,token:inviteToken},extras))});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||("Call service error ("+response.status+")"));return result;}
 async function sendSignal(kind,payload={}){if(leaving)return;try{await api("signal",{call_id:callId,kind,payload});}catch(err){status("Could not send call signal: "+err.message,true);}}
 async function loadInvitation(){
@@ -13,7 +13,7 @@ async function loadInvitation(){
  try{
   const details=await api("inspect");
   const caller=String(details.caller_server_id||"A Server user");
-  descriptionEl.textContent=caller+" is trying to call you through Server. You do not need to install Server. When you're ready, accept the call and allow microphone access.";
+  descriptionEl.textContent=caller+" is calling you through Server. You do not need to install Server or create an account. Tap Answer to join the internet call.";
  }catch(err){
   status("This Server invitation could not be verified: "+err.message,true);
   joinButton.disabled=true;
