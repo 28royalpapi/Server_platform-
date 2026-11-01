@@ -245,7 +245,8 @@ assert.match(calls,/No live Server SMS gateway is connected/);
 assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("Intent(Intent.ACTION_SENDTO"),"Android opens a user-confirmed SMS composer for manual guest invites");
 assert.ok(androidMain.includes("private fun notifyCarrierFallback"),"Android exposes a carrier-call fallback notification");
-assert.ok(androidMain.includes("30_000"),"Android offers the carrier fallback after an unanswered ring");
+assert.match(androidMain,/20-minute invitation window/);
+assert.doesNotMatch(androidMain,/30_000/,"Android does not end guest or Server calls after a local 30-second timer");
 assert.doesNotMatch(androidMain,/EXTRA_PHONE_ACCOUNT_HANDLE|selectedCellularAccount/,
   "carrier fallback leaves SIM selection to Android and the user");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
