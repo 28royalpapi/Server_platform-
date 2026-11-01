@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 const root = process.cwd();
 const read = (p) => readFileSync(resolve(root,p),"utf8");
 const migration=read("supabase/migrations/20261021114947_server_backend_schema.sql");
-const pushMigration=read("supabase/migrations/20261101160000_server_push_devices_and_call_expiry.sql");
+const pushMigration=read("supabase/migrations/20261101175446_server_push_devices_and_call_expiry.sql");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
