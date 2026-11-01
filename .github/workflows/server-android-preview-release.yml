@@ -1,0 +1,79 @@
+name: Publish Server Android connector preview
+
+on:
+  push:
+    branches: [remove-sim-gate]
+    paths:
+      - 'apps/android-caller/**'
+      - 'web/**'
+      - '.github/workflows/server-android-preview-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: server-android-connector-preview
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install Android SDK components
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - name: Build phone-only release APK
+        run: |
+          set -euo pipefail
+          gradle -p apps/android-caller assembleRelease --no-daemon --console=plain
+          APK='apps/android-caller/app/build/outputs/apk/release/app-release.apk'
+          test -s "$APK"
+          apksigner verify --verbose "$APK"
+          PACKAGE_ID="$(apkanalyzer manifest application-id "$APK")"
+          test "$PACKAGE_ID" = "com.server.caller"
+          mkdir -p artifacts
+          cp "$APK" artifacts/Server-Android-Connector-preview.apk
+          ls -lh artifacts/Server-Android-Connector-preview.apk
+          echo "APK_PACKAGE_ID=$PACKAGE_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "This preview is signed with the CI debug key for direct testing. It is not the production signing key." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-android-connector-preview
+          path: artifacts/Server-Android-Connector-preview.apk
+          if-no-files-found: error
+
+      - name: Publish public preview download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: server-android-connector-preview
+          target_commitish: ${{ github.sha }}
+          name: Server Android Connector — Preview
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: artifacts/Server-Android-Connector-preview.apk
+          body: |
+            Server Android connector preview for the website-led onboarding flow.
+
+            - Server ID creation does not require SIM selection or SMS OTP.
+            - The connector requests microphone, Android Phone/Telecom state, and notifications where supported.
+            - Enable Server under Android Calling accounts when prompted.
+            - This is a preview build signed with a CI debug key, not a production Play Store build. Do not use it as the permanent update channel.
+            - Server-to-Server calls require both devices online. Calls to people without Server use an internet browser invitation; they do not become PSTN calls.
