@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.telecom.Connection
@@ -30,24 +29,14 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
   @Test fun serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate() {
-    assertFalse("No active network must block Server internet calling", isServerInternetUsable(null))
-
-    val networkWithoutInternet = NetworkCapabilities.Builder().build()
+    assertFalse("No active network must block Server internet calling",
+      isServerInternetUsable(false, false))
     assertFalse("A connected transport without INTERNET capability must not start a Server call",
-      isServerInternetUsable(networkWithoutInternet))
-
-    val unvalidatedInternet = NetworkCapabilities.Builder()
-      .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-      .build()
-    assertFalse("Captive or not-yet-validated networks must not be treated as usable internet",
-      isServerInternetUsable(unvalidatedInternet))
-
-    val validatedInternet = NetworkCapabilities.Builder()
-      .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-      .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-      .build()
+      isServerInternetUsable(false, true))
+    assertFalse("Internet that Android has not validated must not be treated as usable",
+      isServerInternetUsable(true, false))
     assertTrue("Validated Wi-Fi or mobile data must allow Server to attempt the call",
-      isServerInternetUsable(validatedInternet))
+      isServerInternetUsable(true, true))
   }
 
   @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
