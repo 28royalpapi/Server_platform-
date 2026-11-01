@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 const root = process.cwd();
 const read = (p) => readFileSync(resolve(root,p),"utf8");
 const migration=read("supabase/migrations/20261021114947_server_backend_schema.sql");
+const pushMigration=read("supabase/migrations/20261101160000_server_push_devices_and_call_expiry.sql");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
@@ -154,8 +155,8 @@ assert.match(calls,/action==="register_push_token"/);
 assert.match(calls,/LIVE_CALL_TTL_SECONDS = 120/);
 assert.match(calls,/APNS_TEAM_ID/);
 assert.match(calls,/apns-push-type/);
-assert.match(migration,/create table if not exists public.server_push_devices/);
-assert.match(migration,/add column if not exists expires_at/);
+assert.match(pushMigration,/create table if not exists public.server_push_devices/);
+assert.match(pushMigration,/add column if not exists expires_at/);
 assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
   "Server opens Android's user-controlled dialer and does not place direct carrier calls");
 
