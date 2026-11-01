@@ -906,6 +906,9 @@ private final class ServerVoIPPushRegistry: NSObject, PKPushRegistryDelegate {
                       for type: PKPushType) {
         guard type == .voIP else { return }
         let token = credentials.token.map { String(format: "%02x", $0) }.joined()
+        // Persist even if PushKit delivers the token before the signed-in view model
+        // installs its callback. The next authenticated launch registers it.
+        UserDefaults.standard.set(token, forKey: "server.voip_push_token")
         onToken?(token)
     }
 
