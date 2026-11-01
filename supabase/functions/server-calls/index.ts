@@ -117,11 +117,15 @@ Deno.serve(async(req:Request)=>{
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
-   const {data:profiles}=ids.length?await db.from("server_profiles").select("user_id,phone_e164,server_id").in("user_id",ids):{data:[]};
+   const {data:profiles}=ids.length?await db.from("server_profiles")
+     .select("user_id,phone_e164,phone_verified_at,allow_number_based_server_calls,server_id").in("user_id",ids):{data:[]};
    const rows=new Map((profiles||[]).map((p:any)=>[p.user_id,p]));
    return out({calls:(incoming||[]).map((c:any)=>{
     const caller:any=rows.get(c.caller_user_id)||{};
-    return {id:c.id,state:c.state,route:c.route,caller_phone_e164:caller.phone_e164||"Server caller",caller_server_id:caller.server_id||"",created_at:c.created_at,updated_at:c.updated_at};
+    // Never disclose a stored phone number to the callee unless the owner
+    // verified it and explicitly opted into number-based Server calls.
+    const sharedPhone=caller.phone_verified_at&&caller.allow_number_based_server_calls===true?phone(caller.phone_e164):null;
+    return {id:c.id,state:c.state,route:c.route,caller_phone_e164:sharedPhone||"",caller_server_id:caller.server_id||"",created_at:c.created_at,updated_at:c.updated_at};
    })});
   }
   if(action==="poll"){
