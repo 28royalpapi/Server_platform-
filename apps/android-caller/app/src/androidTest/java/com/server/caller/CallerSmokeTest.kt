@@ -27,6 +27,7 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
+  // Re-run the final Android telecom acceptance suite after the foreground-service startup fix.
   @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
