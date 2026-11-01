@@ -11,6 +11,8 @@ import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.widget.Toast
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
@@ -474,6 +476,17 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private fun startCall(): Job = lifecycleScope.launch {
     recordTelecomDebugStage("start_call_entered")
+    val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val activeNetwork = connectivity.activeNetwork
+    val networkCapabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+    if (!isServerInternetUsable(networkCapabilities)) {
+      recordTelecomDebugStage("start_call_no_validated_internet")
+      ServerTelecomRegistry.markEnded()
+      val message = "Server needs internet to place this call. Turn on mobile data or connect to Wi-Fi, then try again."
+      setStatus(message, true)
+      Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+      return@launch
+    }
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
       recordTelecomDebugStage("start_call_microphone_permission_missing")
       askMic.launch(Manifest.permission.RECORD_AUDIO)
