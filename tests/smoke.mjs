@@ -148,6 +148,15 @@ assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+15550001001"\)\)/,
   "outgoing-call acceptance opens Android's real Phone dialer with a test target");
+assert.match(html,/id="download-android-connector"/,
+  "public website provides a direct Android connector installation action");
+assert.match(html,/releases\/download\/server-android-connector-preview\/Server-Android-Connector-preview\.apk/,
+  "website installer points to the published Android preview asset");
+assert.match(html,/I'?ve installed Server — continue setup/,
+  "website offers the return-to-this-page hand-off after connector installation");
+assert.match(app,/androidDownload\?\.addEventListener/,
+  "website explains that the user should return after the APK download");
+
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
