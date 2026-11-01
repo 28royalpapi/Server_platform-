@@ -1,12 +1,24 @@
 const statusEl = document.querySelector("#status");
 const button = document.querySelector("#open-server-app");
 const fallback = document.querySelector("#fallback");
+const androidInstall = document.querySelector("#android-install");
+const androidDownload = document.querySelector("#download-android-connector");
+const iosInstallNote = document.querySelector("#ios-install-note");
 const isAndroid = /Android/i.test(navigator.userAgent);
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const stepForm = document.querySelector(".step-form");
 const nativeSetup = document.querySelector("#native-setup");
 const isAndroidWebView = isAndroid && navigator.userAgent.toLowerCase().includes("; wv");
 const isNativeSetup = !!window.ServerAndroid || isAndroidWebView || document.querySelector('meta[name="server-native-bridge"]')?.content === "true";
+if (!isAndroid) {
+  androidInstall?.classList.add("hidden");
+  if (isIOS && iosInstallNote) iosInstallNote.textContent = "iPhone uses a separate native Server app and Apple's calling-app permissions. The Android connector is not for iPhone; iOS setup will follow after Android validation.";
+  else if (iosInstallNote) iosInstallNote.textContent = "Open this website on an Android phone to install the Server calling connector. The iPhone app is a separate iOS release.";
+}
+androidDownload?.addEventListener("click", () => {
+  showStatus("Opening the Server Android connector download. Keep this website tab open; return here after Android finishes installing Server.");
+});
+
 function showStatus(message, ok = false) {
   statusEl.textContent = message;
   statusEl.classList.remove("hidden", "ok");
