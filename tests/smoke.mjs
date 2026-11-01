@@ -68,9 +68,35 @@ assert.match(app,/userAgent\.toLowerCase\(\)\.includes\("; wv"\)/);
 assert.match(app,/setNumberCallConsent/);
 assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
-assert.match(androidMain,/READ_PHONE_NUMBERS/);
-assert.match(androidMain,/SubscriptionManager/);
-assert.match(androidMain,/registerDevice\(\)/);
+assert.doesNotMatch(androidMain,/READ_PHONE_NUMBERS|SubscriptionManager|selected_sim_/,
+  "the Android call engine does not enumerate or depend on a selected SIM");
+assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|simChoicesJson|requestSimPermissions|selectSim/,
+  "the Android onboarding bridge does not read SIM subscriptions or phone numbers");
+assert.match(androidSetup,/registerDevice\(acceptedTerms: Boolean\)/,
+  "Server ID registration is performed by the website's native permission bridge");
+assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,
+  "Android phone-state access is requested only for its Telecom system-account API");
+assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
+  "Server must not request permission to read SIM phone numbers");
+assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
+   "a legacy SIM number must not become Server's calling-account address");
+assert.match(androidTelecom,/setAudioModeIsVoip\(true\)/,
+   "Android Telecom is told that Server connections carry VoIP audio");
+assert.doesNotMatch(androidMain,/isSpeakerphoneOn\s*=/,
+   "Server must not force speakerphone routing; Android and Telecom own the call audio route");
+assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/,
+   "system hang-up events must carry their Telecom call ID through to the backend call teardown");
+assert.match(androidTests,/telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState/,
+   "system hang-up after activity recreation has an Android instrumentation regression test");
+assert.match(androidManifest,/android\.permission\.ACCESS_NETWORK_STATE/,
+   "the native call engine can distinguish a real internet connection from a disconnected device");
+assert.match(androidMain,/isServerInternetUsable\(networkCapabilities\)/,
+   "outgoing Server calls are blocked before signalling when no validated internet route exists");
+assert.match(androidMain,/Server needs internet to place this call/,
+   "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
+assert.match(androidTests,/serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate/,
+   "network-availability gating has an Android instrumentation test");
+assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
 assert.match(iosModel,/func requestPhoneLinkCode\(\) async/);
@@ -110,11 +136,14 @@ assert.doesNotMatch(iosView,/CNContactStore/);
 assert.match(iosModel,/to_server_id/);
 assert.match(handoff,/HANDOFF_EXPIRED_OR_ALREADY_USED/);
 assert.match(handoff,/server_sessions/);
-assert.match(app,/server:\/\/sim-setup/);
+assert.match(app,/server:\/\/device-setup/);
 assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallService"/);
+assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
+  "Server opens Android's user-controlled dialer and does not place direct carrier calls");
+
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
 assert.ok(androidSetup.includes('page = page.replace("</body>", inlineScript + "\\n</body>")'));
@@ -130,12 +159,25 @@ assert.match(app,/onServerGatewayPairingCode/,"website handles pairing-code resu
 assert.match(html,/sms-gateway-pairing-code/,"onboarding UI can display the one-time gateway code");
 assert.doesNotMatch(androidManifest,/DialerActivity/);
 assert.match(androidManifest,/android:name="android.intent.action.MAIN"/);
-assert.match(androidSetup,/SubscriptionManager/);
-assert.match(androidSetup,/activeSubscriptionInfoList/);
-assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
+assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList|selectSim/,
+  "Android setup must not inspect or select a SIM subscription");
+assert.match(androidSetup,/requestCallPermissions/);
+assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
-assert.match(androidTests,/ContactsContract\.Contacts\.CONTENT_URI/,"outgoing-call acceptance uses the Android Contacts UI");
+assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+15550001001"\)\)/,
+  "outgoing-call acceptance opens Android's real Phone dialer with a test target");
+assert.match(html,/Ask every time/,
+  "website explains the Android outgoing-account preference needed by some dialers");
+assert.match(html,/id="download-android-connector"/,
+  "public website provides a direct Android connector installation action");
+assert.match(html,/releases\/download\/server-android-connector-preview\/Server-Android-Connector-preview\.apk/,
+  "website installer points to the published Android preview asset");
+assert.match(html,/I'?ve installed Server — continue setup/,
+  "website offers the return-to-this-page hand-off after connector installation");
+assert.match(app,/androidDownload\?\.addEventListener/,
+  "website explains that the user should return after the APK download");
+
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
@@ -159,6 +201,11 @@ assert.match(gateway,/server_claim_sms_jobs/);
 assert.match(gateway,/PAIRING_RATE_LIMITED/);
 assert.match(gateway,/body:null/);
 assert.match(calls,/action==="incoming"/);
+assert.match(calls,/phone_verified_at/,"incoming calls only share verified caller numbers");
+assert.match(calls,/allow_number_based_server_calls===true/,"incoming calls only share caller numbers after explicit consent");
+assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"\)/,
+  "Android uses only the backend's shared verified caller number for contact matching");
+
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
 assert.match(calls,/GUEST_INVITE_RATE_LIMITED/);
@@ -169,7 +216,8 @@ assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("Intent(Intent.ACTION_SENDTO"),"Android opens a user-confirmed SMS composer for manual guest invites");
 assert.ok(androidMain.includes("private fun notifyCarrierFallback"),"Android exposes a carrier-call fallback notification");
 assert.ok(androidMain.includes("30_000"),"Android offers the carrier fallback after an unanswered ring");
-assert.ok(androidMain.includes("EXTRA_PHONE_ACCOUNT_HANDLE"),"Android tries to preserve the selected SIM for carrier fallback");
+assert.doesNotMatch(androidMain,/EXTRA_PHONE_ACCOUNT_HANDLE|selectedCellularAccount/,
+  "carrier fallback leaves SIM selection to Android and the user");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
 assert.match(androidMain,/deliveryMode == "manual_sms"/);
 assert.match(iosModel,/guestInviteMessage/);
@@ -183,10 +231,20 @@ assert.match(config,/hzuovekqsjtpvmbuybxs\.supabase\.co/);
 assert.doesNotMatch(app,/request_otp|verify_otp/);
 assert.doesNotMatch(app,/server-handoff|server-auth/);
 assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
-assert.match(app,/server:\/\/sim-setup/);
+assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
+assert.match(calls,/You do not need to install the Server app/,
+  "non-Server invite explains that a recipient does not need the app");
+assert.match(calls,/profile\.server_id/,
+  "guest invitation identifies the caller's Server ID");
+assert.match(guest,/caller_server_id/,
+  "guest invitation verification returns the Server caller ID");
+assert.match(guestWeb,/loadInvitation/);
+assert.match(guestWeb,/You do not need to install Server/,
+  "browser invitation tells a non-Server recipient no install is required");
+
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 console.log("Server backend/web contract checks: PASS");
-console.log("Checks include device-first identity, native SIM selection, consent, Server-ID routing, legacy OTP safeguards, guest WebRTC and public-key hygiene.");
+console.log("Checks include SIM-independent identity, OS permissions, consent-based number linking, Server-ID routing, legacy OTP safeguards, guest WebRTC and public-key hygiene.");
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");

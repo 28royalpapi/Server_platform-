@@ -21,7 +21,14 @@ android {
   buildFeatures { buildConfig = true }
   buildTypes {
     debug { applicationIdSuffix = ".debug" }
-    release { isMinifyEnabled = false }
+    release {
+      isMinifyEnabled = false
+      // Temporary preview signing allows direct Android installation without Play Store.
+      // Replace with a persistent private upload key before the production release.
+      signingConfig = signingConfigs.getByName("debug")
+      // Avoid shipping x86 emulator libraries in the phone installer.
+      ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
