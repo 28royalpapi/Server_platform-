@@ -125,6 +125,9 @@ assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallService"/);
+assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
+  "Server opens Android's user-controlled dialer and does not place direct carrier calls");
+
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
 assert.ok(androidSetup.includes('page = page.replace("</body>", inlineScript + "\\n</body>")'));
@@ -208,6 +211,16 @@ assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
 assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
+assert.match(calls,/You do not need to install the Server app/,
+  "non-Server invite explains that a recipient does not need the app");
+assert.match(calls,/profile\.server_id/,
+  "guest invitation identifies the caller's Server ID");
+assert.match(guest,/caller_server_id/,
+  "guest invitation verification returns the Server caller ID");
+assert.match(guestWeb,/loadInvitation/);
+assert.match(guestWeb,/You do not need to install Server/,
+  "browser invitation tells a non-Server recipient no install is required");
+
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 console.log("Server backend/web contract checks: PASS");
 console.log("Checks include SIM-independent identity, OS permissions, consent-based number linking, Server-ID routing, legacy OTP safeguards, guest WebRTC and public-key hygiene.");
