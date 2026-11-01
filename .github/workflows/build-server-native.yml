@@ -69,9 +69,10 @@ jobs:
           timeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SIM_GATEWAY_COMPLETE $(date -u +%FT%TZ)"
           echo "BUILD_SERVER_RELEASE_BUNDLE_START $(date -u +%FT%TZ)"
-          timeout 600s gradle -p apps/android-caller bundleRelease --no-daemon --console=plain --stacktrace
+          timeout 600s gradle -p apps/android-caller bundleRelease assembleRelease --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_RELEASE_BUNDLE_COMPLETE $(date -u +%FT%TZ)"
-          ls -lh apps/android-caller/app/build/outputs/bundle/release/*.aab
+          echo "BUILD_SERVER_RELEASE_APK_COMPLETE $(date -u +%FT%TZ)"
+          ls -lh apps/android-caller/app/build/outputs/bundle/release/*.aab apps/android-caller/app/build/outputs/apk/release/*.apk
       - name: Compile Android instrumentation tests before booting emulator
         timeout-minutes: 8
         shell: bash
@@ -87,6 +88,7 @@ jobs:
           name: server-android-debug-apks
           path: |
             apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/release/*.apk
             apps/android-caller/app/build/outputs/bundle/release/*.aab
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
