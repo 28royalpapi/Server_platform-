@@ -6,7 +6,8 @@ const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest(
 const phone=(v:unknown)=>typeof v==="string"&&/^\+[1-9][0-9]{7,14}$/.test(v.trim())?v.trim():null;
 const allowed=new Set(["offer","answer","ice","hangup","state"]);
 
-const LIVE_CALL_TTL_SECONDS = 120;
+const SERVER_CALL_TTL_SECONDS = 180;
+const GUEST_CALL_TTL_SECONDS = 20 * 60;
 let cachedFcmAccessToken: { token: string; expiresAt: number } | null = null;
 let cachedApnsJwt: { token: string; expiresAt: number } | null = null;
 const b64url = (value: string | Uint8Array) => {
@@ -66,8 +67,8 @@ async function sendRecipientPush(db:any,recipientUserId:string,callId:string,cal
     const response=await fetch("https://fcm.googleapis.com/v1/projects/"+encodeURIComponent(project)+"/messages:send",{
      method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+authToken},
      body:JSON.stringify({message:{token:device.token,data:{
-      type:"server_incoming_call",call_id:callId,caller_label:callerLabel,expires_in:String(LIVE_CALL_TTL_SECONDS)
-     },android:{priority:"HIGH",ttl:LIVE_CALL_TTL_SECONDS+"s",collapse_key:"server-live-call"}}})
+      type:"server_incoming_call",call_id:callId,caller_label:callerLabel,expires_in:String(SERVER_CALL_TTL_SECONDS)
+     },android:{priority:"HIGH",ttl:SERVER_CALL_TTL_SECONDS+"s",collapse_key:"server-live-call"}}})
     });
     if(response.ok)sent++;else {failures++;if(response.status===404||response.status===400)await db.from("server_push_devices").delete().eq("id",device.id);}
    } else if(device.platform==="ios_voip") {
@@ -75,8 +76,8 @@ async function sendRecipientPush(db:any,recipientUserId:string,callId:string,cal
     if(!jwt)continue;
     const response=await fetch("https://api.push.apple.com/3/device/"+encodeURIComponent(device.token),{
      method:"POST",headers:{"authorization":"bearer "+jwt,"apns-topic":bundle+".voip","apns-push-type":"voip",
-      "apns-priority":"10","apns-expiration":String(Math.floor(Date.now()/1000)+LIVE_CALL_TTL_SECONDS)},
-     body:JSON.stringify({aps:{},type:"server_incoming_call",call_id:callId,caller_label:callerLabel,expires_in:LIVE_CALL_TTL_SECONDS})
+      "apns-priority":"10","apns-expiration":String(Math.floor(Date.now()/1000)+SERVER_CALL_TTL_SECONDS)},
+     body:JSON.stringify({aps:{},type:"server_incoming_call",call_id:callId,caller_label:callerLabel,expires_in:SERVER_CALL_TTL_SECONDS})
     });
     if(response.ok)sent++;else {failures++;if(response.status===410)await db.from("server_push_devices").delete().eq("id",device.id);}
    }
@@ -87,7 +88,7 @@ async function sendRecipientPush(db:any,recipientUserId:string,callId:string,cal
 async function expireStaleRingingCalls(db:any) {
  const now=new Date().toISOString();
  await db.from("server_calls").update({state:"missed",ended_at:now,updated_at:now})
-  .eq("state","ringing").not("expires_at","is",null).lt("expires_at",now);
+  .in("state",["ringing","connecting"]).not("expires_at","is",null).lt("expires_at",now);
 }
 
 Deno.serve(async(req:Request)=>{
@@ -163,7 +164,8 @@ Deno.serve(async(req:Request)=>{
     route=callee?"server":"guest";
    }
    const now=new Date().toISOString();
-   const expiresAt=new Date(Date.now()+LIVE_CALL_TTL_SECONDS*1000).toISOString();
+   const callTtlSeconds=route==="guest"?GUEST_CALL_TTL_SECONDS:SERVER_CALL_TTL_SECONDS;
+   const expiresAt=new Date(Date.now()+callTtlSeconds*1000).toISOString();
    const {data:call,error:ce}=await db.from("server_calls").insert({
     caller_user_id:uid,callee_user_id:callee?.user_id||null,callee_phone_e164:recipientPhone,
     route,state:"ringing",created_at:now,updated_at:now,expires_at:expiresAt

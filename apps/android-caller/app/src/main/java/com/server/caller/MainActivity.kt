@@ -75,9 +75,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private var currentServerId = ""
   private var callId: String? = null
-  private var callStartedAt = 0L
-  private var carrierFallbackPhone: String? = null
-  private var carrierFallbackOfferedFor: String? = null
   private var activeStateSyncedFor: String? = null
   private var pendingDialedNumber: String? = null
   private var currentRoute = "server"
@@ -530,10 +527,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val started = api("start", payload)
       callId = started.getString("call_id"); ServerTelecomRegistry.setCurrentCallId(callId)
       activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
-      callStartedAt = System.currentTimeMillis()
-      carrierFallbackOfferedFor = null
-      val mappedPhone = started.optJSONObject("call")?.optString("callee_phone_e164").orEmpty()
-      carrierFallbackPhone = (normalizedPhone ?: mappedPhone).takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
@@ -553,7 +546,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
       val fallbackPhone = normalizedPhone
-      cleanPeer(); callId = null; carrierFallbackPhone = null
+      cleanPeer(); callId = null
       setStatus(e.message ?: "Could not start call.", true)
       if (fallbackPhone != null) notifyCarrierFallback(fallbackPhone, "Server could not reach its call service.")
     } finally { callButton.isEnabled = true }
@@ -601,7 +594,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private suspend fun acceptCall(id: String) {
     try {
       callId = id; activeStateSyncedFor = null; currentRoute = "server"; lastSeq = 0
-      carrierFallbackPhone = null
       val accepted = api("accept", JSONObject().put("call_id", id))
       callIceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
@@ -723,35 +715,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           }
           lastSeq = maxOf(lastSeq, result.optLong("next_after_seq", lastSeq))
           val state = result.optJSONObject("call")?.optString("state") ?: ""
-          val fallbackPhone = carrierFallbackPhone
-          // A non-Server recipient cannot receive WebRTC while offline. If the
-          // call remains in ringing state, offer a user-confirmed carrier fallback
-          // for both Server users and guest invitees; never place it automatically.
-          if (state == "ringing" && fallbackPhone != null &&
-              System.currentTimeMillis() - callStartedAt >= 30_000 && carrierFallbackOfferedFor != id) {
-            carrierFallbackOfferedFor = id
-            val guestRecipient = currentRoute == "guest"
-            val reason = if (guestRecipient) {
-              "The guest recipient has not joined the internet call."
-            } else {
-              "The Server user has not connected. They may be offline."
-            }
-            notifyCarrierFallback(fallbackPhone, reason)
-            try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
-            callId = null
-            cleanPeer()
-            showCallIdle()
-            setStatus(
-              if (guestRecipient) {
-                "Guest has not joined. A notification offers a regular carrier call instead; no carrier call was placed automatically."
-              } else {
-                "Server did not connect. A notification offers a regular carrier call instead; no carrier call was placed automatically."
-              },
-              true
-            )
-            break
-          }
-          if (state in listOf("ended", "failed", "missed")) { cleanPeer(); callId = null; carrierFallbackPhone = null; showCallIdle(); setStatus("Call ended."); break }
+          // Do not time out a call locally after 30 seconds. Server-to-Server calls
+          // stay pending while the recipient restores mobile data; guest invitations
+          // remain live for the full 20-minute invitation window. Expiry is enforced
+          // by the backend so the caller and recipient see the same final state.
+          if (state in listOf("ended", "failed", "missed")) { cleanPeer(); callId = null; showCallIdle(); setStatus("Call ended."); break }
         } catch (e: Exception) { setStatus(e.message ?: "Call connection interrupted.", true) }
         delay(700)
       }
@@ -780,7 +748,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         cleanPeer()
       }
       callId = null
-      carrierFallbackPhone = null
       showCallIdle()
       setStatus("Call ended.")
     } else if (id != null) {

@@ -17,10 +17,10 @@ async function loadGuestCall(){
   .select("id,state,route,caller_user_id,created_at,updated_at,expires_at")
   .eq("id",invite.call_id).maybeSingle();
  if(error||!call)return {call:null,error};
- if(call.state==="ringing"&&call.expires_at&&Date.parse(call.expires_at)<=Date.now()){
+ if(["ringing","connecting"].includes(call.state)&&call.expires_at&&Date.parse(call.expires_at)<=Date.now()){
   const now=new Date().toISOString();
   await db.from("server_calls").update({state:"missed",ended_at:now,updated_at:now})
-   .eq("id",invite.call_id).eq("state","ringing");
+   .eq("id",invite.call_id).in("state",["ringing","connecting"]);
   return {call:{...call,state:"missed",updated_at:now},error:null};
  }
  return {call,error:null};
