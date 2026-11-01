@@ -100,6 +100,10 @@ assert.match(androidTests,/serverCallRequiresValidatedInternetAndShowsClearOffli
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
+assert.match(iosModel,/ServerVoIPPushRegistry/);
+assert.match(iosModel,/didReceiveIncomingPushWith/);
+assert.match(iosModel,/register_push_token/);
+assert.match(iosEntitlements,/<key>aps-environment<\/key>/);
 assert.match(iosModel,/func requestPhoneLinkCode\(\) async/);
 assert.match(iosModel,/func verifyAndLinkPhone\(\) async/);
 assert.match(iosModel,/PHONE_ALREADY_LINKED/);
@@ -148,6 +152,8 @@ assert.match(androidFirebase,/server_incoming_call/);
 assert.match(androidFirebase,/ServerIncomingCallService.start\(this\)/);
 assert.match(calls,/action==="register_push_token"/);
 assert.match(calls,/LIVE_CALL_TTL_SECONDS = 120/);
+assert.match(calls,/APNS_TEAM_ID/);
+assert.match(calls,/apns-push-type/);
 assert.match(migration,/create table if not exists public.server_push_devices/);
 assert.match(migration,/add column if not exists expires_at/);
 assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,

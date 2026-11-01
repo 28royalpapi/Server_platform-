@@ -2,6 +2,7 @@ import AVFoundation
 import CallKit
 import Combine
 import Foundation
+import PushKit
 import Security
 import SwiftUI
 import WebRTC
@@ -48,6 +49,7 @@ final class ServerViewModel: ObservableObject {
     private var incomingTask: Task<Void, Never>?
     private let rtc = ServerRTC()
     private let callKit = ServerCallKit()
+    private let voipPush = ServerVoIPPushRegistry()
 
     init() {
         if let phoneFromKeychain = Keychain.read("server.phone"), !phoneFromKeychain.isEmpty { storedPhone = phoneFromKeychain }
@@ -72,6 +74,31 @@ final class ServerViewModel: ObservableObject {
             Task { await self.acceptFromSystem(incoming) }
         }
         callKit.onEnd = { [weak self] uuid in Task { await self?.handleCallKitEnd(uuid) } }
+        voipPush.onToken = { [weak self] token in
+            UserDefaults.standard.set(token, forKey: "server.voip_push_token")
+            guard let self, self.isSignedIn else { return }
+            Task { await self.registerPushToken(token, platform: "ios_voip") }
+        }
+        voipPush.onIncomingPush = { [weak self] payload, completion in
+            guard let self,
+                  let id = payload["call_id"] as? String,
+                  UUID(uuidString: id) != nil else {
+                completion()
+                return
+            }
+            let caller = payload["caller_label"] as? String ?? "Server user"
+            Task {
+                let incoming = IncomingCall(id: id, phone: caller)
+                self.incomingCall = incoming
+                do {
+                    try await self.callKit.reportIncoming(id: id, handle: caller)
+                    self.startIncomingPolling()
+                } catch {
+                    self.update("iPhone received a Server call alert but could not present it through CallKit: \(error.localizedDescription)", error: true)
+                }
+                completion()
+            }
+        }
         if isSignedIn { status = "Signed in as \(maskedPhone). Checking Server calls…"; startIncomingPolling() }
         if isSignedIn { Task { await loadNumberCallPreferences() } }
     }
@@ -475,6 +502,9 @@ final class ServerViewModel: ObservableObject {
     }
 
     private func startIncomingPolling() {
+        if let pushToken = UserDefaults.standard.string(forKey: "server.voip_push_token") {
+            Task { await self.registerPushToken(pushToken, platform: "ios_voip") }
+        }
         incomingTask?.cancel()
         incomingTask = Task { [weak self] in
             guard let self else { return }
@@ -495,6 +525,18 @@ final class ServerViewModel: ObservableObject {
                 } catch { /* keep polling; do not log tokens or request bodies */ }
                 try? await Task.sleep(for: .seconds(2))
             }
+        }
+    }
+
+    private func registerPushToken(_ token: String, platform: String) async {
+        guard isSignedIn, token.count >= 40 else { return }
+        if UserDefaults.standard.string(forKey: "server.voip_push_registered") == token { return }
+        do {
+            _ = try await api("register_push_token", body: ["platform": platform, "push_token": token])
+            UserDefaults.standard.set(token, forKey: "server.voip_push_registered")
+        } catch {
+            // Retry when incoming polling starts again or the next token callback arrives.
+            update("iOS VoIP push registration is pending: \(error.localizedDescription)", error: true)
         }
     }
 
@@ -839,4 +881,49 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceivingOn transceiver: RTCRtpTransceiver) {}
+}
+
+
+/**
+ * PushKit wakes the iOS app for an incoming VoIP call even when it is backgrounded.
+ * The callback is completed only after Server has asked CallKit to present the call.
+ */
+@MainActor
+private final class ServerVoIPPushRegistry: NSObject, PKPushRegistryDelegate {
+    private var registry: PKPushRegistry!
+    var onToken: ((String) -> Void)?
+    var onIncomingPush: (([String: Any], @escaping () -> Void) -> Void)?
+
+    override init() {
+        super.init()
+        registry = PKPushRegistry(queue: .main)
+        registry.delegate = self
+        registry.desiredPushTypes = [.voIP]
+    }
+
+    func pushRegistry(_ registry: PKPushRegistry,
+                      didUpdate credentials: PKPushCredentials,
+                      for type: PKPushType) {
+        guard type == .voIP else { return }
+        let token = credentials.token.map { String(format: "%02x", $0) }.joined()
+        onToken?(token)
+    }
+
+    func pushRegistry(_ registry: PKPushRegistry,
+                      didInvalidatePushTokenFor type: PKPushType) {
+        guard type == .voIP else { return }
+        UserDefaults.standard.removeObject(forKey: "server.voip_push_token")
+        UserDefaults.standard.removeObject(forKey: "server.voip_push_registered")
+    }
+
+    func pushRegistry(_ registry: PKPushRegistry,
+                      didReceiveIncomingPushWith payload: PKPushPayload,
+                      for type: PKPushType,
+                      completion: @escaping () -> Void) {
+        guard type == .voIP, let onIncomingPush else {
+            completion()
+            return
+        }
+        onIncomingPush(payload.dictionaryPayload, completion)
+    }
 }
