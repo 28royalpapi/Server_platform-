@@ -88,7 +88,8 @@ Deno.serve(async(req:Request)=>{
     }).select("id").single();
     if(ie||!invite){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503);}
     const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
-    const smsBody="You have a Server internet-call invitation. Open this link while connected to the internet and allow microphone access: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
+    const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
+    const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Accept to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
     const manualDelivery=(reason:string)=>out({
       ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,
       invite_expires_at:expires,delivery_mode:"manual_sms",guest_invite_url:guestUrl,
