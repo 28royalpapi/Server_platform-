@@ -183,6 +183,11 @@ assert.match(gateway,/server_claim_sms_jobs/);
 assert.match(gateway,/PAIRING_RATE_LIMITED/);
 assert.match(gateway,/body:null/);
 assert.match(calls,/action==="incoming"/);
+assert.match(calls,/phone_verified_at/,"incoming calls only share verified caller numbers");
+assert.match(calls,/allow_number_based_server_calls===true/,"incoming calls only share caller numbers after explicit consent");
+assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"\)/,
+  "Android uses only the backend's shared verified caller number for contact matching");
+
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
 assert.match(calls,/GUEST_INVITE_RATE_LIMITED/);
