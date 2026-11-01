@@ -384,6 +384,48 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val previousToken = prefs.getString("access_token", null)
+    val previousExpiry = prefs.getLong("access_expiry", 0L)
+    val previousMarker = prefs.getString("debug_last_telecom_hangup_call_id", null)
+    val callId = "telecom-hangup-" + UUID.randomUUID().toString()
+
+    // Simulate Android recreating MainActivity after the original in-memory call
+    // state has disappeared. The Telecom Connection still supplies its call ID.
+    prefs.edit().remove("access_token").putLong("access_expiry", 0L)
+      .remove("debug_last_telecom_hangup_call_id").commit()
+    val intent = Intent(context, MainActivity::class.java).apply {
+      putExtra("server_action", "hangup")
+      putExtra("server_call_id", callId)
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    }
+
+    try {
+      ActivityScenario.launch<MainActivity>(intent).use {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline &&
+          prefs.getString("debug_last_telecom_hangup_call_id", null) != callId) {
+          Thread.sleep(50)
+        }
+        assertEquals(
+          "A recreated MainActivity must use the call ID supplied by Android Telecom, not a missing in-memory call ID",
+          callId,
+          prefs.getString("debug_last_telecom_hangup_call_id", null)
+        )
+      }
+    } finally {
+      val edit = prefs.edit()
+      if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
+      edit.putLong("access_expiry", previousExpiry)
+      if (previousMarker == null) edit.remove("debug_last_telecom_hangup_call_id")
+      else edit.putString("debug_last_telecom_hangup_call_id", previousMarker)
+      edit.commit()
+    }
+  }
+
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     grantTelecomPermissions(context)
