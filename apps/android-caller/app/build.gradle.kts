@@ -17,6 +17,14 @@ android {
     val publishableKey = providers.gradleProperty("SERVER_SUPABASE_PUBLISHABLE_KEY").orElse("sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E").get()
     buildConfigField("String", "SUPABASE_URL", "\"${projectUrl}\"")
     buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${publishableKey}\"")
+    val firebaseApiKey = providers.gradleProperty("SERVER_FIREBASE_API_KEY").orElse(providers.environmentVariable("SERVER_FIREBASE_API_KEY")).orElse("").get()
+    val firebaseAppId = providers.gradleProperty("SERVER_FIREBASE_APP_ID").orElse(providers.environmentVariable("SERVER_FIREBASE_APP_ID")).orElse("").get()
+    val firebaseProjectId = providers.gradleProperty("SERVER_FIREBASE_PROJECT_ID").orElse(providers.environmentVariable("SERVER_FIREBASE_PROJECT_ID")).orElse("").get()
+    val firebaseSenderId = providers.gradleProperty("SERVER_FIREBASE_SENDER_ID").orElse(providers.environmentVariable("SERVER_FIREBASE_SENDER_ID")).orElse("").get()
+    buildConfigField("String", "FIREBASE_API_KEY", "\"${firebaseApiKey}\"")
+    buildConfigField("String", "FIREBASE_APP_ID", "\"${firebaseAppId}\"")
+    buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${firebaseProjectId}\"")
+    buildConfigField("String", "FIREBASE_SENDER_ID", "\"${firebaseSenderId}\"")
   }
   buildFeatures { buildConfig = true }
   buildTypes {
@@ -42,6 +50,7 @@ dependencies {
   implementation("androidx.activity:activity-ktx:1.10.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
   implementation("io.github.webrtc-sdk:android:150.7871.01")
+  implementation("com.google.firebase:firebase-messaging:24.1.2")
   androidTestImplementation("androidx.test:runner:1.6.2")
   androidTestImplementation("androidx.test.ext:junit:1.2.1")
   androidTestImplementation("androidx.test:rules:1.6.1")

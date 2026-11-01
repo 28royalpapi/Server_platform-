@@ -11,6 +11,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
   <application
+    android:name="com.server.caller.ServerApplication"
     android:allowBackup="false"
     android:label="Server"
     android:theme="@style/ServerTheme"
@@ -43,6 +44,9 @@
     </activity>
     <service android:name="com.server.caller.ServerIncomingCallService"
       android:exported="false" android:foregroundServiceType="phoneCall" />
+    <service android:name="com.server.caller.ServerFirebaseMessagingService" android:exported="false">
+      <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+    </service>
     <service
       android:name="com.server.caller.ServerConnectionService"
       android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"

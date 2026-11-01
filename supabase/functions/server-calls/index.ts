@@ -5,6 +5,91 @@ const out=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,h
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 const phone=(v:unknown)=>typeof v==="string"&&/^\+[1-9][0-9]{7,14}$/.test(v.trim())?v.trim():null;
 const allowed=new Set(["offer","answer","ice","hangup","state"]);
+
+const LIVE_CALL_TTL_SECONDS = 120;
+let cachedFcmAccessToken: { token: string; expiresAt: number } | null = null;
+let cachedApnsJwt: { token: string; expiresAt: number } | null = null;
+const b64url = (value: string | Uint8Array) => {
+ const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
+ let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte);
+ return btoa(binary).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+};
+const pemBytes = (pem: string) => {
+ const clean = pem.replace(/-----BEGIN [^-]+-----/g,"").replace(/-----END [^-]+-----/g,"").replace(/\s/g,"");
+ return Uint8Array.from(atob(clean), c => c.charCodeAt(0));
+};
+async function firebaseAccessToken() {
+ if (cachedFcmAccessToken && cachedFcmAccessToken.expiresAt > Date.now()+60000) return cachedFcmAccessToken.token;
+ const raw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON") || "";
+ if (!raw) return null;
+ const sa = JSON.parse(raw);
+ const issued = Math.floor(Date.now()/1000);
+ const input = b64url(JSON.stringify({alg:"RS256",typ:"JWT"}))+"."+b64url(JSON.stringify({
+  iss:sa.client_email,scope:"https://www.googleapis.com/auth/firebase.messaging",
+  aud:"https://oauth2.googleapis.com/token",iat:issued,exp:issued+3600
+ }));
+ const key = await crypto.subtle.importKey("pkcs8",pemBytes(String(sa.private_key||"").replace(/\\n/g,"\n")),
+  {name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"]);
+ const signature = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5",key,new TextEncoder().encode(input)));
+ const assertion = input+"."+b64url(signature);
+ const form = new URLSearchParams({grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer",assertion});
+ const response = await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:form});
+ if(!response.ok) throw new Error("FCM_OAUTH_"+response.status);
+ const tokenBody = await response.json();
+ cachedFcmAccessToken = {token:tokenBody.access_token,expiresAt:Date.now()+Math.max(60,Number(tokenBody.expires_in)||3600)*1000};
+ return cachedFcmAccessToken.token;
+}
+async function apnsBearer() {
+ if(cachedApnsJwt&&cachedApnsJwt.expiresAt>Date.now()+60000)return cachedApnsJwt.token;
+ const team=Deno.env.get("APNS_TEAM_ID")||"",kid=Deno.env.get("APNS_KEY_ID")||"",pem=Deno.env.get("APNS_PRIVATE_KEY")||"";
+ if(!team||!kid||!pem)return null;
+ const issued=Math.floor(Date.now()/1000);
+ const input=b64url(JSON.stringify({alg:"ES256",kid,typ:"JWT"}))+"."+b64url(JSON.stringify({iss:team,iat:issued}));
+ const key=await crypto.subtle.importKey("pkcs8",pemBytes(pem.replace(/\\n/g,"\n")),{name:"ECDSA",namedCurve:"P-256"},false,["sign"]);
+ const signature=new Uint8Array(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},key,new TextEncoder().encode(input)));
+ const jwt=input+"."+b64url(signature);
+ cachedApnsJwt={token:jwt,expiresAt:Date.now()+50*60*1000};
+ return jwt;
+}
+async function sendRecipientPush(db:any,recipientUserId:string,callId:string,callerLabel:string) {
+ const {data:devices,error}=await db.from("server_push_devices").select("id,platform,token").eq("user_id",recipientUserId);
+ if(error||!devices?.length)return {sent:0,configured:false,reason:"NO_REGISTERED_PUSH_ENDPOINT"};
+ let sent=0,failures=0;
+ for(const device of devices) {
+  try {
+   if(device.platform==="android") {
+    const authToken=await firebaseAccessToken();
+    if(!authToken)continue;
+    const sa=JSON.parse(Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON")||"");
+    const project=sa.project_id||Deno.env.get("FIREBASE_PROJECT_ID")||"";
+    if(!project)continue;
+    const response=await fetch("https://fcm.googleapis.com/v1/projects/"+encodeURIComponent(project)+"/messages:send",{
+     method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+authToken},
+     body:JSON.stringify({message:{token:device.token,data:{
+      type:"server_incoming_call",call_id:callId,caller_label:callerLabel,expires_in:String(LIVE_CALL_TTL_SECONDS)
+     },android:{priority:"HIGH",ttl:LIVE_CALL_TTL_SECONDS+"s",collapse_key:"server-live-call"}}})
+    });
+    if(response.ok)sent++;else {failures++;if(response.status===404||response.status===400)await db.from("server_push_devices").delete().eq("id",device.id);}
+   } else if(device.platform==="ios_voip") {
+    const jwt=await apnsBearer(),bundle=Deno.env.get("APNS_BUNDLE_ID")||"com.server.caller";
+    if(!jwt)continue;
+    const response=await fetch("https://api.push.apple.com/3/device/"+encodeURIComponent(device.token),{
+     method:"POST",headers:{"authorization":"bearer "+jwt,"apns-topic":bundle+".voip","apns-push-type":"voip",
+      "apns-priority":"10","apns-expiration":String(Math.floor(Date.now()/1000)+LIVE_CALL_TTL_SECONDS)},
+     body:JSON.stringify({aps:{},type:"server_incoming_call",call_id:callId,caller_label:callerLabel,expires_in:LIVE_CALL_TTL_SECONDS})
+    });
+    if(response.ok)sent++;else {failures++;if(response.status===410)await db.from("server_push_devices").delete().eq("id",device.id);}
+   }
+  } catch { failures++; }
+ }
+ return {sent,configured:true,failures};
+}
+async function expireStaleRingingCalls(db:any) {
+ const now=new Date().toISOString();
+ await db.from("server_calls").update({state:"missed",ended_at:now,updated_at:now})
+  .eq("state","ringing").not("expires_at","is",null).lt("expires_at",now);
+}
+
 Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS") return new Response("ok",{headers:cors});
  if(req.method!=="POST") return out({error:"METHOD_NOT_ALLOWED"},405);
@@ -22,6 +107,22 @@ Deno.serve(async(req:Request)=>{
  await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
+  await expireStaleRingingCalls(db);
+  if(action==="register_push_token"){
+   const pushToken=typeof b.push_token==="string"?b.push_token.trim():"";
+   const platform=typeof b.platform==="string"?b.platform:"";
+   if(!["android","ios_voip"].includes(platform)||pushToken.length<40||pushToken.length>4096)return out({error:"INVALID_PUSH_TOKEN"},400);
+   const {error}=await db.from("server_push_devices").upsert({user_id:uid,platform,token:pushToken,updated_at:new Date().toISOString()},{onConflict:"platform,token"});
+   if(error)return out({error:"PUSH_TOKEN_REGISTER_FAILED"},503);
+   return out({ok:true,registered:true,platform});
+  }
+  if(action==="remove_push_token"){
+   const pushToken=typeof b.push_token==="string"?b.push_token.trim():"";
+   if(!pushToken)return out({error:"PUSH_TOKEN_REQUIRED"},400);
+   const {error}=await db.from("server_push_devices").delete().eq("user_id",uid).eq("token",pushToken);
+   if(error)return out({error:"PUSH_TOKEN_REMOVE_FAILED"},503);
+   return out({ok:true,removed:true});
+  }
   if(action==="me"){
    const {data,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
    if(error)return out({error:"PROFILE_LOOKUP_FAILED"},503);
@@ -62,15 +163,18 @@ Deno.serve(async(req:Request)=>{
     route=callee?"server":"guest";
    }
    const now=new Date().toISOString();
+   const expiresAt=new Date(Date.now()+LIVE_CALL_TTL_SECONDS*1000).toISOString();
    const {data:call,error:ce}=await db.from("server_calls").insert({
     caller_user_id:uid,callee_user_id:callee?.user_id||null,callee_phone_e164:recipientPhone,
-    route,state:"ringing",created_at:now,updated_at:now
-   }).select("id,state,route,created_at,callee_phone_e164,callee_user_id").single();
+    route,state:"ringing",created_at:now,updated_at:now,expires_at:expiresAt
+   }).select("id,state,route,created_at,expires_at,callee_phone_e164,callee_user_id").single();
    if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
    await db.from("server_call_members").upsert([
     {call_id:call.id,user_id:uid,member_role:"caller"},
     ...(callee?[{call_id:call.id,user_id:callee.user_id,member_role:"callee"}]:[])
    ],{onConflict:"call_id,user_id"});
+   let pushDelivery:any={sent:0,configured:false,reason:"NOT_A_SERVER_USER"};
+   if(route==="server"&&callee?.user_id){pushDelivery=await sendRecipientPush(db,callee.user_id,call.id,profile.server_id||"A Server user");}
    if(route==="guest"){
     if(!to){await db.from("server_calls").delete().eq("id",call.id);return out({error:"RECIPIENT_PHONE_REQUIRED"},400);}
     const callerKey=await sha("guest-caller:"+uid),targetKey=await sha("guest-target:"+to);
@@ -111,7 +215,7 @@ Deno.serve(async(req:Request)=>{
     }
     return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,invite_expires_at:expires,delivery_mode:"gateway_sms"});
   }
-  return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call});
+  return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,call_expires_at:expiresAt,push_delivery:pushDelivery});
  }
  if(action==="incoming"){
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
@@ -153,8 +257,8 @@ Deno.serve(async(req:Request)=>{
    if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
    const now=new Date().toISOString();
    if(action==="answer"||action==="accept"){
-    const {data:call}=await db.from("server_calls").select("id,state,callee_user_id").eq("id",callId).maybeSingle();
-    if(!call||call.callee_user_id!==uid||!["ringing","connecting"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
+    const {data:call}=await db.from("server_calls").select("id,state,callee_user_id,expires_at").eq("id",callId).maybeSingle();
+    if(!call||call.callee_user_id!==uid||!["ringing","connecting"].includes(call.state)||(call.expires_at&&Date.parse(call.expires_at)<=Date.now()))return out({error:"CALL_NOT_ANSWERABLE"},409);
     await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",callId);
     await db.from("server_call_members").update({joined_at:now}).eq("call_id",callId).eq("user_id",uid);
     return out({ok:true,state:"connecting",ice_servers:[{urls:"stun:stun.l.google.com:19302"}]});

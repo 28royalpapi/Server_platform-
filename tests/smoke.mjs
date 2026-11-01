@@ -21,6 +21,7 @@ const iosModel=read("apps/ios-caller/ServerCaller/ServerViewModel.swift");
 const iosView=read("apps/ios-caller/ServerCaller/ContentView.swift");
 const auth=read("supabase/functions/server-auth/index.ts");
 const androidIncoming=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallService.kt");
+const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFirebaseMessagingService.kt");
 const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
 const calls=read("supabase/functions/server-calls/index.ts");
@@ -141,6 +142,14 @@ assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallService"/);
+assert.match(androidManifest,/com.server.caller.ServerFirebaseMessagingService/);
+assert.match(androidFirebase,/onMessageReceived/);
+assert.match(androidFirebase,/server_incoming_call/);
+assert.match(androidFirebase,/ServerIncomingCallService.start\(this\)/);
+assert.match(calls,/action==="register_push_token"/);
+assert.match(calls,/LIVE_CALL_TTL_SECONDS = 120/);
+assert.match(migration,/create table if not exists public.server_push_devices/);
+assert.match(migration,/add column if not exists expires_at/);
 assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
   "Server opens Android's user-controlled dialer and does not place direct carrier calls");
 

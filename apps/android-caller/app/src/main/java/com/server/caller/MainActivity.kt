@@ -220,6 +220,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     authPanel.visibility = View.GONE
     callPanel.visibility = View.VISIBLE
     targetInput.setText("")
+    ServerPushRegistration.syncFcmToken(this)
     if (ServerTelecomRegistry.isEnabled(this)) {
       ServerIncomingCallService.start(this)
     } else if (incomingJob?.isActive != true) {
