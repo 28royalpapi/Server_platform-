@@ -13,8 +13,10 @@ const {data:invite,error:ie}=await db.from("server_guest_invites").select("id,ca
 if(ie||!invite)return out({error:"GUEST_INVITE_EXPIRED_OR_INVALID"},401);
 const action=String(b.action||"");
 if(req.method==="GET"||action==="inspect"){
- const {data:call}=await db.from("server_calls").select("id,state,route,created_at,updated_at").eq("id",invite.call_id).maybeSingle();
- return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,call});
+ const {data:call}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("id",invite.call_id).maybeSingle();
+ if(!call)return out({error:"CALL_NOT_FOUND"},404);
+ const {data:caller}=await db.from("server_profiles").select("server_id").eq("user_id",call.caller_user_id).maybeSingle();
+ return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,caller_server_id:caller?.server_id||"A Server user",call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
 }
 if(action==="join"){
  const now=new Date().toISOString();
