@@ -359,7 +359,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         val id = intent.getStringExtra("server_call_id").orEmpty()
         if (id.isNotBlank()) lifecycleScope.launch { declineCall(id) }
       }
-      "hangup" -> lifecycleScope.launch { endCall() }
+      "hangup" -> lifecycleScope.launch { endCall(intent.getStringExtra("server_call_id")) }
     }
   }
 
@@ -619,7 +619,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     audioTrack?.let { peer?.addTrack(it, listOf("server-audio-stream")) }
     val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
     am.mode = AudioManager.MODE_IN_COMMUNICATION
-    am.isSpeakerphoneOn = true
   }
 
   private suspend fun createLocalDescription(offer: Boolean): JSONObject = suspendCancellableCoroutine { cont ->
@@ -735,10 +734,35 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
-  private fun endCall() = lifecycleScope.launch {
-    val id = callId
+  /**
+   * Telecom can recreate MainActivity before delivering a system hang-up action.
+   * In that case there is no in-memory callId, so always honour the call ID carried
+   * by the ConnectionService intent. Do not tear down a different active call if
+   * Android delivers a late disconnect for an older Telecom connection.
+   */
+  private fun endCall(telecomCallId: String? = null) = lifecycleScope.launch {
+    val activeCallId = callId
+    val id = telecomCallId?.takeIf { it.isNotBlank() } ?: activeCallId
+    if (BuildConfig.DEBUG && !telecomCallId.isNullOrBlank()) {
+      prefs.edit().putString("debug_last_telecom_hangup_call_id", telecomCallId).apply()
+    }
     if (id != null) try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
-    cleanPeer(); callId = null; carrierFallbackPhone = null; showCallIdle(); setStatus("Call ended.")
+    if (activeCallId == null || activeCallId == id) {
+      if (activeCallId == id) {
+        cleanPeer()
+      } else if (id != null) {
+        ServerTelecomRegistry.markEnded(id)
+      } else {
+        cleanPeer()
+      }
+      callId = null
+      carrierFallbackPhone = null
+      showCallIdle()
+      setStatus("Call ended.")
+    } else if (id != null) {
+      // This was a late Telecom event for a different call. Clear only that call.
+      ServerTelecomRegistry.markEnded(id)
+    }
   }
   private fun showCallIdle() { runOnUiThread { callButton.visibility = View.VISIBLE; hangupButton.visibility = View.GONE } }
   private fun cleanPeer() {
@@ -754,7 +778,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     try { audioModule?.release() } catch (_: Exception) {}
     audioModule = null
     val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    am.isSpeakerphoneOn = false; am.mode = AudioManager.MODE_NORMAL
+    am.mode = AudioManager.MODE_NORMAL
   }
   private fun signOut() {
     cleanPeer(); callId = null; incomingJob?.cancel(); incomingJob = null
