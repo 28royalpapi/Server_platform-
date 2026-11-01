@@ -79,7 +79,15 @@ assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,
 assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
   "Server must not request permission to read SIM phone numbers");
 assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
-  "a legacy SIM number must not become Server's calling-account address");
+   "a legacy SIM number must not become Server's calling-account address");
+assert.match(androidTelecom,/setAudioModeIsVoip\(true\)/,
+   "Android Telecom is told that Server connections carry VoIP audio");
+assert.doesNotMatch(androidMain,/isSpeakerphoneOn\s*=/,
+   "Server must not force speakerphone routing; Android and Telecom own the call audio route");
+assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/,
+   "system hang-up events must carry their Telecom call ID through to the backend call teardown");
+assert.match(androidTests,/telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState/,
+   "system hang-up after activity recreation has an Android instrumentation regression test");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
