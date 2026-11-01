@@ -43,8 +43,10 @@ jobs:
           gradle -p apps/android-caller assembleRelease --no-daemon --console=plain
           APK='apps/android-caller/app/build/outputs/apk/release/app-release.apk'
           test -s "$APK"
-          apksigner verify --verbose "$APK"
-          PACKAGE_ID="$(apkanalyzer manifest application-id "$APK")"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          "$APKSIGNER" verify --verbose "$APK"
+          PACKAGE_ID="$("$APKANALYZER" manifest application-id "$APK")"
           test "$PACKAGE_ID" = "com.server.caller"
           mkdir -p artifacts
           cp "$APK" artifacts/Server-Android-Connector-preview.apk
