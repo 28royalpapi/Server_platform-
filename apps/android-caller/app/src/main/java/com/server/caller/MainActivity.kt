@@ -544,8 +544,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           val id = call.optString("id")
           if (id.isNotBlank() && id !in shownIncoming && id != callId) {
             shownIncoming.add(id)
-            val caller = call.optString("caller_server_id").takeIf { it.isNotBlank() }
-              ?: call.optString("caller_phone_e164", "Server caller")
+            val sharedPhone = call.optString("caller_phone_e164").takeIf {
+              Regex("^\\+[1-9][0-9]{7,14}$").matches(it)
+            }
+            // Prefer only a verified, consented number so Android may resolve the
+            // caller from the user's contacts. Otherwise display the Server ID.
+            val caller = sharedPhone
+              ?: call.optString("caller_server_id").takeIf { it.isNotBlank() }
+              ?: "Server caller"
             if (ServerTelecomRegistry.isEnabled(this)) {
               try { ServerTelecomRegistry.reportIncoming(this, id, caller) }
               catch (_: Exception) { runOnUiThread { showIncomingDialog(id, caller) } }
