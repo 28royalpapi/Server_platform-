@@ -11,6 +11,8 @@ create table if not exists public.server_push_devices (
 create index if not exists server_push_devices_user_platform_idx
   on public.server_push_devices(user_id, platform);
 alter table public.server_calls add column if not exists expires_at timestamptz;
+create index if not exists server_calls_ringing_expiry_idx
+  on public.server_calls(state, expires_at) where state = 'ringing';
 alter table public.server_push_devices enable row level security;
 revoke all on public.server_push_devices from anon, authenticated;
 grant all on public.server_push_devices to service_role;
