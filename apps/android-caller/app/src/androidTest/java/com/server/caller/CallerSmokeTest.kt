@@ -64,8 +64,8 @@ class CallerSmokeTest {
         android.app.NotificationManager.IMPORTANCE_HIGH, channel!!.importance)
       assertEquals("The channel must use the system's default ringtone",
         android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE), channel.sound)
-      assertTrue("The incoming-call channel must support vibration", channel.shouldVibrate)
-      assertFalse("Server must never bypass the user's Do Not Disturb settings", channel.canBypassDnd)
+      assertTrue("The incoming-call channel must support vibration", channel.shouldVibrate())
+      assertFalse("Server must never bypass the user's Do Not Disturb settings", channel.canBypassDnd())
 
       if (android.os.Build.VERSION.SDK_INT >= 34) {
         assertEquals("Android 14+ must receive the incoming CallStyle type",
