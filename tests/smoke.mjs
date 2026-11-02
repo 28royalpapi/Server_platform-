@@ -97,12 +97,12 @@ assert.match(androidTelecom,/setAudioModeIsVoip\(true\)/,
    "Android Telecom is told that Server connections carry VoIP audio");
 assert.match(androidCallNotifications,/Notification\.CallStyle\.forIncomingCall/,
   "Android 12+ incoming calls must use the native CallStyle template");
-assert.match(androidCallNotifications,/Notification\.CallStyle\.forIncomingCall/,
 assert.match(androidCallNotifications,/NotificationManager\.IMPORTANCE_HIGH/,
+  "incoming Server calls must use a high-importance notification channel");
 assert.match(androidCallNotifications,/USAGE_NOTIFICATION_RINGTONE/,
   "incoming alerts must use ringtone audio usage");
-assert.match(androidCallNotifications,/setBypassDnd\(false\)/,
 assert.doesNotMatch(androidCallNotifications,/setBypassDnd\(true\)/,
+  "Server must not bypass Do Not Disturb");
 assert.match(androidCallNotifications,/ACTION_ANSWER/);
 assert.match(androidCallNotifications,/ACTION_DECLINE/);
 assert.match(androidTelecom,/ServerCallNotifications\.show/);
