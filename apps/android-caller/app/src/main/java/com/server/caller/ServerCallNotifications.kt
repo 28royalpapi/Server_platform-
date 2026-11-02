@@ -23,7 +23,7 @@ internal object ServerCallNotifications {
 
   fun notificationId(callId: String): Int = 7400 + (callId.hashCode() and 0x0000FFFF)
 
-  fun show(context: Context, callId: String, callerIdentity: String) {
+  fun show(context: Context, callId: String, callerIdentity: String, onlyAlertOnce: Boolean = false) {
     if (callId.isBlank()) return
     if (Build.VERSION.SDK_INT >= 33 &&
       context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -42,7 +42,7 @@ internal object ServerCallNotifications {
       .setVisibility(Notification.VISIBILITY_PRIVATE)
       .setOngoing(true)
       .setAutoCancel(false)
-      .setOnlyAlertOnce(false)
+      .setOnlyAlertOnce(onlyAlertOnce)
       .setTimeoutAfter(180_000L)
 
     if (Build.VERSION.SDK_INT >= 31) {
