@@ -186,15 +186,15 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |
             set -eu
-            run_server_test() {
-              method="$1"
-              rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-              timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#${method}"
-              python3 scripts/assert-android-test-count.py
-            }
-            run_server_test launcherShowsServerIdFirstOnboardingWithoutSimPermissions
-            run_server_test incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
-            run_server_test missedServerCallNotificationOffersQuietCallbackAction
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsServerIdFirstOnboardingWithoutSimPermissions
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#missedServerCallNotificationOffersQuietCallbackAction
+            python3 scripts/assert-android-test-count.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -244,18 +244,20 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |
-            # The emulator-runner invokes this through /bin/sh, not Bash.
+            # The emulator runner executes /bin/sh commands; keep this block POSIX and line-oriented.
             set -eu
-            run_server_test() {
-              method="$1"
-              rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-              timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#${method}"
-              python3 scripts/assert-android-test-count.py
-            }
-            run_server_test serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
-            run_server_test phoneAccountCanReceiveIncomingCallThroughTelecom
-            run_server_test incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
-            run_server_test missedServerCallNotificationOffersQuietCallbackAction
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#missedServerCallNotificationOffersQuietCallbackAction
+            python3 scripts/assert-android-test-count.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -311,17 +313,18 @@ jobs:
             adb devices -l
           script: |
             set -eu
-            run_server_test() {
-              method="$1"
-              echo "ANDROID_16_TEST method=${method}"
-              rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-              timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#${method}"
-              python3 scripts/assert-android-test-count.py
-            }
-            run_server_test serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
-            run_server_test phoneAccountCanReceiveIncomingCallThroughTelecom
-            run_server_test incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
-            run_server_test missedServerCallNotificationOffersQuietCallbackAction
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#missedServerCallNotificationOffersQuietCallbackAction
+            python3 scripts/assert-android-test-count.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
