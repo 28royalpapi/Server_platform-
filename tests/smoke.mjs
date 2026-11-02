@@ -109,6 +109,17 @@ assert.match(androidTelecom,/ServerCallNotifications\.show/);
 assert.match(androidTelecom,/answerFromNotification/);
 assert.match(androidTelecom,/declineFromNotification/);
 assert.match(androidManifest,/ServerCallActionReceiver/);
+assert.match(androidCallNotifications,/CATEGORY_MISSED_CALL/);
+assert.match(androidCallNotifications,/"Call back"/);
+assert.match(androidCallNotifications,/buildMissedCallIntent/);
+assert.match(androidIncoming,/ServerCallNotifications\\.showMissed/);
+assert.match(androidIncoming,/reportedMissedCallIds/);
+assert.match(androidMain,/"missed_callback"/);
+assert.match(calls,/\.in\("state",\["ringing","connecting","missed"\]\)/,
+  "recent missed calls must be returned to Server after an offline recipient reconnects");
+assert.match(calls,/\.gte\("updated_at",new Date\(Date\.now\(\)-14\*24\*60\*60\*1000\)\.toISOString\(\)\)/,
+  "missed-call retrieval must be bounded to the recent two weeks");
+
 assert.doesNotMatch(androidMain,/isSpeakerphoneOn\s*=/,
    "Server must not force speakerphone routing; Android and Telecom own the call audio route");
 assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/,
