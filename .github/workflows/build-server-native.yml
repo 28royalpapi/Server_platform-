@@ -46,7 +46,7 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Install Android SDK components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Enable KVM access for Android emulator
         shell: bash
         run: |
@@ -147,7 +147,7 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Install Android 8 SDK components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Enable KVM access for Android 8 emulator
         shell: bash
         run: |
@@ -196,7 +196,7 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Install Android 12 SDK components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Enable KVM access for Android 12 emulator
         shell: bash
         run: |
@@ -236,7 +236,7 @@ jobs:
           if-no-files-found: warn
 
 
-  android-16-latest-compatibility-smoke:
+  android-17-latest-compatibility-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -249,8 +249,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Install Android 16 SDK components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+      - name: Install Android 17 SDK components
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Enable KVM access for Android 16 emulator
         shell: bash
         run: |
@@ -266,7 +266,7 @@ jobs:
       - name: Run Android 16 Telecom and offline-gate acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: 37
           target: google_apis
           arch: x86_64
           profile: pixel_2
