@@ -57,6 +57,13 @@ internal object ServerCallNotifications {
     manager.notify(notificationId(callId), builder.build())
   }
 
+  fun silence(context: Context, callId: String, callerIdentity: String) {
+    if (callId.isBlank()) return
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.cancel(notificationId(callId))
+    show(context, callId, callerIdentity, onlyAlertOnce = true)
+  }
+
   fun buildMissedCallIntent(context: Context, callId: String, callerIdentity: String): Intent =
     Intent(context, MainActivity::class.java).apply {
       action = "com.server.caller.action.MISSED_CALLBACK"
