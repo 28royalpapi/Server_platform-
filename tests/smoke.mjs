@@ -106,6 +106,15 @@ assert.doesNotMatch(androidCallNotifications,/setBypassDnd\(true\)/,
   "Server must not bypass Do Not Disturb");
 assert.match(androidCallNotifications,/ACTION_ANSWER/);
 assert.match(androidCallNotifications,/ACTION_DECLINE/);
+assert.match(androidCallNotifications,/ServerIncomingCallService\\.showIncomingCall/,
+  "Android 12+ CallStyle must be sent to the phone-call foreground service");
+assert.match(androidIncoming,/buildIncomingNotification/,
+  "the foreground service must own the incoming CallStyle notification");
+assert.match(androidIncoming,/startForeground\\(FOREGROUND_NOTIFICATION_ID, notification/,
+  "the incoming CallStyle notification must be the actual foreground-service notification");
+assert.match(androidIncoming,/ACTION_SILENCE_INCOMING_CALL/);
+assert.match(androidIncoming,/ACTION_CLEAR_INCOMING_CALL/);
+
 assert.match(androidTelecom,/ServerCallNotifications\.show/);
 assert.match(androidTelecom,/answerFromNotification/);
 assert.match(androidTelecom,/declineFromNotification/);
