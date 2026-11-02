@@ -216,7 +216,7 @@ assert.match(html,/releases\/download\/server-android-connector-preview\/Server-
   "website installer points to the published Android preview asset");
 assert.match(html,/I'?ve installed Server — continue setup/,
   "website offers the return-to-this-page hand-off after connector installation");
-assert.match(app,/androidDownload\?\.addEventListener/,
+assert.match(app,/androidDownload && androidDownload\.addEventListener/,
   "website explains that the user should return after the APK download");
 
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
