@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-debug.apk"
+          APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
           npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-caller-package.json
           npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.MainActivity --json > artifacts/rea-caller-main-class.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity startCall --json > artifacts/rea-caller-start-call.json
@@ -148,5 +148,5 @@ jobs:
             artifacts/rea-caller-handle-signal.json
             artifacts/rea-caller-ice-state-sync.json
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
-            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: warn
