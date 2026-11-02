@@ -227,7 +227,7 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   override fun onSilence() {
     val callId = extras?.getString("server_call_id").orEmpty()
     val caller = extras?.getString("server_caller_id").orEmpty().ifBlank { "Server caller" }
-    ServerCallNotifications.show(app, callId, caller, onlyAlertOnce = true)
+    ServerCallNotifications.silence(app, callId, caller)
   }
 
   internal fun answerFromNotification() { onAnswer() }
