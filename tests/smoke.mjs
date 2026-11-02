@@ -17,6 +17,7 @@ const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
+const androidTestCountCheck=read("scripts/assert-android-test-count.py");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
 const iosEntitlements=read("apps/ios-caller/ServerCaller/ServerCaller.entitlements");
@@ -325,6 +326,19 @@ assert.match(guest,/caller_server_id/,
 assert.match(guestWeb,/loadInvitation/);
 assert.match(guestWeb,/You do not need to install Server/,
   "browser invitation tells a non-Server recipient no install is required");
+
+assert.ok(androidTestCountCheck.includes("if total < 1"),
+  "Android CI must fail when an instrumentation selector executes zero tests");
+assert.ok(nativeWorkflow.includes("scripts/assert-android-test-count.py"),
+  "Android compatibility jobs must verify that tests actually ran");
+assert.ok(!nativeWorkflow.includes("android12PhoneAccountCanReceiveServerCallThroughTelecom"),
+  "Android 12 must not use the old nonexistent test method selector");
+assert.ok(nativeWorkflow.includes("phoneAccountCanReceiveIncomingCallThroughTelecom"),
+  "Android 12/16 Telecom acceptance must target an existing test method");
+assert.ok(androidTests.includes("fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings"));
+assert.ok(androidTests.includes("fun missedServerCallNotificationOffersQuietCallbackAction"));
+assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py"),
+  "the main emulator run must reject a zero-test result");
 
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 console.log("Server backend/web contract checks: PASS");
