@@ -205,7 +205,6 @@ class ServerConnectionService : ConnectionService() {
       })
       setRinging()
       ServerTelecomRegistry.attach(this, callId)
-      ServerCallNotifications.show(this@ServerConnectionService, callId, callerIdentity)
       ServerTelecomRegistry.openApp(this@ServerConnectionService, Bundle().apply {
         putString("server_action", "incoming")
         putString("server_call_id", callId)
@@ -218,6 +217,18 @@ class ServerConnectionService : ConnectionService() {
 
 internal class ServerTelecomConnection(context: Context) : Connection() {
   private val app = context.applicationContext
+
+  override fun onShowIncomingCallUi() {
+    val callId = extras?.getString("server_call_id").orEmpty()
+    val caller = extras?.getString("server_caller_id").orEmpty().ifBlank { "Server caller" }
+    ServerCallNotifications.show(app, callId, caller)
+  }
+
+  override fun onSilence() {
+    val callId = extras?.getString("server_call_id").orEmpty()
+    val caller = extras?.getString("server_caller_id").orEmpty().ifBlank { "Server caller" }
+    ServerCallNotifications.show(app, callId, caller, onlyAlertOnce = true)
+  }
 
   internal fun answerFromNotification() { onAnswer() }
   internal fun declineFromNotification() { onReject() }
