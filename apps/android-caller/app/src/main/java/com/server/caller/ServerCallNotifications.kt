@@ -17,23 +17,24 @@ import android.os.Build
 
 internal object ServerCallNotifications {
   const val CHANNEL_ID = "server-incoming-call-alerts-v1"
+  const val SILENT_CHANNEL_ID = "server-incoming-call-silenced-v1"
   const val ACTION_ANSWER = "com.server.caller.action.ANSWER_INCOMING"
   const val ACTION_DECLINE = "com.server.caller.action.DECLINE_INCOMING"
   const val EXTRA_CALL_ID = "server_call_id"
 
   fun notificationId(callId: String): Int = 7400 + (callId.hashCode() and 0x0000FFFF)
 
-  fun show(context: Context, callId: String, callerIdentity: String, onlyAlertOnce: Boolean = false) {
+  fun show(context: Context, callId: String, callerIdentity: String, onlyAlertOnce: Boolean = false, silent: Boolean = false) {
     if (callId.isBlank()) return
     if (Build.VERSION.SDK_INT >= 33 &&
       context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
 
     val app = context.applicationContext
-    ensureChannel(app)
+    if (silent) ensureSilentChannel(app) else ensureChannel(app)
     val caller = callerIdentity.trim().take(80).ifBlank { "Server caller" }
     val answer = callAction(app, callId, ACTION_ANSWER, 1)
     val decline = callAction(app, callId, ACTION_DECLINE, 2)
-    val builder = Notification.Builder(app, CHANNEL_ID)
+    val builder = Notification.Builder(app, if (silent) SILENT_CHANNEL_ID else CHANNEL_ID)
       .setSmallIcon(android.R.drawable.sym_call_incoming)
       .setContentTitle("Incoming Server call")
       .setContentText("$caller is calling you through Server")
@@ -61,7 +62,7 @@ internal object ServerCallNotifications {
     if (callId.isBlank()) return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.cancel(notificationId(callId))
-    show(context, callId, callerIdentity, onlyAlertOnce = true)
+    show(context, callId, callerIdentity, onlyAlertOnce = true, silent = true)
   }
 
   fun buildMissedCallIntent(context: Context, callId: String, callerIdentity: String): Intent =
@@ -106,6 +107,21 @@ internal object ServerCallNotifications {
       .build()
     manager.notify(7600 + (callId.hashCode() and 0x0000FFFF), notification)
     return true
+  }
+
+  private fun ensureSilentChannel(context: Context) {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    if (manager.getNotificationChannel(SILENT_CHANNEL_ID) != null) return
+    val channel = NotificationChannel(
+      SILENT_CHANNEL_ID, "Silenced incoming Server calls", NotificationManager.IMPORTANCE_HIGH
+    ).apply {
+      description = "Incoming Server calls remain visible after the ringtone has been silenced."
+      setSound(null, null)
+      enableVibration(false)
+      setShowBadge(false)
+      lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+    }
+    manager.createNotificationChannel(channel)
   }
 
   private const val MISSED_CHANNEL_ID = "server-missed-calls-v1"
