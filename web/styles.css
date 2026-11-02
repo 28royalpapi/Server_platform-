@@ -8,3 +8,20 @@
 .install-steps li{padding:3px 0 3px 4px}
 .install-card .fine-print{margin-top:14px}
 .step-form>.step-title{margin-top:4px}
+
+
+.walkthrough{margin:34px 0 0}
+.walkthrough-header{padding:12px 2px 20px}
+.walkthrough-header h2{margin:10px 0;font-size:clamp(24px,4vw,32px);letter-spacing:-.035em;color:#eff8f2}
+.walkthrough-header>p:last-child{max-width:680px;margin:0;color:#97ada2;font-size:13px;line-height:1.7}
+.walkthrough-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.walkthrough-card{min-width:0;overflow:hidden;border:1px solid #274535;border-radius:15px;background:#0b1914}
+.walkthrough-card img{display:block;width:100%;height:auto;aspect-ratio:3/5;object-fit:contain;background:#09130f}
+.walkthrough-copy{padding:14px 14px 16px}
+.walkthrough-copy>span{color:#8ce6b6;font-size:10px;font-weight:800;letter-spacing:.14em}
+.walkthrough-copy h3{margin:7px 0 8px;color:#edf7f0;font-size:16px;line-height:1.3}
+.walkthrough-copy p{margin:0;color:#91a89d;font-size:12px;line-height:1.65}
+.walkthrough-note{margin:16px 0 0;padding:14px;border:1px solid #294638;border-radius:12px;color:#9bb1a6;background:#0b1914;font-size:11px;line-height:1.7}
+.walkthrough-note strong{color:#b9efce}
+@media(max-width:680px){.walkthrough-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.walkthrough-grid{grid-template-columns:1fr}.walkthrough-card img{max-height:640px;object-fit:contain}}
