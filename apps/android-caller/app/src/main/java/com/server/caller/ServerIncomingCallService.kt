@@ -37,6 +37,7 @@ class ServerIncomingCallService : Service() {
   // Process-local by design: if Android recreates the service, active calls must be
   // re-reported to Telecom instead of being suppressed by stale persisted IDs.
   private val reportedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+  private val reportedMissedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
   private val prefs by lazy { getSharedPreferences("server-session", Context.MODE_PRIVATE) }
 
   override fun onCreate() {
