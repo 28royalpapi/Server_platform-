@@ -98,6 +98,10 @@ assert.doesNotMatch(androidMain,/isSpeakerphoneOn\s*=/,
    "Server must not force speakerphone routing; Android and Telecom own the call audio route");
 assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/,
    "system hang-up events must carry their Telecom call ID through to the backend call teardown");
+assert.match(androidEmulatorSmoke,/CALLER_DEBUG_APK="apps\/android-caller\/app\/build\/outputs\/apk\/debug\/app-universal-debug\.apk"/,
+  "Android smoke must use the actual ABI-split universal debug APK output");
+assert.match(nativeWorkflow,/apps\/android-caller\/app\/build\/outputs\/apk\/debug\/app-universal-debug\.apk/,
+  "the universal caller debug APK must be included in uploaded diagnostics");
 assert.match(androidEmulatorSmoke,/cp "\$CALLER_DEBUG_APK" artifacts\/server-caller-debug-for-reinstall\.apk/,"caller APK is preserved outside Gradle build outputs before instrumentation");
 assert.match(androidEmulatorSmoke,/adb install -r artifacts\/server-caller-debug-for-reinstall\.apk/,"post-test UI smoke reinstalls the preserved caller APK");
 assert.ok(androidEmulatorSmoke.indexOf("CALLER_APK_BACKUP_READY") < androidEmulatorSmoke.indexOf("connectedDebugAndroidTest"),"caller APK backup must happen before instrumentation cleanup");

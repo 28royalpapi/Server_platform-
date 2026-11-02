@@ -99,7 +99,7 @@ jobs:
         with:
           name: server-android-debug-apks
           path: |
-            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
             apps/android-caller/app/build/outputs/apk/release/*.apk
             apps/android-caller/app/build/outputs/bundle/release/*.aab
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
@@ -136,7 +136,7 @@ jobs:
         with:
           name: server-android-build-and-startup-recording
           path: |
-            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
             apps/android-caller/app/build/outputs/bundle/release/*.aab
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/androidTest-results/**

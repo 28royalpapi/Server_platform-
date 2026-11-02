@@ -58,7 +58,7 @@ FULL_WORKFLOW_REC_PID=$!
 sleep 2
 
 echo "Preserving the caller APK before Android instrumentation cleanup"
-CALLER_DEBUG_APK="apps/android-caller/app/build/outputs/apk/debug/app-debug.apk"
+CALLER_DEBUG_APK="apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
 if [[ ! -s "$CALLER_DEBUG_APK" ]]; then
   echo "The built Server caller APK is missing before instrumentation tests." >&2
   exit 1
