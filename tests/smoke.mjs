@@ -98,11 +98,11 @@ assert.match(androidTelecom,/setAudioModeIsVoip\(true\)/,
 assert.match(androidCallNotifications,/Notification\.CallStyle\.forIncomingCall/,
   "Android 12+ incoming calls must use the native CallStyle template");
 assert.match(androidCallNotifications,/Notification\.CallStyle\.forIncomingCall/,
-  "incoming Server calls must use a high-importance notification channel");
+assert.match(androidCallNotifications,/NotificationManager\.IMPORTANCE_HIGH/,
 assert.match(androidCallNotifications,/USAGE_NOTIFICATION_RINGTONE/,
   "incoming alerts must use ringtone audio usage");
 assert.match(androidCallNotifications,/setBypassDnd\(false\)/,
-  "Server must not bypass Do Not Disturb");
+assert.doesNotMatch(androidCallNotifications,/setBypassDnd\(true\)/,
 assert.match(androidCallNotifications,/ACTION_ANSWER/);
 assert.match(androidCallNotifications,/ACTION_DECLINE/);
 assert.match(androidTelecom,/ServerCallNotifications\.show/);
