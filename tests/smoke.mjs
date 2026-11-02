@@ -99,9 +99,11 @@ assert.match(androidMain,/isServerInternetUsable\(networkCapabilities\)/,
    "outgoing Server calls are blocked before signalling when no validated internet route exists");
 assert.match(androidMain,/Server needs internet to place this call/,
    "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
-assert.match(androidTests,/android12PhoneAccountCanReceiveServerCallThroughTelecom/);
+assert.match(androidTests,/phoneAccountCanReceiveIncomingCallThroughTelecom/);
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
+assert.match(nativeWorkflow,/api-level: 26/);
 assert.match(nativeWorkflow,/api-level: 31/);
+assert.match(nativeWorkflow,/api-level: 36/);
 assert.match(androidTests,/serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate/,
    "network-availability gating has an Android instrumentation test");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
@@ -156,6 +158,7 @@ assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCall
 assert.match(androidManifest,/com.server.caller.ServerFirebaseMessagingService/);
 assert.match(androidBuild,/isMinifyEnabled = true/);
 assert.match(androidBuild,/isShrinkResources = true/);
+assert.match(androidBuild,/isEnable = true[\s\S]*isUniversalApk = true/);
 assert.match(androidBuild,/androidx\.fragment:fragment-ktx:1\.9\.1/);
 assert.match(androidProguard,/-keep class org\.webrtc/);
 assert.match(androidFirebase,/onMessageReceived/);

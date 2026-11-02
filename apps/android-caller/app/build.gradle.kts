@@ -28,6 +28,16 @@ android {
     buildConfigField("String", "FIREBASE_SENDER_ID", "\"${firebaseSenderId}\"")
   }
   buildFeatures { buildConfig = true }
+  // Provide architecture-specific release APKs for direct testing and a
+  // universal preview. Google Play's AAB also generates device-specific splits.
+  splits {
+    abi {
+      isEnable = true
+      reset()
+      include("arm64-v8a", "armeabi-v7a")
+      isUniversalApk = true
+    }
+  }
   buildTypes {
     debug { applicationIdSuffix = ".debug" }
     release {

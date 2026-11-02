@@ -116,7 +116,7 @@ class CallerSmokeTest {
     }
   }
 
-  @Test fun android12PhoneAccountCanReceiveServerCallThroughTelecom() {
+  @Test fun phoneAccountCanReceiveIncomingCallThroughTelecom() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     grantTelecomPermissions(context)

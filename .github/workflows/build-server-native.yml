@@ -132,6 +132,56 @@ jobs:
           if-no-files-found: warn
 
 
+
+  android-8-minimum-install-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 8 SDK components
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+      - name: Enable KVM access for Android 8 emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this runner does not expose /dev/kvm for the Android 8 emulator." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Build caller and Android instrumentation tests
+        run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
+      - name: Run minimum-install and onboarding acceptance test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 26
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 360
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsServerIdFirstOnboardingWithoutSimPermissions
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-8-api26-install-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
+
   android-12-compatibility-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -182,6 +232,57 @@ jobs:
         if: always()
         with:
           name: server-android-12-api31-acceptance-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
+
+
+  android-16-latest-compatibility-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 16 SDK components
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+      - name: Enable KVM access for Android 16 emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this runner does not expose /dev/kvm for the Android 16 emulator." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Build caller and Android instrumentation tests
+        run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
+      - name: Run Android 16 Telecom and offline-gate acceptance tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 420
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
+            gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-16-api36-acceptance-results
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
