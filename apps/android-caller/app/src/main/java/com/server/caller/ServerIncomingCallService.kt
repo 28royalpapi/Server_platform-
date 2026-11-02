@@ -78,7 +78,7 @@ class ServerIncomingCallService : Service() {
         ServerCallNotifications.buildIncomingNotification(this, callId, activeIncomingCaller, activeIncomingSilent)
       } ?: buildNotification()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(FOREGROUND_FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
+        startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
       } else {
         startForeground(FOREGROUND_NOTIFICATION_ID, notification)
       }
@@ -106,7 +106,7 @@ class ServerIncomingCallService : Service() {
   override fun onDestroy() {
     pollingJob?.cancel()
     scope.cancel()
-    try { (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID) } catch (_: Exception) {}
+    try { (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(FOREGROUND_NOTIFICATION_ID) } catch (_: Exception) {}
     super.onDestroy()
   }
 
