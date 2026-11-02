@@ -112,7 +112,7 @@ assert.match(androidManifest,/ServerCallActionReceiver/);
 assert.match(androidCallNotifications,/CATEGORY_MISSED_CALL/);
 assert.match(androidCallNotifications,/"Call back"/);
 assert.match(androidCallNotifications,/buildMissedCallIntent/);
-assert.match(androidIncoming,/ServerCallNotifications\\.showMissed/);
+assert.match(androidIncoming,/ServerCallNotifications\.showMissed/);
 assert.match(androidIncoming,/reportedMissedCallIds/);
 assert.match(androidMain,/"missed_callback"/);
 assert.match(calls,/\.in\("state",\["ringing","connecting","missed"\]\)/,
