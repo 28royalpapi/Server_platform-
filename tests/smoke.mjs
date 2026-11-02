@@ -107,7 +107,7 @@ assert.match(androidTests,/phoneAccountCanReceiveIncomingCallThroughTelecom/);
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/);
 assert.match(nativeWorkflow,/api-level: 31/);
-assert.match(nativeWorkflow,/api-level: '37[.]0'/);
+assert.match(nativeWorkflow,/api-level: '36'/);
 assert.match(androidTests,/serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate/,
    "network-availability gating has an Android instrumentation test");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);

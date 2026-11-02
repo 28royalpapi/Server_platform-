@@ -248,7 +248,7 @@ jobs:
           if-no-files-found: warn
 
 
-  android-17-latest-compatibility-smoke:
+  android-16-stable-compatibility-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -261,25 +261,25 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Install Android 17 SDK components
+      - name: Install Android 16 stable SDK components
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Enable KVM access for Android 17 emulator
+      - name: Enable KVM access for Android 16 emulator
         shell: bash
         run: |
           set -euo pipefail
           if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this runner does not expose /dev/kvm for the Android 17 emulator." >&2
+            echo "ERROR: this runner does not expose /dev/kvm for the Android 16 emulator." >&2
             exit 1
           fi
           sudo chmod 666 /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
       - name: Build caller and Android instrumentation tests
         run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
-      - name: Run Android 17 (API 37) Telecom and offline-gate acceptance tests
+      - name: Run Android 16 (API 36) Telecom and offline-gate acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: '37.0'
-          system-image-api-level: '37.0'
+          api-level: '36'
+          system-image-api-level: '36'
           target: google_apis
           arch: x86_64
           profile: pixel_2
@@ -290,19 +290,19 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           pre-emulator-launch-script: |
             set -eu
-            echo "ANDROID_17_ADB_PRESTART $(date -u +%FT%TZ)"
+            echo "ANDROID_16_ADB_PRESTART $(date -u +%FT%TZ)"
             adb start-server
             adb devices -l
           script: |
             set -eu
-            echo "ANDROID_17_TEST method=serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate"
+            echo "ANDROID_16_TEST method=serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate"
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
-            echo "ANDROID_17_TEST method=phoneAccountCanReceiveIncomingCallThroughTelecom"
+            echo "ANDROID_16_TEST method=phoneAccountCanReceiveIncomingCallThroughTelecom"
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: server-android-17-api37-acceptance-results
+          name: server-android-16-api36-acceptance-results
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
