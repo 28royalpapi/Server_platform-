@@ -86,7 +86,6 @@ internal object ServerCallNotifications {
       setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE), attributes)
       enableVibration(true)
       vibrationPattern = longArrayOf(0, 650, 250, 650)
-      setBypassDnd(false)
       setShowBadge(false)
       lockscreenVisibility = Notification.VISIBILITY_PRIVATE
     }
