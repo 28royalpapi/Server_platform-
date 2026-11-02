@@ -82,8 +82,13 @@ class CallerSmokeTest {
         posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
       }
       assertNotNull("An incoming Server call must post a native ringing notification", posted)
-      assertEquals("The notification must be ranked as a call", android.app.Notification.CATEGORY_CALL,
-        posted!!.notification.category)
+      // Android ranks CallStyle notifications promoted by a phoneCall foreground
+      // service as CATEGORY_SERVICE. The Android 12+ restriction requires this
+      // foreground-service association; CATEGORY_CALL is used on older releases.
+      val expectedCategory = if (needsCallStyleForegroundService) android.app.Notification.CATEGORY_SERVICE
+        else android.app.Notification.CATEGORY_CALL
+      assertEquals("Incoming Server CallStyle must be posted through the phoneCall foreground service",
+        expectedCategory, posted!!.notification.category)
       assertEquals("The incoming call must use its dedicated ringtone channel", ServerCallNotifications.CHANNEL_ID,
         posted.notification.channelId)
 
@@ -210,9 +215,7 @@ class CallerSmokeTest {
       // Accept terms while the consent control is visible, then scroll to the
       // primary action which sits below the fold on phone-sized screens.
       terms!!.click()
-      device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5,
-        device.displayWidth / 2, device.displayHeight / 3, 20)
-      val createButton = device.wait(Until.findObject(By.textContains("Create my Server ID")), 5_000)
+      val createButton = findTextOnScrollableScreen(context, device, "Create my Server ID")
       assertNotNull("Server identity creation action is not visible after scrolling", createButton)
       assertTrue("Accepting the terms should enable Server ID creation", createButton!!.isEnabled)
       assertTrue("Onboarding unexpectedly opened a custom number-entry dialer",
