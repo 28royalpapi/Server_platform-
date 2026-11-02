@@ -59,6 +59,12 @@ assert.match(androidIncoming,/Server session refresh deferred/,"transient token-
 assert.match(androidIncoming,/Server session refresh rejected/,"permanent token-refresh failures are rejected");
 assert.match(androidIncoming,/tokenExpired/,"polling distinguishes expired offline sessions from revoked valid sessions");
 assert.match(calls,/found.allow_number_based_server_calls===true/);
+assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.single\(\)/,
+  "call creation responses must not include a callee phone number or internal user UUID");
+assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.or\("caller_user_id\.eq\."\+uid/,
+  "call polling responses expose only public call state and IDs");
+assert.doesNotMatch(calls,/\.select\("[^"]*(?:callee_phone_e164|callee_user_id)[^"]*"\)\.or\(/,
+  "call polling must not return private callee contact or identity fields");
 assert.match(calls,/found\.allow_number_based_server_calls===true/);
 assert.doesNotMatch(calls,/NUMBER_CALLING_DISABLED/,"unconsented numbers should use the guest-invite route, not fail at call setup");
 assert.match(androidSetup,/requestPhoneLinkOtp/);

@@ -169,7 +169,7 @@ Deno.serve(async(req:Request)=>{
    const {data:call,error:ce}=await db.from("server_calls").insert({
     caller_user_id:uid,callee_user_id:callee?.user_id||null,callee_phone_e164:recipientPhone,
     route,state:"ringing",created_at:now,updated_at:now,expires_at:expiresAt
-   }).select("id,state,route,created_at,expires_at,callee_phone_e164,callee_user_id").single();
+   }).select("id,state,route,created_at,updated_at,expires_at").single();
    if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
    await db.from("server_call_members").upsert([
     {call_id:call.id,user_id:uid,member_role:"caller"},
@@ -220,7 +220,7 @@ Deno.serve(async(req:Request)=>{
   return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,call_expires_at:expiresAt,push_delivery:pushDelivery});
  }
  if(action==="incoming"){
-   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,callee_phone_e164,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
+   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting"]).order("created_at",{ascending:false}).limit(20);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
    const {data:profiles}=ids.length?await db.from("server_profiles")
@@ -240,7 +240,7 @@ Deno.serve(async(req:Request)=>{
     const {data:member}=await db.from("server_call_members").select("call_id").eq("call_id",callId).eq("user_id",uid).maybeSingle();
     if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
    }
-   let q=db.from("server_calls").select("id,state,route,caller_user_id,callee_user_id,callee_phone_e164,created_at,updated_at").or("caller_user_id.eq."+uid+",callee_user_id.eq."+uid).order("created_at",{ascending:false}).limit(30);
+   let q=db.from("server_calls").select("id,state,route,created_at,updated_at,expires_at").or("caller_user_id.eq."+uid+",callee_user_id.eq."+uid).order("created_at",{ascending:false}).limit(30);
    if(callId)q=q.eq("id",callId);
    const {data:calls,error}=await q;if(error)return out({error:"CALL_POLL_FAILED"},503);
    let signals:unknown[]=[];
