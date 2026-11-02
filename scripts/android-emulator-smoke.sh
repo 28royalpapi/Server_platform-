@@ -57,6 +57,15 @@ adb shell screenrecord --bit-rate 4000000 --time-limit 180 /sdcard/server-androi
 FULL_WORKFLOW_REC_PID=$!
 sleep 2
 
+echo "Preserving the caller APK before Android instrumentation cleanup"
+CALLER_DEBUG_APK="apps/android-caller/app/build/outputs/apk/debug/app-debug.apk"
+if [[ ! -s "$CALLER_DEBUG_APK" ]]; then
+  echo "The built Server caller APK is missing before instrumentation tests." >&2
+  exit 1
+fi
+cp "$CALLER_DEBUG_APK" artifacts/server-caller-debug-for-reinstall.apk
+test -s artifacts/server-caller-debug-for-reinstall.apk
+echo "CALLER_APK_BACKUP_READY: artifacts/server-caller-debug-for-reinstall.apk"
 echo "Running Server website onboarding, permission, contact-selection, and system calling-account Android instrumentation tests"
 TEST_STATUS=0
 $TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
@@ -86,7 +95,7 @@ fi
 echo "Reinstalling the Server caller APK after Android instrumentation cleanup"
 # Android Gradle's connected test runner can uninstall the target package during
 # test cleanup; install the freshly built target before trying to record the UI.
-if ! $TIMEOUT_BIN 90s adb install -r apps/android-caller/app/build/outputs/apk/debug/app-debug.apk; then
+if ! $TIMEOUT_BIN 90s adb install -r artifacts/server-caller-debug-for-reinstall.apk; then
   adb logcat -d -t 1000 > artifacts/server-caller-reinstall-logcat.txt 2>&1 || true
   echo "Could not reinstall the Server caller APK after instrumentation tests." >&2
   exit 1

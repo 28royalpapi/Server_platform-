@@ -15,6 +15,7 @@ const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/call
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
+const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
 const iosEntitlements=read("apps/ios-caller/ServerCaller/ServerCaller.entitlements");
@@ -91,6 +92,9 @@ assert.doesNotMatch(androidMain,/isSpeakerphoneOn\s*=/,
    "Server must not force speakerphone routing; Android and Telecom own the call audio route");
 assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/,
    "system hang-up events must carry their Telecom call ID through to the backend call teardown");
+assert.match(androidEmulatorSmoke,/cp "\$CALLER_DEBUG_APK" artifacts\/server-caller-debug-for-reinstall\.apk/,"caller APK is preserved outside Gradle build outputs before instrumentation");
+assert.match(androidEmulatorSmoke,/adb install -r artifacts\/server-caller-debug-for-reinstall\.apk/,"post-test UI smoke reinstalls the preserved caller APK");
+assert.ok(androidEmulatorSmoke.indexOf("CALLER_APK_BACKUP_READY") < androidEmulatorSmoke.indexOf("connectedDebugAndroidTest"),"caller APK backup must happen before instrumentation cleanup");
 assert.match(androidTests,/telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState/,
    "system hang-up after activity recreation has an Android instrumentation regression test");
 assert.match(androidManifest,/android\.permission\.ACCESS_NETWORK_STATE/,

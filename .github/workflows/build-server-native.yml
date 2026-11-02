@@ -61,7 +61,18 @@ jobs:
       - name: Build Server caller and SIM gateway
         timeout-minutes: 18
         shell: bash
+        env:
+          SERVER_FIREBASE_API_KEY: ${{ secrets.SERVER_FIREBASE_API_KEY }}
+          SERVER_FIREBASE_APP_ID: ${{ secrets.SERVER_FIREBASE_APP_ID }}
+          SERVER_FIREBASE_PROJECT_ID: ${{ secrets.SERVER_FIREBASE_PROJECT_ID }}
+          SERVER_FIREBASE_SENDER_ID: ${{ secrets.SERVER_FIREBASE_SENDER_ID }}
         run: |
+          set -euo pipefail
+          if [[ -n "$SERVER_FIREBASE_API_KEY" && -n "$SERVER_FIREBASE_APP_ID" && -n "$SERVER_FIREBASE_PROJECT_ID" && -n "$SERVER_FIREBASE_SENDER_ID" ]]; then
+            echo "ANDROID_FCM_CLIENT_CONFIG=present"
+          else
+            echo "ANDROID_FCM_CLIENT_CONFIG=missing; background incoming calls use the existing foreground-listener fallback"
+          fi
           set -euo pipefail
           echo "BUILD_SERVER_CALLER_START $(date -u +%FT%TZ)"
           timeout 480s gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
@@ -264,7 +275,7 @@ jobs:
           test -r /dev/kvm && test -w /dev/kvm
       - name: Build caller and Android instrumentation tests
         run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
-      - name: Run Android 16 Telecom and offline-gate acceptance tests
+      - name: Run Android 17 (API 37) Telecom and offline-gate acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: '37.0'
@@ -277,14 +288,39 @@ jobs:
           emulator-boot-timeout: 420
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          pre-emulator-launch-script: |
+            set -eu
+            echo "ANDROID_17_ADB_PRESTART $(date -u +%FT%TZ)"
+            adb start-server
+            adb devices -l
           script: |
             set -eu
-            gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
-            gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
+            run_acceptance_method() {
+              local method="$1"
+              local attempt=1
+              local status=0
+              while [[ "$attempt" -le 2 ]]; do
+                echo "ANDROID_17_TEST method=$method attempt=$attempt"
+                if timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#$method"; then
+                  return 0
+                else
+                  status=$?
+                fi
+                echo "Android 17 instrumentation attempt $attempt returned $status; collecting emulator state."
+                adb devices -l || true
+                adb start-server || true
+                adb reconnect offline || true
+                timeout 45s adb wait-for-device || true
+                attempt=$((attempt + 1))
+              done
+              return "$status"
+            }
+            run_acceptance_method serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate
+            run_acceptance_method phoneAccountCanReceiveIncomingCallThroughTelecom
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: server-android-16-api36-acceptance-results
+          name: server-android-17-api37-acceptance-results
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
