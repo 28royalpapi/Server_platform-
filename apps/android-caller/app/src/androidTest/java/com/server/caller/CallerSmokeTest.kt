@@ -28,6 +28,50 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
+  @Test fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+      try {
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+      } catch (_: Exception) {}
+      assertEquals("Incoming call alerts need notification permission",
+        android.content.pm.PackageManager.PERMISSION_GRANTED,
+        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS))
+    }
+
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+    val callId = "notification-" + UUID.randomUUID().toString()
+    val notificationId = ServerCallNotifications.notificationId(callId)
+    try {
+      ServerCallNotifications.show(context, callId, "SVR-12AB34CD56")
+      val posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      assertNotNull("An incoming Server call must post a native ringing notification", posted)
+      assertEquals("The notification must be ranked as a call", android.app.Notification.CATEGORY_CALL,
+        posted!!.notification.category)
+      assertEquals("The incoming call must use its dedicated ringtone channel", ServerCallNotifications.CHANNEL_ID,
+        posted.notification.channelId)
+
+      val channel = manager.getNotificationChannel(ServerCallNotifications.CHANNEL_ID)
+      assertNotNull("The incoming-call ringtone channel was not created", channel)
+      assertEquals("Incoming Server calls need high notification importance",
+        android.app.NotificationManager.IMPORTANCE_HIGH, channel!!.importance)
+      assertEquals("The channel must use the system's default ringtone",
+        android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE), channel.sound)
+      assertTrue("The incoming-call channel must support vibration", channel.shouldVibrate)
+      assertFalse("Server must never bypass the user's Do Not Disturb settings", channel.canBypassDnd)
+
+      if (android.os.Build.VERSION.SDK_INT >= 34) {
+        assertEquals("Android 14+ must receive the incoming CallStyle type",
+          android.app.Notification.CallStyle.CALL_TYPE_INCOMING,
+          posted.notification.extras.getInt(android.app.Notification.EXTRA_CALL_TYPE,
+            android.app.Notification.CallStyle.CALL_TYPE_UNKNOWN))
+      }
+    } finally {
+      ServerCallNotifications.cancel(context, callId)
+    }
+  }
+
   @Test fun serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate() {
     assertFalse("No active network must block Server internet calling",
       isServerInternetUsable(false, false))
