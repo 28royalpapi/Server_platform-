@@ -78,8 +78,14 @@ class CallerSmokeTest {
         connection.onSilence()
         val silenced = manager.activeNotifications.firstOrNull { it.id == notificationId }
         assertNotNull("Silencing the ringtone must retain the incoming call notification", silenced)
+        assertEquals("Silencing must move the visible call to the silent notification channel",
+          ServerCallNotifications.SILENT_CHANNEL_ID, silenced!!.notification.channelId)
         assertTrue("Silence action must suppress repeat ringtone alerts",
-          (silenced!!.notification.flags and android.app.Notification.FLAG_ONLY_ALERT_ONCE) != 0)
+          (silenced.notification.flags and android.app.Notification.FLAG_ONLY_ALERT_ONCE) != 0)
+        val silentChannel = manager.getNotificationChannel(ServerCallNotifications.SILENT_CHANNEL_ID)
+        assertNotNull("The silent incoming-call channel was not created", silentChannel)
+        assertEquals("Silenced calls must not play a ringtone", null, silentChannel!!.sound)
+        assertFalse("Silenced calls must not vibrate", silentChannel.shouldVibrate())
       }
     } finally {
       ServerCallNotifications.cancel(context, callId)
