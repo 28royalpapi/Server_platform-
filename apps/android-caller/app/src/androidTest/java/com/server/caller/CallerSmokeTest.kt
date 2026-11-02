@@ -43,7 +43,32 @@ class CallerSmokeTest {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
     val callId = "notification-" + UUID.randomUUID().toString()
     val notificationId = ServerCallNotifications.notificationId(callId)
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val previousToken = prefs.getString("access_token", null)
+    val handle = ServerTelecomRegistry.handle(context)
+    ServerTelecomRegistry.register(context)
+    enablePhoneAccountWithTestShell(context, handle)
+    val accountDeadline = System.currentTimeMillis() + 12_000
+    while (!ServerTelecomRegistry.isEnabled(context) && System.currentTimeMillis() < accountDeadline) {
+      Thread.sleep(100)
+    }
+    assertTrue("The Server PhoneAccount must be enabled before testing an incoming foreground call",
+      ServerTelecomRegistry.isEnabled(context))
+    prefs.edit().putString("access_token", "0".repeat(64)).commit()
     try {
+      // Match the live signed-in path: incoming CallStyle notifications are
+      // posted while ServerIncomingCallService is running as a phoneCall FGS.
+      ServerIncomingCallService.start(context)
+      val foregroundDeadline = System.currentTimeMillis() + 8_000
+      var foregroundCallListener = false
+      while (!foregroundCallListener && System.currentTimeMillis() < foregroundDeadline) {
+        foregroundCallListener = manager.activeNotifications.any {
+          it.notification.channelId == "server-incoming-calls"
+        }
+        if (!foregroundCallListener) Thread.sleep(100)
+      }
+      assertTrue("Server's phoneCall foreground service must start before posting CallStyle",
+        foregroundCallListener)
       ServerCallNotifications.show(context, callId, "SVR-12AB34CD56")
       val posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
       assertNotNull("An incoming Server call must post a native ringing notification", posted)
@@ -83,6 +108,10 @@ class CallerSmokeTest {
       }
     } finally {
       ServerCallNotifications.cancel(context, callId)
+      ServerIncomingCallService.stop(context)
+      val restore = prefs.edit()
+      if (previousToken == null) restore.remove("access_token") else restore.putString("access_token", previousToken)
+      restore.commit()
     }
   }
 
