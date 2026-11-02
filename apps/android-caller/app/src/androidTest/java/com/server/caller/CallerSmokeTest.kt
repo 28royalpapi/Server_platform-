@@ -75,7 +75,12 @@ class CallerSmokeTest {
           foregroundCallListener)
       }
       ServerCallNotifications.show(context, callId, "SVR-12AB34CD56")
-      val posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      val notificationDeadline = System.currentTimeMillis() + 8_000
+      var posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      while (posted == null && System.currentTimeMillis() < notificationDeadline) {
+        Thread.sleep(100)
+        posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      }
       assertNotNull("An incoming Server call must post a native ringing notification", posted)
       assertEquals("The notification must be ranked as a call", android.app.Notification.CATEGORY_CALL,
         posted!!.notification.category)
@@ -100,7 +105,13 @@ class CallerSmokeTest {
 
       if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
         ServerCallNotifications.silence(context, callId, "SVR-12AB34CD56")
-        val silenced = manager.activeNotifications.firstOrNull { it.id == notificationId }
+        val silenceDeadline = System.currentTimeMillis() + 8_000
+        var silenced = manager.activeNotifications.firstOrNull { it.id == notificationId }
+        while ((silenced == null || silenced.notification.channelId != ServerCallNotifications.SILENT_CHANNEL_ID) &&
+          System.currentTimeMillis() < silenceDeadline) {
+          Thread.sleep(100)
+          silenced = manager.activeNotifications.firstOrNull { it.id == notificationId }
+        }
         assertNotNull("Silencing the ringtone must retain the incoming call notification", silenced)
         assertEquals("Silencing must move the visible call to the silent notification channel",
           ServerCallNotifications.SILENT_CHANNEL_ID, silenced!!.notification.channelId)
