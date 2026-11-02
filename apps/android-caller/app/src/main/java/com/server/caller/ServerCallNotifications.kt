@@ -22,14 +22,26 @@ internal object ServerCallNotifications {
   const val ACTION_DECLINE = "com.server.caller.action.DECLINE_INCOMING"
   const val EXTRA_CALL_ID = "server_call_id"
 
-  fun notificationId(callId: String): Int = ServerIncomingCallService.FOREGROUND_NOTIFICATION_ID
+  fun notificationId(callId: String): Int =
+    if (Build.VERSION.SDK_INT >= 31) ServerIncomingCallService.FOREGROUND_NOTIFICATION_ID
+    else 7400 + (callId.hashCode() and 0x0000FFFF)
 
   fun show(context: Context, callId: String, callerIdentity: String, onlyAlertOnce: Boolean = false, silent: Boolean = false) {
-    ServerIncomingCallService.showIncomingCall(context, callId, callerIdentity, silent || onlyAlertOnce)
+    if (Build.VERSION.SDK_INT >= 31) {
+      ServerIncomingCallService.showIncomingCall(context, callId, callerIdentity, silent || onlyAlertOnce)
+    } else {
+      val notification = buildIncomingNotification(context, callId, callerIdentity, silent) ?: return
+      (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notificationId(callId), notification)
+    }
   }
 
   fun silence(context: Context, callId: String, callerIdentity: String) {
-    ServerIncomingCallService.silenceIncomingCall(context, callId, callerIdentity)
+    if (Build.VERSION.SDK_INT >= 31) {
+      ServerIncomingCallService.silenceIncomingCall(context, callId, callerIdentity)
+    } else {
+      (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId(callId))
+      show(context, callId, callerIdentity, onlyAlertOnce = true, silent = true)
+    }
   }
 
   internal fun buildIncomingNotification(
@@ -132,7 +144,8 @@ internal object ServerCallNotifications {
   private const val MISSED_CHANNEL_ID = "server-missed-calls-v1"
 
   fun cancel(context: Context, callId: String) {
-    ServerIncomingCallService.clearIncomingCall(context, callId)
+    if (Build.VERSION.SDK_INT >= 31) ServerIncomingCallService.clearIncomingCall(context, callId)
+    else (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId(callId))
   }
 
   private fun callAction(context: Context, callId: String, action: String, actionCode: Int): PendingIntent {
