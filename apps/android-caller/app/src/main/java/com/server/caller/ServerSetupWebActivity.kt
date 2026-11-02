@@ -91,7 +91,7 @@ class ServerSetupWebActivity : Activity() {
           // evaluate it a second time: global `const` declarations would throw and
           // duplicate event listeners can leave setup state out of sync.
           target.evaluateJavascript(
-            "(function(){document.querySelector('.step-form')?.classList.add('hidden');document.querySelector('#native-setup')?.classList.remove('hidden');})()",
+            "(function(){var f=document.querySelector('.step-form');if(f)f.classList.add('hidden');var n=document.querySelector('#native-setup');if(n)n.classList.remove('hidden');})()",
             null
           )
         }

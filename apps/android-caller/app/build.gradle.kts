@@ -30,9 +30,11 @@ android {
   buildFeatures { buildConfig = true }
   // Provide architecture-specific release APKs for direct testing and a
   // universal preview. Google Play's AAB also generates device-specific splits.
+  val releaseAbiSplits = providers.gradleProperty("SERVER_ENABLE_RELEASE_ABI_SPLITS")
+    .map { it.toBoolean() }.orElse(true).get()
   splits {
     abi {
-      isEnable = true
+      isEnable = releaseAbiSplits
       reset()
       include("arm64-v8a", "armeabi-v7a")
       isUniversalApk = true

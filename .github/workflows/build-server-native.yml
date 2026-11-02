@@ -69,8 +69,9 @@ jobs:
           timeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SIM_GATEWAY_COMPLETE $(date -u +%FT%TZ)"
           echo "BUILD_SERVER_RELEASE_BUNDLE_START $(date -u +%FT%TZ)"
-          timeout 600s gradle -p apps/android-caller bundleRelease assembleRelease --no-daemon --console=plain --stacktrace
+          timeout 600s gradle -p apps/android-caller bundleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=false --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_RELEASE_BUNDLE_COMPLETE $(date -u +%FT%TZ)"
+          timeout 600s gradle -p apps/android-caller assembleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=true --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_RELEASE_APK_COMPLETE $(date -u +%FT%TZ)"
           ls -lh apps/android-caller/app/build/outputs/bundle/release/*.aab apps/android-caller/app/build/outputs/apk/release/*.apk
       - name: Compile Android instrumentation tests before booting emulator
@@ -251,12 +252,12 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android 17 SDK components
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Enable KVM access for Android 16 emulator
+      - name: Enable KVM access for Android 17 emulator
         shell: bash
         run: |
           set -euo pipefail
           if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this runner does not expose /dev/kvm for the Android 16 emulator." >&2
+            echo "ERROR: this runner does not expose /dev/kvm for the Android 17 emulator." >&2
             exit 1
           fi
           sudo chmod 666 /dev/kvm
@@ -266,7 +267,7 @@ jobs:
       - name: Run Android 16 Telecom and offline-gate acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 37
+          api-level: 37.0
           target: google_apis
           arch: x86_64
           profile: pixel_2

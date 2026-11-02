@@ -9,13 +9,13 @@ const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const stepForm = document.querySelector(".step-form");
 const nativeSetup = document.querySelector("#native-setup");
 const isAndroidWebView = isAndroid && navigator.userAgent.toLowerCase().includes("; wv");
-const isNativeSetup = !!window.ServerAndroid || isAndroidWebView || document.querySelector('meta[name="server-native-bridge"]')?.content === "true";
+const isNativeSetup = !!window.ServerAndroid || isAndroidWebView || (document.querySelector('meta[name="server-native-bridge"]') && document.querySelector('meta[name="server-native-bridge"]').content === "true");
 if (!isAndroid) {
-  androidInstall?.classList.add("hidden");
+  androidInstall && androidInstall.classList.add("hidden");
   if (isIOS && iosInstallNote) iosInstallNote.textContent = "iPhone uses a separate native Server app and Apple's calling-app permissions. The Android connector is not for iPhone; iOS setup will follow after Android validation.";
   else if (iosInstallNote) iosInstallNote.textContent = "Open this website on an Android phone to install the Server calling connector. The iPhone app is a separate iOS release.";
 }
-androidDownload?.addEventListener("click", () => {
+androidDownload && androidDownload.addEventListener("click", () => {
   showStatus("Opening the Server Android connector download. Keep this website tab open; return here after Android finishes installing Server.");
 });
 
@@ -28,7 +28,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   stepForm.classList.add("hidden");
   nativeSetup.classList.remove("hidden");
   const callStep = document.querySelector("#call-permission-step");
-  callStep?.classList.remove("hidden");
+  callStep && callStep.classList.remove("hidden");
   const terms = document.querySelector("#native-terms");
   const grantCalls = document.querySelector("#grant-call-permissions");
   const finishStep = document.querySelector("#finish-step");
@@ -69,16 +69,16 @@ if (isNativeSetup && nativeSetup && stepForm) {
     phoneLinkStatus.classList.remove("hidden", "ok");
     if (ok) phoneLinkStatus.classList.add("ok");
   };
-  showPhoneLinkButton?.addEventListener("click", () => {
-    phoneLinkStep?.classList.remove("hidden");
+  showPhoneLinkButton && showPhoneLinkButton.addEventListener("click", () => {
+    phoneLinkStep && phoneLinkStep.classList.remove("hidden");
     showPhoneLinkButton.classList.add("hidden");
   });
-  terms?.addEventListener("change", () => {
+  terms && terms.addEventListener("change", () => {
     grantCalls.disabled = !terms.checked;
   });
 
-  grantCalls?.addEventListener("click", () => {
-    if (!terms?.checked) {
+  grantCalls && grantCalls.addEventListener("click", () => {
+    if (!(terms && terms.checked)) {
       showStatus("Accept the Terms of Service and acknowledge the Privacy Notice before continuing.");
       return;
     }
@@ -103,43 +103,43 @@ if (isNativeSetup && nativeSetup && stepForm) {
     showStatus("Permissions granted. Creating your Server identity…");
     grantCalls.disabled = true;
     if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
-    window.ServerAndroid.completeSetup(Boolean(terms?.checked));
+    window.ServerAndroid.completeSetup(Boolean(terms && terms.checked));
   };
 
   window.onServerSetupResult = (result) => {
     grantCalls.disabled = false;
-    if (!result?.ok) {
-      showStatus(result?.error || "Server setup failed. Please try again.");
+    if (!result || !result.ok) {
+      showStatus((result && result.error) || "Server setup failed. Please try again.");
       return;
     }
     callStep.classList.add("hidden");
     finishStep.classList.remove("hidden");
     serverId.textContent = `Your Server ID: ${result.serverId}`;
     pendingPhoneNumber = "";
-    phoneCodeStep?.classList.add("hidden");
+    phoneCodeStep && phoneCodeStep.classList.add("hidden");
     if (phoneCodeInput) phoneCodeInput.value = "";
     try {
       const savedNumberPreferences = JSON.parse(window.ServerAndroid.getNumberCallPreferences());
       if (savedNumberPreferences.phoneLinked && savedNumberPreferences.phone) {
-        phoneLinkStep?.classList.remove("hidden");
-        showPhoneLinkButton?.classList.add("hidden");
+        phoneLinkStep && phoneLinkStep.classList.remove("hidden");
+        showPhoneLinkButton && showPhoneLinkButton.classList.add("hidden");
         phoneLinkVerified = true;
         persistedNumberConsent = savedNumberPreferences.allowNumberCalls === true;
         if (phoneLinkInput) { phoneLinkInput.value = savedNumberPreferences.phone; phoneLinkInput.disabled = true; }
         if (allowNumberCalls) allowNumberCalls.checked = persistedNumberConsent;
         if (requestPhoneCodeButton) { requestPhoneCodeButton.disabled = true; requestPhoneCodeButton.textContent = "Number already verified"; }
-        phoneCodeStep?.classList.add("hidden"); skipPhoneLinkButton?.classList.add("hidden");
+        phoneCodeStep && phoneCodeStep.classList.add("hidden"); skipPhoneLinkButton && skipPhoneLinkButton.classList.add("hidden");
         showPhoneLinkStatus(persistedNumberConsent ? "This verified number is linked and permitted to receive Server internet calls." : "This verified number is linked, but Server calls by number are currently off.");
       }
     } catch { /* First-time number linking remains available. */ }
     showStatus("Server identity created. Phone-number linking is optional; enable Server under Android Calling accounts to finish setup.", true);
   };
 
-  requestPhoneCodeButton?.addEventListener("click", () => {
-    const number = normalizePhone(phoneLinkInput?.value);
+  requestPhoneCodeButton && requestPhoneCodeButton.addEventListener("click", () => {
+    const number = normalizePhone(phoneLinkInput && phoneLinkInput.value);
     if (!number) {
       showPhoneLinkStatus("Enter a valid number such as +2348012345678 or 08012345678.");
-      phoneLinkInput?.focus();
+      phoneLinkInput && phoneLinkInput.focus();
       return;
     }
     pendingPhoneNumber = number;
@@ -152,8 +152,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.requestPhoneLinkOtp(number);
   });
 
-  createGatewayPairingButton?.addEventListener("click", () => {
-    if (!window.ServerAndroid?.createSmsGatewayPairingCode) {
+  createGatewayPairingButton && createGatewayPairingButton.addEventListener("click", () => {
+    if (!(window.ServerAndroid && window.ServerAndroid.createSmsGatewayPairingCode)) {
       showPhoneLinkStatus("Open Server onboarding from the Android integration before pairing an SMS gateway.");
       return;
     }
@@ -166,8 +166,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
   window.onServerGatewayPairingCode = (result) => {
     createGatewayPairingButton.disabled = false;
     createGatewayPairingButton.textContent = "Generate a new SMS gateway pairing code";
-    if (!result?.ok || !/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(String(result?.pairing_code || ""))) {
-      const reason = result?.error || "GATEWAY_PAIRING_UNAVAILABLE";
+    if (!result || !result.ok || !/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(String((result && result.pairing_code) || ""))) {
+      const reason = (result && result.error) || "GATEWAY_PAIRING_UNAVAILABLE";
       const message = {
         SESSION_REQUIRED: "Create your Server identity again to establish a fresh authenticated session.",
         PAIRING_RATE_LIMITED: "Too many pairing codes were requested. Wait before trying again."
@@ -187,18 +187,18 @@ if (isNativeSetup && nativeSetup && stepForm) {
   window.onServerPhoneOtpRequested = (result) => {
     requestPhoneCodeButton.disabled = false;
     requestPhoneCodeButton.textContent = "Send verification code again";
-    if (!result?.ok) {
+    if (!result || !result.ok) {
       phoneLinkInput.disabled = false;
       const message = {
         SMS_GATEWAY_OFFLINE: "The Server SMS gateway is offline. You can pair the Android SMS gateway later and try again, or skip number linking for now.",
         OTP_RATE_LIMITED: "Too many verification requests. Wait before requesting another code.",
         INVALID_PHONE_FORMAT: "Enter a valid number in international format.",
         OTP_QUEUE_FAILED: "Server could not queue the SMS. Try again after checking the paired gateway."
-      }[result?.error] || "Server could not send a verification code (" + (result?.error || "unknown error") + ").";
+      }[(result && result.error)] || "Server could not send a verification code (" + ((result && result.error) || "unknown error") + ").";
       showPhoneLinkStatus(message);
       return;
     }
-    phoneCodeStep?.classList.remove("hidden");
+    phoneCodeStep && phoneCodeStep.classList.remove("hidden");
     if (phoneCodeInput) {
       phoneCodeInput.value = "";
       phoneCodeInput.focus();
@@ -206,42 +206,42 @@ if (isNativeSetup && nativeSetup && stepForm) {
     showPhoneLinkStatus("Verification code requested for " + pendingPhoneNumber + ". Check that phone for an SMS. Carrier SMS charges may apply.", true);
   };
 
-  verifyPhoneButton?.addEventListener("click", () => {
-    const code = String(phoneCodeInput?.value || "").trim();
+  verifyPhoneButton && verifyPhoneButton.addEventListener("click", () => {
+    const code = String(phoneCodeInput && phoneCodeInput.value || "").trim();
     if (!pendingPhoneNumber) {
       showPhoneLinkStatus("Request a verification code first.");
       return;
     }
     if (!/^[0-9]{6}$/.test(code)) {
       showPhoneLinkStatus("Enter the six digits from the SMS.");
-      phoneCodeInput?.focus();
+      phoneCodeInput && phoneCodeInput.focus();
       return;
     }
     verifyPhoneButton.disabled = true;
     verifyPhoneButton.textContent = "Verifying number…";
     showPhoneLinkStatus("Verifying the code and attaching this number to your existing Server ID…");
-    window.ServerAndroid.verifyAndLinkPhone(pendingPhoneNumber, code, Boolean(allowNumberCalls?.checked));
+    window.ServerAndroid.verifyAndLinkPhone(pendingPhoneNumber, code, Boolean(allowNumberCalls && allowNumberCalls.checked));
   });
 
   window.onServerPhoneLinkResult = (result) => {
     verifyPhoneButton.disabled = false;
     verifyPhoneButton.textContent = "Verify and link number";
-    if (!result?.ok) {
+    if (!result || !result.ok) {
       const message = {
         INVALID_OR_EXPIRED_CODE: "That code is invalid or expired. Request a new code and try again.",
         OTP_VERIFY_RATE_LIMITED: "Too many attempts. Wait before requesting another code.",
         PHONE_ALREADY_LINKED: "This number is already linked to another Server identity. Try a number that belongs to this account, or continue with the existing Server ID.",
         SESSION_REQUIRED: "The Server session expired. Restart website setup and try again."
-      }[result?.error] || "Server could not link this number (" + (result?.error || "unknown error") + ").";
+      }[(result && result.error)] || "Server could not link this number (" + ((result && result.error) || "unknown error") + ").";
       showPhoneLinkStatus(message);
-      if (result?.error === "PHONE_ALREADY_LINKED") {
+      if (result && result.error === "PHONE_ALREADY_LINKED") {
         phoneLinkInput.disabled = false;
-        phoneCodeStep?.classList.add("hidden");
+        phoneCodeStep && phoneCodeStep.classList.add("hidden");
         if (phoneCodeInput) phoneCodeInput.value = "";
         pendingPhoneNumber = "";
         phoneLinkInput.focus();
-      } else if (result?.error === "INVALID_OR_EXPIRED_CODE" || result?.error === "OTP_VERIFY_RATE_LIMITED") {
-        phoneCodeInput?.focus();
+      } else if (result && result.error === "INVALID_OR_EXPIRED_CODE" || result && result.error === "OTP_VERIFY_RATE_LIMITED") {
+        phoneCodeInput && phoneCodeInput.focus();
       }
       return;
     }
@@ -258,16 +258,16 @@ if (isNativeSetup && nativeSetup && stepForm) {
     showStatus("Phone number linked to your existing Server ID. Enable Server in Android Calling accounts to continue to your normal dialer.", true);
   };
 
-  allowNumberCalls?.addEventListener("change", () => {
+  allowNumberCalls && allowNumberCalls.addEventListener("change", () => {
     if (!phoneLinkVerified) return;
     if (!window.ServerAndroid) { showPhoneLinkStatus("Android bridge is unavailable; reopen Server onboarding."); return; }
     window.ServerAndroid.setNumberCallConsent(Boolean(allowNumberCalls.checked));
   });
 
   window.onServerNumberCallConsentResult = (result) => {
-    if (!result?.ok) {
+    if (!result || !result.ok) {
       if (allowNumberCalls) allowNumberCalls.checked = persistedNumberConsent;
-      const reason = result?.error || "NUMBER_CALL_CONSENT_SAVE_FAILED";
+      const reason = (result && result.error) || "NUMBER_CALL_CONSENT_SAVE_FAILED";
       showPhoneLinkStatus(reason === "VERIFIED_PHONE_REQUIRED" ? "Verify and link this number before enabling number-based Server calls." : "Could not save the calling permission (" + reason + "). The previous setting remains in effect.");
       return;
     }
@@ -275,7 +275,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     if (allowNumberCalls) allowNumberCalls.checked = persistedNumberConsent;
     showPhoneLinkStatus(persistedNumberConsent ? "Permission saved. Server users can ring you through Server internet calling at this verified number." : "Permission revoked. Calls by Server ID still work, but this number will not route to your Server identity.", true);
   };
-  skipPhoneLinkButton?.addEventListener("click", () => {
+  skipPhoneLinkButton && skipPhoneLinkButton.addEventListener("click", () => {
     showStatus("Continuing with your Server ID. You can link a phone number later if you want.", true);
     if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
     window.ServerAndroid.openCallingSettings();
@@ -293,10 +293,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
     showStatus("Android could not open Calling accounts automatically. Open Phone Settings, enable Server under Calling accounts, then return here and tap Open my normal phone dialer.");
   };
 
-  document.querySelector("#enable-calling-account")?.addEventListener("click", () => {
+  document.querySelector("#enable-calling-account") && document.querySelector("#enable-calling-account").addEventListener("click", () => {
     window.ServerAndroid.openCallingSettings();
   });
-  document.querySelector("#open-phone-dialer")?.addEventListener("click", () => {
+  document.querySelector("#open-phone-dialer") && document.querySelector("#open-phone-dialer").addEventListener("click", () => {
     if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
     if (!window.ServerAndroid.isCallingAccountEnabled()) {
       showStatus("Server is not enabled yet. Open phone settings, enable Server under calling accounts, then return here.");
@@ -308,20 +308,20 @@ if (isNativeSetup && nativeSetup && stepForm) {
 
 }
 
-button?.addEventListener("click", () => {
+button && button.addEventListener("click", () => {
   if (button.disabled) return;
   button.disabled = true;
   button.textContent = "Opening Server…";
-  fallback?.classList.add("hidden");
+  fallback && fallback.classList.add("hidden");
   if (!isAndroid) {
-    fallback?.classList.add("hidden");
+    fallback && fallback.classList.add("hidden");
     if (isIOS) {
       showStatus("Opening Server’s iPhone calling integration. The app will continue setup on this phone.");
       const started = Date.now();
       window.location.href = "server://device-setup";
       window.setTimeout(() => {
         if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
-          fallback?.classList.remove("hidden");
+          fallback && fallback.classList.remove("hidden");
           fallback.textContent = "Server could not open. Install the Server iPhone integration first. iOS 18.2+ supports a default calling app when Apple authorizes the required entitlement; iPhone does not expose SIM slots to Server.";
           showStatus("The Server iPhone integration did not open. The website alone cannot register an iOS calling app.");
         }
@@ -329,7 +329,7 @@ button?.addEventListener("click", () => {
         button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
       }, 1800);
     } else {
-      fallback?.classList.remove("hidden");
+      fallback && fallback.classList.remove("hidden");
       button.disabled = false;
       button.innerHTML = 'Continue setup on this phone <span aria-hidden="true">→</span>';
       fallback.textContent = "Install the Server Android calling component on your phone to connect Server with Android's system calling interface.";
@@ -342,7 +342,7 @@ button?.addEventListener("click", () => {
   window.location.href = "server://device-setup";
   window.setTimeout(() => {
     if (document.visibilityState === "visible" && Date.now() - started >= 1200) {
-      fallback?.classList.remove("hidden");
+      fallback && fallback.classList.remove("hidden");
       fallback.textContent = "The Server phone-integration component did not open. Browser security prevents a website from registering an account with Android’s system dialer. The component is required only to bridge those operating-system APIs; the onboarding UI remains this website.";
       showStatus("Android did not open the system integration component. Android system calling cannot be registered by a browser alone.");
     }
