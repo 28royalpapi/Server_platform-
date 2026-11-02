@@ -68,7 +68,11 @@ test -s artifacts/server-caller-debug-for-reinstall.apk
 echo "CALLER_APK_BACKUP_READY: artifacts/server-caller-debug-for-reinstall.apk"
 echo "Running Server website onboarding, permission, contact-selection, and system calling-account Android instrumentation tests"
 TEST_STATUS=0
+rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
 $TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
+if [[ "$TEST_STATUS" -eq 0 ]]; then
+  python3 scripts/assert-android-test-count.py || TEST_STATUS=$?
+fi
 
 # Stop and preserve the video before handling test failure, so a red run still
 # gives us the actual screen flow that failed instead of only a report.
