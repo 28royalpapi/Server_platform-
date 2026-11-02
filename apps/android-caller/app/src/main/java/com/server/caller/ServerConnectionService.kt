@@ -132,6 +132,26 @@ object ServerTelecomRegistry {
   internal fun incomingCallerDisplayName(callId: String): String? =
     incomingConnections[callId]?.callerDisplayName
 
+  fun answerFromNotification(context: Context, callId: String) {
+    ServerCallNotifications.cancel(context, callId)
+    val connection = incomingConnections[callId]
+    if (connection != null) connection.answerFromNotification()
+    else openApp(context, Bundle().apply {
+      putString("server_action", "answer")
+      putString("server_call_id", callId)
+    })
+  }
+
+  fun declineFromNotification(context: Context, callId: String) {
+    ServerCallNotifications.cancel(context, callId)
+    val connection = incomingConnections[callId]
+    if (connection != null) connection.declineFromNotification()
+    else openApp(context, Bundle().apply {
+      putString("server_action", "decline")
+      putString("server_call_id", callId)
+    })
+  }
+
   fun reportIncoming(context: Context, callId: String, callerIdentity: String) {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val extras = Bundle().apply {
@@ -185,6 +205,7 @@ class ServerConnectionService : ConnectionService() {
       })
       setRinging()
       ServerTelecomRegistry.attach(this, callId)
+      ServerCallNotifications.show(this@ServerConnectionService, callId, callerIdentity)
       ServerTelecomRegistry.openApp(this@ServerConnectionService, Bundle().apply {
         putString("server_action", "incoming")
         putString("server_call_id", callId)
@@ -198,8 +219,12 @@ class ServerConnectionService : ConnectionService() {
 internal class ServerTelecomConnection(context: Context) : Connection() {
   private val app = context.applicationContext
 
+  internal fun answerFromNotification() { onAnswer() }
+  internal fun declineFromNotification() { onReject() }
+
   override fun onAnswer() {
     super.onAnswer()
+    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setActive()
     ServerTelecomRegistry.openApp(app, Bundle().apply {
       putString("server_action", "answer")
@@ -210,6 +235,7 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   }
 
   override fun onReject() {
+    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
     ServerTelecomRegistry.detach(this)
     destroy()
@@ -220,6 +246,7 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   }
 
   override fun onDisconnect() {
+    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
     ServerTelecomRegistry.detach(this)
     destroy()
@@ -232,12 +259,14 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   fun markConnected() { setActive() }
 
   fun markEnded() {
+    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
     ServerTelecomRegistry.detach(this)
     destroy()
   }
 
   fun markRemoteEnded() {
+    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setDisconnected(DisconnectCause(DisconnectCause.REMOTE))
     ServerTelecomRegistry.detach(this)
     destroy()
