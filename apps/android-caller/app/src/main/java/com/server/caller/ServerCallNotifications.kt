@@ -81,12 +81,19 @@ internal object ServerCallNotifications {
       manager.createNotificationChannel(channel)
     }
     val caller = callerIdentity.trim().take(80).ifBlank { "Server caller" }
+    val pending = PendingIntent.getActivity(
+      context, 7600 + (callId.hashCode() and 0x0000FFFF),
+      buildMissedCallIntent(context, callId, caller),
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
     val notification = Notification.Builder(context, MISSED_CHANNEL_ID)
       .setSmallIcon(android.R.drawable.sym_call_missed)
       .setContentTitle("Missed Server call")
       .setContentText("Missed call from $caller")
       .setCategory(Notification.CATEGORY_MISSED_CALL)
       .setAutoCancel(true)
+      .setContentIntent(pending)
+      .addAction(Notification.Action.Builder(android.R.drawable.sym_action_call, "Call back", pending).build())
       .build()
     manager.notify(7600 + (callId.hashCode() and 0x0000FFFF), notification)
   }
