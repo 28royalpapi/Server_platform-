@@ -12,6 +12,7 @@ const handoff=read("supabase/functions/server-handoff/index.ts");
 const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt");
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
+const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallNotifications.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
@@ -94,6 +95,20 @@ assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
    "a legacy SIM number must not become Server's calling-account address");
 assert.match(androidTelecom,/setAudioModeIsVoip\(true\)/,
    "Android Telecom is told that Server connections carry VoIP audio");
+assert.match(androidCallNotifications,/Notification\\.CallStyle\\.forIncomingCall/,
+  "Android 12+ incoming calls must use the native CallStyle template");
+assert.match(androidCallNotifications,/NotificationManager\\.IMPORTANCE_HIGH/,
+  "incoming Server calls must use a high-importance notification channel");
+assert.match(androidCallNotifications,/USAGE_NOTIFICATION_RINGTONE/,
+  "incoming alerts must use ringtone audio usage");
+assert.match(androidCallNotifications,/setBypassDnd\\(false\\)/,
+  "Server must not bypass Do Not Disturb");
+assert.match(androidCallNotifications,/ACTION_ANSWER/);
+assert.match(androidCallNotifications,/ACTION_DECLINE/);
+assert.match(androidTelecom,/ServerCallNotifications\\.show/);
+assert.match(androidTelecom,/answerFromNotification/);
+assert.match(androidTelecom,/declineFromNotification/);
+assert.match(androidManifest,/ServerCallActionReceiver/);
 assert.doesNotMatch(androidMain,/isSpeakerphoneOn\s*=/,
    "Server must not force speakerphone routing; Android and Telecom own the call audio route");
 assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/,
