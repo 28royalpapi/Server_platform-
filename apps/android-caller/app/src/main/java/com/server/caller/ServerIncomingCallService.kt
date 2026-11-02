@@ -102,17 +102,27 @@ class ServerIncomingCallService : Service() {
             val row = rows.optJSONObject(i) ?: continue
             val callId = row.optString("id")
             if (callId.isBlank()) continue
-            liveCallIds.add(callId)
-            if (!reportedCallIds.add(callId)) continue
-
             val caller = row.optString("caller_server_id").takeIf { it.isNotBlank() }
               ?: row.optString("caller_phone_e164").takeIf { it.isNotBlank() }
               ?: "Server caller"
+
+            if (row.optString("state") == "missed") {
+              if (reportedMissedCallIds.add(callId)) {
+                try {
+                  ServerCallNotifications.showMissed(this, callId, caller)
+                } catch (error: Exception) {
+                  reportedMissedCallIds.remove(callId)
+                  Log.w(TAG, "Could not show a missed Server call: " + error.javaClass.simpleName)
+                }
+              }
+              continue
+            }
+            if (row.optString("state") != "ringing" && row.optString("state") != "connecting") continue
+            liveCallIds.add(callId)
+            if (!reportedCallIds.add(callId)) continue
             try {
               ServerTelecomRegistry.reportIncoming(this, callId, caller)
             } catch (error: Exception) {
-              // Retry on the next poll if Telecom rejected this report. The set
-              // prevents duplicate rings only after a successful hand-off.
               reportedCallIds.remove(callId)
               Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
             }
