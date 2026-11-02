@@ -86,6 +86,44 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun missedServerCallNotificationOffersQuietCallbackAction() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+      try {
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+      } catch (_: Exception) {}
+      assertEquals("Missed-call alerts need notification permission",
+        android.content.pm.PackageManager.PERMISSION_GRANTED,
+        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS))
+    }
+
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+    val callId = "missed-" + UUID.randomUUID().toString()
+    val notificationId = 7600 + (callId.hashCode() and 0x0000FFFF)
+    try {
+      ServerCallNotifications.showMissed(context, callId, "SVR-12AB34CD56")
+      val posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      assertNotNull("A call missed while offline must appear after reconnect", posted)
+      assertEquals("The notification must be categorised as a missed call",
+        android.app.Notification.CATEGORY_MISSED_CALL, posted!!.notification.category)
+      assertTrue("The missed-call notification must offer a Call back action",
+        posted.notification.actions.any { it.title.toString() == "Call back" })
+      val channel = manager.getNotificationChannel(posted.notification.channelId)
+      assertNotNull("The quiet missed-call channel was not created", channel)
+      assertEquals("Missed-call alerts must not ring",
+        android.app.NotificationManager.IMPORTANCE_DEFAULT, channel!!.importance)
+      assertEquals("Missed-call alerts must be silent", null, channel.sound)
+      assertFalse("Missed-call alerts must not vibrate", channel.shouldVibrate())
+
+      val callback = ServerCallNotifications.buildMissedCallIntent(context, callId, "SVR-12AB34CD56")
+      assertEquals("missed_callback", callback.getStringExtra("server_action"))
+      assertEquals("SVR-12AB34CD56", callback.getStringExtra("server_caller_id"))
+    } finally {
+      manager.cancel(notificationId)
+    }
+  }
+
   @Test fun serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate() {
     assertFalse("No active network must block Server internet calling",
       isServerInternetUsable(false, false))
