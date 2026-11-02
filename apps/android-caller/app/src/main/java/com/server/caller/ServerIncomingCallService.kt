@@ -39,6 +39,9 @@ class ServerIncomingCallService : Service() {
   // re-reported to Telecom instead of being suppressed by stale persisted IDs.
   private val reportedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
   private val reportedMissedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+  private var activeIncomingCallId: String? = null
+  private var activeIncomingCaller: String = "Server caller"
+  private var activeIncomingSilent: Boolean = false
   private val prefs by lazy { getSharedPreferences("server-session", Context.MODE_PRIVATE) }
 
   override fun onCreate() {
@@ -51,12 +54,33 @@ class ServerIncomingCallService : Service() {
     // it immediately, before making Telecom/session eligibility checks or network
     // calls; otherwise the OS can terminate the process with
     // ForegroundServiceDidNotStartInTimeException on a Telecom hand-off.
+    when (intent?.action) {
+      ACTION_SHOW_INCOMING_CALL, ACTION_SILENCE_INCOMING_CALL -> {
+        val callId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+        if (callId.isNotBlank()) {
+          activeIncomingCallId = callId
+          activeIncomingCaller = intent.getStringExtra(EXTRA_CALLER_ID).orEmpty().ifBlank { "Server caller" }
+          activeIncomingSilent = intent.action == ACTION_SILENCE_INCOMING_CALL
+        }
+      }
+      ACTION_CLEAR_INCOMING_CALL -> {
+        val callId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+        if (activeIncomingCallId == callId) {
+          activeIncomingCallId = null
+          activeIncomingCaller = "Server caller"
+          activeIncomingSilent = false
+        }
+      }
+    }
+
     try {
-      val notification = buildNotification()
+      val notification = activeIncomingCallId?.let { callId ->
+        ServerCallNotifications.buildIncomingNotification(this, callId, activeIncomingCaller, activeIncomingSilent)
+      } ?: buildNotification()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
+        startForeground(FOREGROUND_FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
       } else {
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(FOREGROUND_NOTIFICATION_ID, notification)
       }
     } catch (error: Exception) {
       Log.w(TAG, "Could not start Server call listener: " + error.javaClass.simpleName)
@@ -233,8 +257,40 @@ class ServerIncomingCallService : Service() {
   companion object {
     private const val TAG = "ServerIncomingCalls"
     private const val CHANNEL_ID = "server-incoming-calls"
-    private const val NOTIFICATION_ID = 7338
+    internal const val FOREGROUND_NOTIFICATION_ID = 7338
     private const val POLL_INTERVAL_MS = 2200L
+    private const val ACTION_SHOW_INCOMING_CALL = "com.server.caller.action.FGS_SHOW_INCOMING"
+    private const val ACTION_SILENCE_INCOMING_CALL = "com.server.caller.action.FGS_SILENCE_INCOMING"
+    private const val ACTION_CLEAR_INCOMING_CALL = "com.server.caller.action.FGS_CLEAR_INCOMING"
+    private const val EXTRA_CALL_ID = "server_call_id"
+    private const val EXTRA_CALLER_ID = "server_caller_id"
+
+    private fun dispatch(context: Context, action: String, callId: String, caller: String = "") {
+      if (callId.isBlank()) return
+      val serviceIntent = Intent(context, ServerIncomingCallService::class.java).apply {
+        this.action = action
+        putExtra(EXTRA_CALL_ID, callId)
+        if (caller.isNotBlank()) putExtra(EXTRA_CALLER_ID, caller.take(80))
+      }
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
+        else context.startService(serviceIntent)
+      } catch (error: Exception) {
+        Log.w(TAG, "Could not update Server call notification: " + error.javaClass.simpleName)
+      }
+    }
+
+    fun showIncomingCall(context: Context, callId: String, caller: String, silent: Boolean = false) {
+      dispatch(context, if (silent) ACTION_SILENCE_INCOMING_CALL else ACTION_SHOW_INCOMING_CALL, callId, caller)
+    }
+
+    fun silenceIncomingCall(context: Context, callId: String, caller: String) {
+      dispatch(context, ACTION_SILENCE_INCOMING_CALL, callId, caller)
+    }
+
+    fun clearIncomingCall(context: Context, callId: String) {
+      dispatch(context, ACTION_CLEAR_INCOMING_CALL, callId)
+    }
 
     fun start(context: Context) {
       val serviceIntent = Intent(context, ServerIncomingCallService::class.java)
