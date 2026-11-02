@@ -67,6 +67,32 @@ internal object ServerCallNotifications {
       putExtra("server_caller_id", callerIdentity.take(80))
     }
 
+  fun showMissed(context: Context, callId: String, callerIdentity: String) {
+    if (callId.isBlank()) return
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    if (manager.getNotificationChannel(MISSED_CHANNEL_ID) == null) {
+      val channel = NotificationChannel(
+        MISSED_CHANNEL_ID, "Missed Server calls", NotificationManager.IMPORTANCE_DEFAULT
+      ).apply {
+        description = "Quiet alerts for calls missed while Server was offline."
+        setSound(null, null)
+        enableVibration(false)
+      }
+      manager.createNotificationChannel(channel)
+    }
+    val caller = callerIdentity.trim().take(80).ifBlank { "Server caller" }
+    val notification = Notification.Builder(context, MISSED_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.sym_call_missed)
+      .setContentTitle("Missed Server call")
+      .setContentText("Missed call from $caller")
+      .setCategory(Notification.CATEGORY_MISSED_CALL)
+      .setAutoCancel(true)
+      .build()
+    manager.notify(7600 + (callId.hashCode() and 0x0000FFFF), notification)
+  }
+
+  private const val MISSED_CHANNEL_ID = "server-missed-calls-v1"
+
   fun cancel(context: Context, callId: String) {
     if (callId.isBlank()) return
     (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId(callId))
