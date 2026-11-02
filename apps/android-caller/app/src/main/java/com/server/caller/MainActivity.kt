@@ -369,6 +369,15 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         val id = intent.getStringExtra("server_call_id").orEmpty()
         if (id.isNotBlank()) lifecycleScope.launch { declineCall(id) }
       }
+      "missed_callback" -> {
+        val target = intent.getStringExtra("server_caller_id").orEmpty()
+        if (target.isNotBlank() && target != "Server caller") {
+          targetInput.setText(target)
+          lifecycleScope.launch { delay(150); startCall() }
+        } else {
+          setStatus("The caller's Server ID is unavailable. Open Server to choose a contact.", true)
+        }
+      }
       "hangup" -> lifecycleScope.launch { endCall(intent.getStringExtra("server_call_id")) }
     }
   }
