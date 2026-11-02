@@ -69,6 +69,8 @@ internal object ServerCallNotifications {
 
   fun showMissed(context: Context, callId: String, callerIdentity: String) {
     if (callId.isBlank()) return
+    if (Build.VERSION.SDK_INT >= 33 &&
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (manager.getNotificationChannel(MISSED_CHANNEL_ID) == null) {
       val channel = NotificationChannel(
