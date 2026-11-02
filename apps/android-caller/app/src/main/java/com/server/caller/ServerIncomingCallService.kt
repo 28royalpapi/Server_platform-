@@ -109,7 +109,8 @@ class ServerIncomingCallService : Service() {
             if (row.optString("state") == "missed") {
               if (reportedMissedCallIds.add(callId)) {
                 try {
-                  ServerCallNotifications.showMissed(this, callId, caller)
+                  val shown = ServerCallNotifications.showMissed(this, callId, caller)
+                  if (!shown) reportedMissedCallIds.remove(callId)
                 } catch (error: Exception) {
                   reportedMissedCallIds.remove(callId)
                   Log.w(TAG, "Could not show a missed Server call: " + error.javaClass.simpleName)
