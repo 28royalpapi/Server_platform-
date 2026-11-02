@@ -44,7 +44,13 @@ class CallerSmokeTest {
     val callId = "notification-" + UUID.randomUUID().toString()
     val notificationId = ServerCallNotifications.notificationId(callId)
     try {
-      ServerCallNotifications.show(context, callId, "SVR-12AB34CD56")
+      val connection = ServerTelecomConnection(context).apply {
+        setExtras(Bundle().apply {
+          putString("server_call_id", callId)
+          putString("server_caller_id", "SVR-12AB34CD56")
+        })
+      }
+      connection.onShowIncomingCallUi()
       val posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
       assertNotNull("An incoming Server call must post a native ringing notification", posted)
       assertEquals("The notification must be ranked as a call", android.app.Notification.CATEGORY_CALL,
@@ -66,6 +72,14 @@ class CallerSmokeTest {
           android.app.Notification.CallStyle.CALL_TYPE_INCOMING,
           posted.notification.extras.getInt(android.app.Notification.EXTRA_CALL_TYPE,
             android.app.Notification.CallStyle.CALL_TYPE_UNKNOWN))
+      }
+
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        connection.onSilence()
+        val silenced = manager.activeNotifications.firstOrNull { it.id == notificationId }
+        assertNotNull("Silencing the ringtone must retain the incoming call notification", silenced)
+        assertTrue("Silence action must suppress repeat ringtone alerts",
+          (silenced!!.notification.flags and android.app.Notification.FLAG_ONLY_ALERT_ONCE) != 0)
       }
     } finally {
       ServerCallNotifications.cancel(context, callId)
