@@ -22,12 +22,25 @@ internal object ServerCallNotifications {
   const val ACTION_DECLINE = "com.server.caller.action.DECLINE_INCOMING"
   const val EXTRA_CALL_ID = "server_call_id"
 
-  fun notificationId(callId: String): Int = 7400 + (callId.hashCode() and 0x0000FFFF)
+  fun notificationId(callId: String): Int = ServerIncomingCallService.FOREGROUND_NOTIFICATION_ID
 
   fun show(context: Context, callId: String, callerIdentity: String, onlyAlertOnce: Boolean = false, silent: Boolean = false) {
-    if (callId.isBlank()) return
+    ServerIncomingCallService.showIncomingCall(context, callId, callerIdentity, silent || onlyAlertOnce)
+  }
+
+  fun silence(context: Context, callId: String, callerIdentity: String) {
+    ServerIncomingCallService.silenceIncomingCall(context, callId, callerIdentity)
+  }
+
+  internal fun buildIncomingNotification(
+    context: Context,
+    callId: String,
+    callerIdentity: String,
+    silent: Boolean
+  ): Notification? {
+    if (callId.isBlank()) return null
     if (Build.VERSION.SDK_INT >= 33 &&
-      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return null
 
     val app = context.applicationContext
     if (silent) ensureSilentChannel(app) else ensureChannel(app)
@@ -43,7 +56,7 @@ internal object ServerCallNotifications {
       .setVisibility(Notification.VISIBILITY_PRIVATE)
       .setOngoing(true)
       .setAutoCancel(false)
-      .setOnlyAlertOnce(onlyAlertOnce)
+      .setOnlyAlertOnce(silent)
       .setTimeoutAfter(180_000L)
 
     if (Build.VERSION.SDK_INT >= 31) {
@@ -54,15 +67,7 @@ internal object ServerCallNotifications {
       builder.addAction(Notification.Action.Builder(android.R.drawable.sym_action_call, "Answer", answer).build())
       builder.setContentIntent(callAction(app, callId, ACTION_ANSWER, 3))
     }
-    val manager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    manager.notify(notificationId(callId), builder.build())
-  }
-
-  fun silence(context: Context, callId: String, callerIdentity: String) {
-    if (callId.isBlank()) return
-    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    manager.cancel(notificationId(callId))
-    show(context, callId, callerIdentity, onlyAlertOnce = true, silent = true)
+    return builder.build()
   }
 
   fun buildMissedCallIntent(context: Context, callId: String, callerIdentity: String): Intent =
@@ -127,8 +132,7 @@ internal object ServerCallNotifications {
   private const val MISSED_CHANNEL_ID = "server-missed-calls-v1"
 
   fun cancel(context: Context, callId: String) {
-    if (callId.isBlank()) return
-    (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId(callId))
+    ServerIncomingCallService.clearIncomingCall(context, callId)
   }
 
   private fun callAction(context: Context, callId: String, action: String, actionCode: Int): PendingIntent {
