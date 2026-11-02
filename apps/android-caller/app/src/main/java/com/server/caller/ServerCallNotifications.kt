@@ -57,6 +57,16 @@ internal object ServerCallNotifications {
     manager.notify(notificationId(callId), builder.build())
   }
 
+  fun buildMissedCallIntent(context: Context, callId: String, callerIdentity: String): Intent =
+    Intent(context, MainActivity::class.java).apply {
+      action = "com.server.caller.action.MISSED_CALLBACK"
+      data = Uri.parse("server-missed://$callId")
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+      putExtra("server_action", "missed_callback")
+      putExtra("server_call_id", callId)
+      putExtra("server_caller_id", callerIdentity.take(80))
+    }
+
   fun cancel(context: Context, callId: String) {
     if (callId.isBlank()) return
     (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId(callId))
