@@ -67,10 +67,10 @@ internal object ServerCallNotifications {
       putExtra("server_caller_id", callerIdentity.take(80))
     }
 
-  fun showMissed(context: Context, callId: String, callerIdentity: String) {
-    if (callId.isBlank()) return
+  fun showMissed(context: Context, callId: String, callerIdentity: String): Boolean {
+    if (callId.isBlank()) return false
     if (Build.VERSION.SDK_INT >= 33 &&
-      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (manager.getNotificationChannel(MISSED_CHANNEL_ID) == null) {
       val channel = NotificationChannel(
@@ -98,6 +98,7 @@ internal object ServerCallNotifications {
       .addAction(Notification.Action.Builder(android.R.drawable.sym_action_call, "Call back", pending).build())
       .build()
     manager.notify(7600 + (callId.hashCode() and 0x0000FFFF), notification)
+    return true
   }
 
   private const val MISSED_CHANNEL_ID = "server-missed-calls-v1"
