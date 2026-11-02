@@ -296,10 +296,10 @@ jobs:
           script: |
             set -eu
             run_acceptance_method() {
-              local method="$1"
-              local attempt=1
-              local status=0
-              while [[ "$attempt" -le 2 ]]; do
+              method="$1"
+              attempt=1
+              status=1
+              while [ "$attempt" -le 2 ]; do
                 echo "ANDROID_17_TEST method=$method attempt=$attempt"
                 if timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain "-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#$method"; then
                   return 0
