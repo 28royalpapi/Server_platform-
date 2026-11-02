@@ -4,7 +4,6 @@ const fragmentToken=url.hash.startsWith("#token=")?decodeURIComponent(url.hash.s
 const inviteToken=url.searchParams.get("token")||fragmentToken||"";
 history.replaceState(null,"",location.pathname);
 const statusEl=document.querySelector("#guest-status"),joinButton=document.querySelector("#join-call"),leaveButton=document.querySelector("#leave-call"),audioEl=document.querySelector("#remote-audio"),descriptionEl=document.querySelector("#guest-description");
-const descriptionEl=document.querySelector("#guest-description");
 async function loadInvitation(){
  if(!inviteToken||inviteToken.length<48){status("This invitation link is missing its secure token. Ask the caller to send a new invitation.",true);joinButton.disabled=true;return;}
  try{
