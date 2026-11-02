@@ -34,6 +34,7 @@ import java.time.Instant
 class ServerIncomingCallService : Service() {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private var pollingJob: Job? = null
+  private var incomingCallId: String? = null
   // Process-local by design: if Android recreates the service, active calls must be
   // re-reported to Telecom instead of being suppressed by stale persisted IDs.
   private val reportedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
