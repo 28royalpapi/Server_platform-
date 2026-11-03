@@ -133,18 +133,12 @@ class ServerIncomingCallAlertService : Service() {
 
     fun clearIncomingCall(context: Context, callId: String) {
       if (callId.isBlank()) return
-      // If no live alert service remains, still make sure the notification is cleared.
-      try {
-        val serviceIntent = Intent(context, ServerIncomingCallAlertService::class.java).apply {
-          action = ACTION_CLEAR
-          putExtra(EXTRA_CALL_ID, callId)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
-        else context.startService(serviceIntent)
-      } catch (_: Exception) {
-        (context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager)
-          .cancel(ServerCallNotifications.notificationId(callId))
-      }
+      // Clearing a call is not a reason to start a new foreground service.
+      // Stop the dedicated alert service if it is running and always remove this
+      // call's notification directly, including when the service was already killed.
+      try { context.stopService(Intent(context, ServerIncomingCallAlertService::class.java)) } catch (_: Exception) {}
+      (context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager)
+        .cancel(ServerCallNotifications.notificationId(callId))
     }
   }
 }
