@@ -305,6 +305,14 @@ assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\)/,
   "Telecom ringback is requested only for a real Server recipient, never for a manual guest share");
+assert.match(androidEngine,/put\("source", "android_telecom"\)/,
+  "system Phone calls identify their origin so the backend can reject non-Server guest routes");
+assert.doesNotMatch(androidEngine,/ServerGuestInviteNotifications\.show/,
+  "choosing Server from Android Phone must never launch a guest invitation page");
+assert.match(calls,/b\.source==="android_telecom"&&route!=="server"/,
+  "the backend rejects non-Server destinations before creating a dialer guest-invitation call");
+assert.match(calls,/RECIPIENT_NOT_SERVER_ENABLED/,
+  "a non-Server destination gets a truthful dialer error rather than a fake call or invitation page");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
   "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
