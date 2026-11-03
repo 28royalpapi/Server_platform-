@@ -492,7 +492,8 @@ class CallerSmokeTest {
     val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
     val previousTelecomStage = prefs.getString("debug_last_telecom_stage", null)
-    val previousHiddenRouter = prefs.getBoolean("debug_telecom_router_hidden", false)
+    val previousEngineStarted = prefs.getBoolean("debug_telecom_connection_engine_started", false)
+    val previousCallFailure = prefs.getString("debug_last_call_failure", null)
     val previousDefaultOutgoing = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
     val device = UiDevice.getInstance(instrumentation)
     var testAccountRegistered = false
@@ -509,6 +510,8 @@ class CallerSmokeTest {
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_call_target_kind")
         .remove("debug_last_telecom_stage")
+        .remove("debug_telecom_connection_engine_started")
+        .remove("debug_last_call_failure")
         .commit()
 
       ServerTelecomRegistry.register(context)
@@ -572,21 +575,22 @@ class CallerSmokeTest {
         "phone", prefs.getString("debug_last_call_target_kind", null))
 
       // This test intentionally uses an invalid session, so a real backend rejection
-      // is expected. The important acceptance condition is that the Activity reaches
-      // the authenticated Server endpoint, reports the failure on-screen and does not
-      // disappear behind Android's Phone UI before the user can see the reason.
+      // is expected. Telecom must reach its bound WebRTC engine without opening an
+      // Activity over the Phone app; the backend rejection is asserted from diagnostics.
       val backendDeadline = System.currentTimeMillis() + 15_000
       while (System.currentTimeMillis() < backendDeadline &&
         prefs.getString("debug_last_telecom_stage", null) != "call_setup_failed") Thread.sleep(150)
       lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
       assertEquals("Outgoing Telecom flow must wait for the Server backend result before returning to the Phone app",
         "call_setup_failed", lastTelecomStage)
-      assertTrue("A system dialer request must route through the transparent Server call bridge",
-        prefs.getBoolean("debug_telecom_router_hidden", false))
-      assertFalse("Server must not replace Android Phone with its internal page showing the dialled number",
+      assertTrue("The Telecom-bound ConnectionService must own the call engine",
+        prefs.getBoolean("debug_telecom_connection_engine_started", false))
+      val failure = prefs.getString("debug_last_call_failure", null).orEmpty()
+      assertTrue("The test must observe the expected rejected backend session", failure.isNotBlank())
+      assertFalse("Server must not replace Android Phone with its internal setup page",
         device.hasObject(By.text("Calling, made natural")))
-      assertTrue("The caller must receive a visible failure message without a second Server page",
-        device.wait(Until.hasObject(By.textContains("Server could not start the internet call")), 5_000))
+      assertNotEquals("No Server Activity should be launched over Android Phone",
+        context.packageName, device.currentPackageName)
     } finally {
       val edit = prefs.edit()
       if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
@@ -595,7 +599,8 @@ class CallerSmokeTest {
       if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
       if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
       if (previousTelecomStage == null) edit.remove("debug_last_telecom_stage") else edit.putString("debug_last_telecom_stage", previousTelecomStage)
-      edit.putBoolean("debug_telecom_router_hidden", previousHiddenRouter)
+      edit.putBoolean("debug_telecom_connection_engine_started", previousEngineStarted)
+      if (previousCallFailure == null) edit.remove("debug_last_call_failure") else edit.putString("debug_last_call_failure", previousCallFailure)
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
       ServerTelecomRegistry.register(context)
