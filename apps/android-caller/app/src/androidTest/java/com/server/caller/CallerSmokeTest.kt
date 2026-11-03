@@ -86,13 +86,15 @@ class CallerSmokeTest {
         }
       }
       assertNotNull("An incoming Server call must post a native ringing notification", posted)
-      // Android ranks CallStyle notifications promoted by a phoneCall foreground
-      // service as CATEGORY_SERVICE. The Android 12+ restriction requires this
-      // foreground-service association; CATEGORY_CALL is used on older releases.
-      val expectedCategory = if (needsCallStyleForegroundService) android.app.Notification.CATEGORY_SERVICE
-        else android.app.Notification.CATEGORY_CALL
-      assertEquals("Incoming Server CallStyle must be posted through the phoneCall foreground service",
-        expectedCategory, posted!!.notification.category)
+      // CallStyle retains CATEGORY_CALL. Confirm the independent foreground-service
+      // association via FLAG_FOREGROUND_SERVICE instead of inheriting the listener's
+      // CATEGORY_SERVICE notification metadata.
+      assertEquals("Incoming Server alerts must retain the native call notification category",
+        android.app.Notification.CATEGORY_CALL, posted!!.notification.category)
+      if (needsCallStyleForegroundService) {
+        assertTrue("Incoming Server CallStyle must be backed by its dedicated phoneCall foreground service",
+          (posted.notification.flags and android.app.Notification.FLAG_FOREGROUND_SERVICE) != 0)
+      }
       assertEquals("The incoming call must use its dedicated ringtone channel", ServerCallNotifications.CHANNEL_ID,
         posted.notification.channelId)
 
