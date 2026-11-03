@@ -55,8 +55,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-/** Server voice calls require an actual internet route which Android has validated. */
-@Suppress("UNUSED_PARAMETER")
+/** Server voice calls require an internet-capable route; the authenticated API verifies reachability. */
 @Suppress("UNUSED_PARAMETER")
 internal fun isServerInternetUsable(hasInternetCapability: Boolean, isValidated: Boolean): Boolean {
   // NET_CAPABILITY_VALIDATED depends on Android's captive-portal probe. Some carrier
