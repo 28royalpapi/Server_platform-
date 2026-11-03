@@ -572,7 +572,7 @@ class CallerSmokeTest {
       assertNotNull("Android did not expose a default system Phone dialer for ACTION_DIAL", dialerPackage)
       val resolvedDialerPackage = dialerPackage!!
       assertTrue("The default Phone app must not be the Server connector itself", resolvedDialerPackage != context.packageName)
-      context.startActivity(dialerIntent)
+      context.startActivity(dialerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       val dialerReady = device.wait(Until.hasObject(By.pkg(resolvedDialerPackage)), 12_000)
       assertTrue("Android's system Phone dialer did not open (resolved package: " + resolvedDialerPackage + ")", dialerReady)
       runShellCommand("input text 08012345678")
