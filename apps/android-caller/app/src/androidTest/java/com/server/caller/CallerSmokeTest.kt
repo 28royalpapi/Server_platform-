@@ -229,7 +229,22 @@ class CallerSmokeTest {
       assertNotNull("The legal acceptance checkbox must be exposed by the Android WebView", termsCheckbox)
       assertTrue("Legal acceptance starts unchecked", !termsCheckbox!!.isChecked)
       termsCheckbox.click()
-      assertTrue("Tapping the checkbox must set its checked state", termsCheckbox.isChecked)
+      // WebView accessibility updates the native checkbox node asynchronously on
+      // older System WebView builds. Re-query after the click rather than reading a
+      // stale UiObject2 snapshot immediately.
+      val checkedTerms = device.wait(
+        Until.findObject(By.clazz("android.widget.CheckBox").checked(true)), 4_000
+      )
+      if (checkedTerms == null) {
+        try {
+          val hierarchy = File(context.cacheDir, "server-terms-checkbox-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.e("ServerUITest", "Legal checkbox did not update after tap; hierarchy:\n" + hierarchy.readText())
+        } catch (error: Exception) {
+          Log.e("ServerUITest", "Could not capture terms checkbox hierarchy: " + error.javaClass.simpleName)
+        }
+      }
+      assertNotNull("Tapping the visible legal checkbox must update its checked state", checkedTerms)
       // The primary action sits below the fold on phone-sized screens.
       val createButton = findTextOnScrollableScreen(context, device, "Create my Server ID")
       assertNotNull("Server identity creation action is not visible after scrolling", createButton)
@@ -543,16 +558,37 @@ class CallerSmokeTest {
       assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
       assertTrue("The mock provider must be enabled to prove a real multi-provider picker", testHandle in callCapableAccounts)
 
-      // Open Android's real Phone app with a test number already entered.
-      // This avoids depending on the emulator's optional Contacts provider while
-      // still testing the system outgoing-account chooser used after the user taps Call.
+      // Open Android's real Phone app with its normal dialpad. The API 31
+      // Google/AOSP Dialer build used by CI logs "Nothing to show" for ACTION_DIAL
+      // with a tel: URI, so enter the test destination through the dialpad input
+      // path exactly as a user does instead of treating the URI as prefilled text.
       device.pressHome()
-      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+12025550101"))
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      val dialerReady = device.wait(Until.hasObject(By.textContains("555")), 12_000)
-      assertTrue("Android's system Phone dialer did not open with the requested number", dialerReady)
+      context.startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      val dialerReady = device.wait(Until.hasObject(By.pkg("com.android.dialer")), 12_000)
+      assertTrue("Android's system Phone dialer did not open", dialerReady)
+      runShellCommand("input text 12025550101")
+      val dialedNumberReady = device.wait(Until.hasObject(By.textContains("202")), 8_000)
+      if (!dialedNumberReady) {
+        try {
+          val hierarchy = File(context.cacheDir, "server-phone-dialer-number-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.e("ServerUITest", "Phone dialer did not show the typed destination; hierarchy:\\n" + hierarchy.readText())
+        } catch (error: Exception) {
+          Log.e("ServerUITest", "Could not capture Phone dialer hierarchy: " + error.javaClass.simpleName)
+        }
+      }
+      assertTrue("Android's Phone dialer did not show the entered test destination", dialedNumberReady)
       val callButton = device.wait(Until.findObject(By.descContains("Call")), 6_000)
         ?: device.wait(Until.findObject(By.text("Call")), 2_000)
+      if (callButton == null) {
+        try {
+          val hierarchy = File(context.cacheDir, "server-phone-dialer-call-action-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.e("ServerUITest", "Phone dialer displayed the number but no Call action was found; hierarchy:\\n" + hierarchy.readText())
+        } catch (error: Exception) {
+          Log.e("ServerUITest", "Could not capture Phone Call action hierarchy: " + error.javaClass.simpleName)
+        }
+      }
       assertNotNull("Android's Phone dialer did not expose its Call action", callButton)
       callButton!!.click()
 
