@@ -8,6 +8,32 @@ const allowed=new Set(["offer","answer","ice","hangup","state"]);
 
 const SERVER_CALL_TTL_SECONDS = 180;
 const GUEST_CALL_TTL_SECONDS = 20 * 60;
+const BASE_ICE_SERVERS = [
+ {urls:"stun:stun.cloudflare.com:3478"},
+ {urls:"stun:stun.l.google.com:19302"}
+];
+/**
+ * Optional coturn REST credentials. Configure SERVER_TURN_URLS and
+ * SERVER_TURN_SHARED_SECRET together in Supabase secrets. With neither set,
+ * Server continues using both public STUN discovery endpoints. TURN URLs and
+ * shared credentials are never embedded in a client or committed to source.
+ */
+async function iceServersForCall(identity:string, ttlSeconds:number) {
+ const rawUrls=Deno.env.get("SERVER_TURN_URLS")||"";
+ const sharedSecret=Deno.env.get("SERVER_TURN_SHARED_SECRET")||"";
+ if(!rawUrls||sharedSecret.length<32)return BASE_ICE_SERVERS;
+ const turnUrls=rawUrls.split(",").map((url:string)=>url.trim())
+  .filter((url:string)=>/^turns?:[^\\s@]+$/i.test(url)).slice(0,8);
+ if(!turnUrls.length)return BASE_ICE_SERVERS;
+ const safeIdentity=identity.replace(/[^A-Za-z0-9_.-]/g,"").slice(0,80)||"server";
+ const expires=Math.floor(Date.now()/1000)+Math.max(300,Math.min(3600,ttlSeconds+120));
+ const username=expires+":"+safeIdentity;
+ const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(sharedSecret),
+  {name:"HMAC",hash:"SHA-1"},false,["sign"]);
+ const signature=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(username)));
+ const credential=btoa(String.fromCharCode(...signature));
+ return [{urls:turnUrls,username,credential},...BASE_ICE_SERVERS];
+}
 let cachedFcmAccessToken: { token: string; expiresAt: number } | null = null;
 let cachedApnsJwt: { token: string; expiresAt: number } | null = null;
 const b64url = (value: string | Uint8Array) => {
@@ -171,6 +197,7 @@ Deno.serve(async(req:Request)=>{
     route,state:"ringing",created_at:now,updated_at:now,expires_at:expiresAt
    }).select("id,state,route,created_at,updated_at,expires_at").single();
    if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
+   const callIceServers=await iceServersForCall(call.id,callTtlSeconds);
    await db.from("server_call_members").upsert([
     {call_id:call.id,user_id:uid,member_role:"caller"},
     ...(callee?[{call_id:call.id,user_id:callee.user_id,member_role:"callee"}]:[])
@@ -193,7 +220,7 @@ Deno.serve(async(req:Request)=>{
     const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
     const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Accept to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
     const manualDelivery=(reason:string)=>out({
-      ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],call,
+      ok:true,call_id:call.id,route,ice_servers:callIceServers,call,
       invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
       guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason
     });
@@ -201,7 +228,7 @@ Deno.serve(async(req:Request)=>{
     // The caller explicitly chooses an existing share/messaging app instead.
     return manualDelivery("Server does not send automatic or paid SMS for guest invitations. Share the secure invitation using an app already on your phone; the recipient needs internet to answer.");
   }
-  return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],call,call_expires_at:expiresAt,push_delivery:pushDelivery});
+  return out({ok:true,call_id:call.id,route,ice_servers:callIceServers,call,call_expires_at:expiresAt,push_delivery:pushDelivery});
  }
  if(action==="incoming"){
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
@@ -247,7 +274,7 @@ Deno.serve(async(req:Request)=>{
     if(!call||call.callee_user_id!==uid||!["ringing","connecting"].includes(call.state)||(call.expires_at&&Date.parse(call.expires_at)<=Date.now()))return out({error:"CALL_NOT_ANSWERABLE"},409);
     await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",callId);
     await db.from("server_call_members").update({joined_at:now}).eq("call_id",callId).eq("user_id",uid);
-    return out({ok:true,state:"connecting",ice_servers:[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}]});
+    return out({ok:true,state:"connecting",ice_servers:await iceServersForCall(callId,SERVER_CALL_TTL_SECONDS)});
    }
    if(action==="set_active"){
     const {error}=await db.from("server_calls").update({state:"active",updated_at:now}).eq("id",callId).in("state",["ringing","connecting"]);
@@ -268,7 +295,7 @@ Deno.serve(async(req:Request)=>{
    if(kind==="hangup"){const now=new Date().toISOString();await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",callId);}
    return out({ok:true,seq:signal.seq,created_at:signal.created_at});
   }
-  if(action==="ice_servers")return out({ice_servers:[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}]});
+  if(action==="ice_servers")return out({ice_servers:await iceServersForCall(uid,SERVER_CALL_TTL_SECONDS)});
   return out({error:"UNKNOWN_ACTION"},400);
  }catch{return out({error:"SERVER_CALLS_INTERNAL_ERROR"},500);}
 });
