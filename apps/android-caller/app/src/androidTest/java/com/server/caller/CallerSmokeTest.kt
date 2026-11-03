@@ -543,7 +543,12 @@ class CallerSmokeTest {
         .commit()
 
       ServerTelecomRegistry.register(context)
-      ensureAccountEnabled(context, device, serverHandle, "Server")
+      enablePhoneAccountWithTestShell(context, serverHandle)
+      val serverAccountDeadline = System.currentTimeMillis() + 5_000
+      while (!accountEnabled(context, serverHandle) && System.currentTimeMillis() < serverAccountDeadline) {
+        Thread.sleep(100)
+      }
+      assertTrue("Telecom did not expose the test-enabled Server PhoneAccount", accountEnabled(context, serverHandle))
 
       // The emulator has no physical carrier SIM. Keep this second account clearly
       // labelled as a mock while exercising the preinstalled Phone app UI.
@@ -555,7 +560,12 @@ class CallerSmokeTest {
         .build()
       telecom.registerPhoneAccount(testAccount)
       testAccountRegistered = true
-      ensureAccountEnabled(context, device, testHandle, "Test call provider (mock)")
+      enablePhoneAccountWithTestShell(context, testHandle)
+      val mockAccountDeadline = System.currentTimeMillis() + 5_000
+      while (!accountEnabled(context, testHandle) && System.currentTimeMillis() < mockAccountDeadline) {
+        Thread.sleep(100)
+      }
+      assertTrue("Telecom did not expose the test-enabled mock PhoneAccount", accountEnabled(context, testHandle))
 
       // A preconfigured default SIM makes Google Phone place calls immediately and
       // bypass its outgoing-account picker. Android CTS uses the Telecom shell command
@@ -582,6 +592,20 @@ class CallerSmokeTest {
       context.startActivity(dialerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       val dialerReady = device.wait(Until.hasObject(By.pkg(resolvedDialerPackage)), 12_000)
       assertTrue("Android's system Phone dialer did not open (resolved package: " + resolvedDialerPackage + ")", dialerReady)
+      val digitsField = device.wait(
+        Until.findObject(By.res(resolvedDialerPackage, "digits")), 5_000
+      ) ?: device.wait(Until.findObject(By.clazz("android.widget.EditText")), 2_000)
+      if (digitsField == null) {
+        try {
+          val hierarchy = File(context.cacheDir, "server-phone-dialer-digits-field-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.e("ServerUITest", "Phone dialpad number field was not exposed; hierarchy:\\n" + hierarchy.readText())
+        } catch (error: Exception) {
+          Log.e("ServerUITest", "Could not capture number-field hierarchy: " + error.javaClass.simpleName)
+        }
+      }
+      assertNotNull("Android Phone did not expose an editable destination field", digitsField)
+      digitsField!!.click()
       runShellCommand("input text 08012345678")
       val dialedNumberReady = device.wait(Until.hasObject(By.textContains("080")), 8_000)
       if (!dialedNumberReady) {
