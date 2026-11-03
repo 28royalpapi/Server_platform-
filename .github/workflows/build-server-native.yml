@@ -282,6 +282,8 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
+          # Android 17's current SDK package is published on the Canary SDK channel.
+          channel: ${{ matrix.api-level == 37 && 'canary' || 'stable' }}
           target: google_apis
           arch: x86_64
           profile: pixel_2
