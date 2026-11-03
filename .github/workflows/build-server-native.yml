@@ -462,5 +462,5 @@ jobs:
             exit 1
           fi
           sha256sum "$APK"
-          gh release upload server-android-connector-preview "$APK#Server-Android-Connector-preview.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload server-android-connector-preview "$APK" --repo "$GITHUB_REPOSITORY" --clobber
           echo "ANDROID_PREVIEW_RELEASE_ASSET_PUBLISHED"
