@@ -120,7 +120,7 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine placeOutgoing --json > artifacts/rea-caller-engine-outgoing.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine preparePeer --json > artifacts/rea-caller-engine-peer.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine handleSignal --json > artifacts/rea-caller-engine-signals.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-caller-engine-ice-state.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" 'com.server.caller.ServerTelecomCallEngine$onIceConnectionChange$1' invokeSuspend --json > artifacts/rea-caller-engine-ice-state.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
