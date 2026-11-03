@@ -1,7 +1,19 @@
 name: Build Server native clients and emulator previews
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/android-caller/**'
+      - 'apps/android-sim-gateway/**'
+      - 'apps/ios-caller/**'
+      - '.github/workflows/build-server-native.yml'
+      - 'supabase/**'
+      - 'web/**'
+      - 'scripts/**'
+      - 'tests/**'
   push:
+    branches: [main]
     paths:
       - 'apps/android-caller/**'
       - 'apps/android-sim-gateway/**'
@@ -232,7 +244,12 @@ jobs:
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
-  android-12-compatibility-smoke:
+  android-10-to-17-platform-matrix:
+    name: Android API ${{ matrix.api-level }} calling-account compatibility
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 30, 31, 32, 33, 35, 37]
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -245,14 +262,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Install Android 12 SDK components
+      - name: Install Android SDK components for API ${{ matrix.api-level }} test
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Enable KVM access for Android 12 emulator
+      - name: Enable KVM access for Android API ${{ matrix.api-level }} emulator
         shell: bash
         run: |
           set -euo pipefail
           if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this runner does not expose /dev/kvm for the Android 12 emulator." >&2
+            echo "ERROR: this runner does not expose /dev/kvm for Android API ${{ matrix.api-level }}." >&2
             exit 1
           fi
           sudo chmod 666 /dev/kvm
@@ -261,10 +278,10 @@ jobs:
         run: |
           set -euo pipefail
           gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
-      - name: Run Android 12 Telecom and offline-gate acceptance tests
+      - name: Run Android API ${{ matrix.api-level }} Telecom and phone-picker acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 31
+          api-level: ${{ matrix.api-level }}
           target: google_apis
           arch: x86_64
           profile: pixel_2
@@ -294,7 +311,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: server-android-12-api31-acceptance-results
+          name: server-android-api-${{ matrix.api-level }}-acceptance-results
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
@@ -348,6 +365,9 @@ jobs:
             set -eu
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
@@ -471,7 +491,7 @@ jobs:
     needs:
       - android-build-and-emulator-smoke
       - android-8-minimum-install-smoke
-      - android-12-compatibility-smoke
+      - android-10-to-17-platform-matrix
       - android-16-stable-compatibility-smoke
     runs-on: ubuntu-latest
     permissions:
