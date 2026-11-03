@@ -447,9 +447,11 @@ class CallerSmokeTest {
   }
 
   private fun grantTelecomPermissions(context: Context) {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    // UiAutomation.grantRuntimePermission is not present on API 26 (Android 8).
+    // The instrumentation shell permission grant works on every supported test
+    // image and keeps these test-only grants out of the app's runtime flow.
     for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO)) {
-      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission) } catch (_: Exception) {}
+      runShellCommand("pm grant ${context.packageName} $permission")
     }
   }
   private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
@@ -518,7 +520,7 @@ class CallerSmokeTest {
     var testAccountRegistered = false
 
     try {
-      try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO) } catch (_: Exception) {}
+      grantTelecomPermissions(context)
       assertTrue("The test must have microphone permission before exercising a background Telecom call",
         context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED)
       prefs.edit()
@@ -578,7 +580,12 @@ class CallerSmokeTest {
         }
       }
       assertTrue("Android's Phone dialer did not show the entered test destination", dialedNumberReady)
-      val callButton = device.wait(Until.findObject(By.descContains("Call")), 6_000)
+      // Google Phone on the Android 12 AOSP image exposes the green dial
+      // action as resource id dialpad_floating_action_button with content-desc
+      // "dial", not the English label "Call". Prefer that stable resource id.
+      val callButton = device.wait(
+        Until.findObject(By.res("com.android.dialer:id/dialpad_floating_action_button")), 6_000
+      ) ?: device.wait(Until.findObject(By.descContains("Call")), 2_000)
         ?: device.wait(Until.findObject(By.text("Call")), 2_000)
       if (callButton == null) {
         try {
