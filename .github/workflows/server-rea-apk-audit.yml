@@ -124,7 +124,10 @@ jobs:
           # JADX/REA exposes this Kotlin lambda under an unstable AnonymousClassN
           # name. Inspect the observer method with REA and verify the actual
           # compiler-generated class descriptor directly in every DEX file.
-          for dex in $(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerGuestInviteNotifications --json > artifacts/rea-caller-guest-invite-class.json
+          for dex in $(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do
+            unzip -p "$APK" "$dex" | strings
+          done > artifacts/rea-caller-engine-dex-classes.txt
+          grep -Fq 'ServerTelecomCallEngine$onIceConnectionChange$1' artifacts/rea-caller-engine-dex-classes.txt
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
@@ -144,7 +147,6 @@ jobs:
             ['rea-caller-engine-signals.json', ['offer', 'answer', 'addIceCandidate']],
             ['rea-caller-engine-ice-observer.json', ['onIceConnectionChange', 'AnonymousClass1']],
             ['rea-caller-guest-invite-notification.json', ['Send invitation', 'ServerGuestInviteActivity']]
-
           ];
           for (const [file, markers] of checks) {
             const source = read(file);
@@ -153,6 +155,16 @@ jobs:
               console.error('REA compiled-code inspection missing markers in ' + file + ': ' + missing.join(', '));
               process.exit(1);
             }
+          }
+          const dexClasses = fs.readFileSync('artifacts/rea-caller-engine-dex-classes.txt', 'utf8');
+          if (!dexClasses.includes('ServerTelecomCallEngine$onIceConnectionChange$1')) {
+            console.error('Compiled DEX does not contain the ICE observer coroutine class.');
+            process.exit(1);
+          }
+          const outgoing = read('rea-caller-engine-outgoing.json');
+          if (outgoing.includes('ServerGuestInviteNotifications.show')) {
+            console.error('The compiled Telecom Phone path still opens a guest invitation page.');
+            process.exit(1);
           }
           const dexClasses = fs.readFileSync('artifacts/rea-caller-engine-dex-classes.txt', 'utf8');
           if (!dexClasses.includes('ServerTelecomCallEngine$onIceConnectionChange$1')) {
@@ -252,8 +264,7 @@ jobs:
             artifacts/rea-caller-engine-peer.json
             artifacts/rea-caller-engine-signals.json
             artifacts/rea-caller-engine-ice-observer.json
-            artifacts/rea-caller-engine-ice-state-class.json
-            artifacts/rea-caller-engine-ice-state.json
+            artifacts/rea-caller-engine-dex-classes.txt
             artifacts/rea-caller-guest-invite-class.json
             artifacts/rea-caller-guest-invite-notification.json
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
