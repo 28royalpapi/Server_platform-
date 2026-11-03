@@ -90,6 +90,13 @@ object ServerTelecomRegistry {
 
   fun setCurrentCallId(callId: String?) {
     currentConnectionCallId = callId
+    currentConnection?.setCallId(callId)
+  }
+
+  internal fun currentCallId(): String? = currentConnectionCallId
+
+  fun markConnecting(callId: String) {
+    incomingConnections[callId]?.markConnecting()
   }
 
   fun markConnected(callId: String? = null) {
@@ -136,20 +143,14 @@ object ServerTelecomRegistry {
     ServerCallNotifications.cancel(context, callId)
     val connection = incomingConnections[callId]
     if (connection != null) connection.answerFromNotification()
-    else openApp(context, Bundle().apply {
-      putString("server_action", "answer")
-      putString("server_call_id", callId)
-    })
+    else ServerCallEngineService.startAnswer(context, callId)
   }
 
   fun declineFromNotification(context: Context, callId: String) {
     ServerCallNotifications.cancel(context, callId)
     val connection = incomingConnections[callId]
     if (connection != null) connection.declineFromNotification()
-    else openApp(context, Bundle().apply {
-      putString("server_action", "decline")
-      putString("server_call_id", callId)
-    })
+    else ServerCallEngineService.end(context, callId)
   }
 
   fun reportIncoming(context: Context, callId: String, callerIdentity: String) {
@@ -179,9 +180,9 @@ class ServerConnectionService : ConnectionService() {
       setDialing()
     }
     ServerTelecomRegistry.attach(connection)
-    ServerTelecomRegistry.openApp(this, Bundle().apply {
-      putString("server_action", "dial"); putString("server_dialed_number", phone)
-    })
+    // Telecom calls this service from the system Phone app. Start the call engine
+    // directly as a phoneCall foreground service; never launch an Activity here.
+    ServerCallEngineService.startOutgoing(this, phone)
     return connection
   }
 
@@ -205,12 +206,7 @@ class ServerConnectionService : ConnectionService() {
       })
       setRinging()
       ServerTelecomRegistry.attach(this, callId)
-      ServerTelecomRegistry.openApp(this@ServerConnectionService, Bundle().apply {
-        putString("server_action", "incoming")
-        putString("server_call_id", callId)
-        putString("server_caller_id", callerIdentity)
-        if (phone.isNotBlank()) putString("server_remote_phone", phone)
-      })
+      // Android Telecom itself owns the incoming UI. No app Activity is needed.
     }
   }
 }
@@ -236,13 +232,8 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   override fun onAnswer() {
     super.onAnswer()
     ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
-    setActive()
-    ServerTelecomRegistry.openApp(app, Bundle().apply {
-      putString("server_action", "answer")
-      putString("server_call_id", extras?.getString("server_call_id").orEmpty())
-      putString("server_caller_id", extras?.getString("server_caller_id").orEmpty())
-      putString("server_remote_phone", address?.schemeSpecificPart.orEmpty())
-    })
+    setInitializing()
+    ServerCallEngineService.startAnswer(app, extras?.getString("server_call_id").orEmpty())
   }
 
   override fun onReject() {
@@ -250,21 +241,24 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
     setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
     ServerTelecomRegistry.detach(this)
     destroy()
-    ServerTelecomRegistry.openApp(app, Bundle().apply {
-      putString("server_action", "decline")
-      putString("server_call_id", extras?.getString("server_call_id").orEmpty())
-    })
+    ServerCallEngineService.end(app, extras?.getString("server_call_id").orEmpty())
   }
 
   override fun onDisconnect() {
     ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
+    val id = extras?.getString("server_call_id").orEmpty().ifBlank { ServerTelecomRegistry.currentCallId().orEmpty() }
     ServerTelecomRegistry.detach(this)
     destroy()
-    ServerTelecomRegistry.openApp(app, Bundle().apply {
-      putString("server_action", "hangup")
-      putString("server_call_id", extras?.getString("server_call_id").orEmpty())
-    })
+    ServerCallEngineService.end(app, id)
+  }
+
+  fun markConnecting() { setInitializing() }
+
+  fun setCallId(callId: String?) {
+    if (callId.isNullOrBlank()) return
+    val updated = Bundle(extras ?: Bundle()).apply { putString("server_call_id", callId) }
+    setExtras(updated)
   }
 
   fun markConnected() { setActive() }
