@@ -280,7 +280,7 @@ assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
   "public website provides a direct Android connector installation action");
-assert.match(html,/releases\/download\/server-android-connector-preview\/Server-Android-Connector-preview\.apk/,
+assert.match(html,/releases\/download\/server-android-connector-preview\/app-universal-release\.apk/,
   "website installer points to the published Android preview asset");
 assert.match(html,/I'?ve installed Server — continue setup/,
   "website offers the return-to-this-page hand-off after connector installation");
