@@ -395,8 +395,10 @@ final class ServerViewModel: ObservableObject {
             let result = try await api("start", body: payload)
             guard let id = result["call_id"] as? String else { throw ServerError.message("Backend did not return a call ID.") }
             callId = id; route = result["route"] as? String ?? "server"; afterSeq = 0
-            guestInviteMessage = route == "guest" && (result["delivery_mode"] as? String) == "manual_sms"
-                ? (result["sms_body"] as? String ?? "") : ""
+            let deliveryMode = result["delivery_mode"] as? String ?? ""
+            let invitationText = result["invitation_text"] as? String ?? result["sms_body"] as? String ?? ""
+            guestInviteMessage = route == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms")
+                ? invitationText : ""
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
             try await startMedia(servers: iceServers)
             let offer = try await rtc.makeDescription(offer: true)
