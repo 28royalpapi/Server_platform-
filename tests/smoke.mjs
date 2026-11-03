@@ -310,8 +310,14 @@ assert.match(calls,/delivery_mode:"manual_sms"/);
 assert.match(calls,/sms_body:smsBody/);
 assert.match(calls,/No live Server SMS gateway is connected/);
 assert.match(androidMain,/normalizePhoneForServer/);
-assert.ok(androidMain.includes("Intent(Intent.ACTION_SENDTO"),"Android opens a user-confirmed SMS composer for manual guest invites");
-assert.ok(androidMain.includes("private fun notifyCarrierFallback"),"Android exposes a carrier-call fallback notification");
+assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
+assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations use the system share sheet rather than forcing SMS");
+assert.doesNotMatch(androidMain,/private fun notifyCarrierFallback|Try a normal carrier call|charges may apply/,"Android must not offer a paid cellular fallback when Server calling fails");
+assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
+assert.match(androidFirebase,/fcm_registered_server_id/,"push-token registration is scoped to the signed-in Server identity");
+assert.match(androidFirebase,/fun unregister\(context: Context\)/,"FCM endpoint cleanup is attempted when a user signs out");
+assert.match(androidMain,/ServerPushRegistration\.unregister\(this\)/,"Android unregisters its push endpoint before clearing the local session");
+assert.match(androidMain,/override fun onResume\(\)/,"Android retries push registration when the user returns to the app");
 assert.match(androidMain,/20-minute invitation window/);
 assert.doesNotMatch(androidMain,/30_000/,"Android does not end guest or Server calls after a local 30-second timer");
 assert.doesNotMatch(androidMain,/EXTRA_PHONE_ACCOUNT_HANDLE|selectedCellularAccount/,
