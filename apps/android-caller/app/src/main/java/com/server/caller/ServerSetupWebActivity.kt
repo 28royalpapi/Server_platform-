@@ -261,6 +261,10 @@ class ServerSetupWebActivity : Activity() {
         catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
       prefs.edit().putString("access_token", access).remove("refresh_token")
         .putLong("access_expiry", expires).putString("server_id", serverId).remove("phone").apply()
+      // Fetch/register the FCM endpoint immediately after the first Server
+      // session exists. onNewToken may have fired before sign-in and correctly
+      // deferred registration at that time.
+      ServerPushRegistration.syncFcmToken(this)
       val accountRegistered = try {
         ServerTelecomRegistry.register(this)
         true
