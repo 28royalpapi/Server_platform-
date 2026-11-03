@@ -189,8 +189,8 @@ assert.match(nativeWorkflow,/SERVER_ANDROID_KEYSTORE_BASE64/,
   "release CI imports the persistent preview signing key from a GitHub Actions secret");
 assert.match(nativeWorkflow,/preview_signing_ready/,
   "the website release asset is published only after stable signing is configured");
-assert.ok(androidReaWorkflow.includes("ServerTelecomCallEngine$onIceConnectionChange$1' invokeSuspend"),
-  "compiled APK inspection must decode the actual generated coroutine that applies ICE connected state");
+assert.match(androidReaWorkflow,/ServerTelecomCallEngine\\$onIceConnectionChange\\$1/,
+  "compiled APK audit must verify the compiler-generated ICE callback descriptor in DEX without relying on REA's unstable synthetic class naming");
 assert.match(androidReaWorkflow,/ServerTelecomCallEngine onIceConnectionChange/,
   "compiled APK inspection must verify the call engine's real ICE-connected state handling");
 assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity preparePeer|MainActivity handleSignal/,
