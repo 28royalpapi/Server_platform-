@@ -61,14 +61,17 @@ class ServerFirebaseMessagingService : FirebaseMessagingService() {
 }
 
 internal object ServerPushRegistration {
+  private val registeringTokens = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
   fun syncFcmToken(context: Context) {
     if (!ServerFirebase.initialize(context)) return
-    val saved = context.getSharedPreferences("server-session", Context.MODE_PRIVATE).getString("fcm_registration_token", null)
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val saved = prefs.getString("fcm_registration_token", null)
     if (!saved.isNullOrBlank()) { register(context, saved); return }
     try {
       FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
         if (token.isNullOrBlank()) return@addOnSuccessListener
-        context.getSharedPreferences("server-session", Context.MODE_PRIVATE).edit().putString("fcm_registration_token", token).apply()
+        prefs.edit().putString("fcm_registration_token", token).apply()
         register(context, token)
       }.addOnFailureListener { error ->
         Log.w("ServerFirebase", "Could not obtain FCM token: " + error.javaClass.simpleName)
@@ -78,30 +81,116 @@ internal object ServerPushRegistration {
     }
   }
 
+  /**
+   * Register the FCM endpoint with the currently authenticated Server session.
+   * Transient network, rate-limit and 5xx errors are retried. Permanent 4xx errors
+   * are not retried because they require a valid session or a corrected request.
+   */
   fun register(context: Context, token: String) {
+    val cleanToken = token.trim()
+    if (cleanToken.length !in 40..4096) return
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    if (prefs.getString("access_token", null).isNullOrBlank()) return
+    if (!registeringTokens.add(cleanToken)) return
+
+    Thread({
+      try {
+        val maxAttempts = 4
+        for (attempt in 0 until maxAttempts) {
+          val accessToken = prefs.getString("access_token", null)
+          if (accessToken.isNullOrBlank() || !accessToken.matches(Regex("^[0-9a-f]{64}$"))) {
+            Log.i("ServerFirebase", "Push registration deferred until Server sign-in.")
+            return@Thread
+          }
+
+          var connection: HttpURLConnection? = null
+          var shouldRetry = false
+          try {
+            connection = (URL(BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-calls").openConnection() as HttpURLConnection).apply {
+              requestMethod = "POST"
+              connectTimeout = 10000
+              readTimeout = 10000
+              doOutput = true
+              setRequestProperty("content-type", "application/json")
+              setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+              setRequestProperty("authorization", "Bearer " + accessToken)
+            }
+            val body = JSONObject()
+              .put("action", "register_push_token")
+              .put("platform", "android")
+              .put("push_token", cleanToken)
+            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val status = connection.responseCode
+            if (status in 200..299) {
+              prefs.edit().putString("fcm_registered_token", cleanToken).apply()
+              Log.i("ServerFirebase", "Android push token registered with Server.")
+              return@Thread
+            }
+
+            // A 401/403 requires the application to refresh or re-establish its
+            // authenticated session. A 429 or 5xx can recover without user action.
+            if (status == 429 || status >= 500 || status == 408) {
+              shouldRetry = true
+              Log.w("ServerFirebase", "Push-token registration temporarily unavailable (HTTP " + status + ").")
+            } else {
+              Log.w("ServerFirebase", "Push-token registration requires session or request correction (HTTP " + status + ").")
+              return@Thread
+            }
+          } catch (error: Exception) {
+            shouldRetry = true
+            Log.w("ServerFirebase", "Push-token registration attempt failed: " + error.javaClass.simpleName)
+          } finally {
+            connection?.disconnect()
+          }
+
+          if (shouldRetry && attempt < maxAttempts - 1) {
+            try { Thread.sleep(1500L * (1L shl attempt)) }
+            catch (_: InterruptedException) { Thread.currentThread().interrupt(); return@Thread }
+          }
+        }
+        Log.w("ServerFirebase", "Push-token registration remains pending; it will retry when Server next opens.")
+      } finally {
+        registeringTokens.remove(cleanToken)
+      }
+    }, "server-fcm-token-register").apply {
+      isDaemon = true
+      start()
+    }
+  }
+
+  /** Remove this device's push endpoint before a user signs out, where network permits. */
+  fun unregister(context: Context) {
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val token = prefs.getString("fcm_registered_token", null) ?: return
     val accessToken = prefs.getString("access_token", null) ?: return
     if (!accessToken.matches(Regex("^[0-9a-f]{64}$"))) return
-    Thread {
+
+    Thread({
       var connection: HttpURLConnection? = null
       try {
         connection = (URL(BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-calls").openConnection() as HttpURLConnection).apply {
-          requestMethod = "POST"; connectTimeout = 10000; readTimeout = 10000; doOutput = true
+          requestMethod = "POST"
+          connectTimeout = 8000
+          readTimeout = 8000
+          doOutput = true
           setRequestProperty("content-type", "application/json")
           setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
           setRequestProperty("authorization", "Bearer " + accessToken)
         }
-        val body = JSONObject().put("action", "register_push_token").put("platform", "android").put("push_token", token)
+        val body = JSONObject().put("action", "remove_push_token").put("push_token", token)
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-        val status = connection.responseCode
-        if (status !in 200..299) Log.w("ServerFirebase", "Push-token registration returned HTTP " + status)
-        else {
-          prefs.edit().putString("fcm_registered_token", token).apply()
-          Log.i("ServerFirebase", "Android push token registered with Server.")
+        if (connection.responseCode in 200..299) {
+          prefs.edit().remove("fcm_registered_token").apply()
+          Log.i("ServerFirebase", "Android push endpoint removed on sign-out.")
         }
       } catch (error: Exception) {
-        Log.w("ServerFirebase", "Push-token registration deferred: " + error.javaClass.simpleName)
-      } finally { connection?.disconnect() }
-    }.start()
+        Log.w("ServerFirebase", "Push endpoint sign-out cleanup deferred: " + error.javaClass.simpleName)
+      } finally {
+        connection?.disconnect()
+      }
+    }, "server-fcm-token-remove").apply {
+      isDaemon = true
+      start()
+    }
   }
 }
