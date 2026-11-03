@@ -309,6 +309,12 @@ assert.match(androidEngine,/put\("source", "android_telecom"\)/,
   "system Phone calls identify their origin so the backend can reject non-Server guest routes");
 assert.doesNotMatch(androidEngine,/ServerGuestInviteNotifications\.show/,
   "choosing Server from Android Phone must never launch a guest invitation page");
+assert.doesNotMatch(androidEngine,/ServerGuestInviteNotifications|ServerGuestInviteActivity/,
+  "the Android calling connector must not package a guest-invitation screen or notification");
+assert.doesNotMatch(androidManifest,/ServerGuestInviteActivity/,
+  "the Android manifest must not expose a guest invitation Activity");
+assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
+  "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.match(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "the backend rejects non-Server destinations before creating a dialer guest-invitation call");
 assert.match(calls,/RECIPIENT_NOT_SERVER_ENABLED/,
