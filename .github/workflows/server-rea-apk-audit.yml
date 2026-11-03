@@ -128,7 +128,6 @@ jobs:
             unzip -p "$APK" "$dex" | strings
           done > artifacts/rea-caller-engine-dex-classes.txt
           grep -Fq 'ServerTelecomCallEngine$onIceConnectionChange$1' artifacts/rea-caller-engine-dex-classes.txt
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const read = name => {
@@ -146,7 +145,6 @@ jobs:
             ['rea-caller-engine-peer.json', ['createPeerConnection', 'createAudioTrack']],
             ['rea-caller-engine-signals.json', ['offer', 'answer', 'addIceCandidate']],
             ['rea-caller-engine-ice-observer.json', ['onIceConnectionChange', 'AnonymousClass1']],
-            ['rea-caller-guest-invite-notification.json', ['Send invitation', 'ServerGuestInviteActivity']]
           ];
           for (const [file, markers] of checks) {
             const source = read(file);
@@ -161,14 +159,18 @@ jobs:
             console.error('Compiled DEX does not contain the ICE observer coroutine class.');
             process.exit(1);
           }
+          if (dexClasses.includes('ServerGuestInviteNotifications') || dexClasses.includes('ServerGuestInviteActivity')) {
+            console.error('The Android calling connector still packages the unwanted native guest-invitation page.');
+            process.exit(1);
+          }
           const outgoing = read('rea-caller-engine-outgoing.json');
           if (outgoing.includes('ServerGuestInviteNotifications.show')) {
             console.error('The compiled Telecom Phone path still opens a guest invitation page.');
             process.exit(1);
           }
-          console.log('REA_TELECOM_WEBRTC_PASS: inspected compiled ConnectionService, WebRTC engine, ICE observer, DEX coroutine descriptor and verified no guest-page handoff from Telecom.');
+          console.log('REA_TELECOM_WEBRTC_PASS: inspected compiled ConnectionService, WebRTC engine and ICE observer; verified the native guest invitation Activity is absent.');
           NODE
-          echo 'REA inspected compiled Telecom call routing, WebRTC peer creation, SDP/ICE signalling, ICE-connected state and guest invitation handoff.'
+          echo 'REA inspected compiled Telecom call routing, WebRTC peer creation, SDP/ICE signalling and verified no native guest invitation Activity is packaged.'
 
       - name: Upload compiled APKs and REA evidence
         if: always()
@@ -191,8 +193,6 @@ jobs:
             artifacts/rea-caller-engine-signals.json
             artifacts/rea-caller-engine-ice-observer.json
             artifacts/rea-caller-engine-dex-classes.txt
-            artifacts/rea-caller-guest-invite-class.json
-            artifacts/rea-caller-guest-invite-notification.json
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: warn
@@ -256,7 +256,6 @@ jobs:
             artifacts/rea-caller-engine-ice-observer.json
             artifacts/rea-caller-engine-dex-classes.txt
             artifacts/rea-caller-guest-invite-class.json
-            artifacts/rea-caller-guest-invite-notification.json
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: warn
