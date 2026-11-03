@@ -222,11 +222,15 @@ class CallerSmokeTest {
         !device.hasObject(By.textContains("Choose your SIM")))
       assertTrue("The old SIM permission button must not appear",
         !device.hasObject(By.textContains("Allow SIM access")))
-      val terms = device.wait(Until.findObject(By.textContains("I accept the Terms of Service")), 10_000)
-      assertNotNull("Legal acceptance must remain part of account creation", terms)
-      // Accept terms while the consent control is visible, then scroll to the
-      // primary action which sits below the fold on phone-sized screens.
-      terms!!.click()
+      // Click the actual checkbox input rather than its surrounding label text.
+      // Older Android System WebView versions may expose the label span separately
+      // and a label click does not reliably toggle the input/change event.
+      val termsCheckbox = device.wait(Until.findObject(By.clazz("android.widget.CheckBox")), 10_000)
+      assertNotNull("The legal acceptance checkbox must be exposed by the Android WebView", termsCheckbox)
+      assertTrue("Legal acceptance starts unchecked", !termsCheckbox!!.isChecked)
+      termsCheckbox.click()
+      assertTrue("Tapping the checkbox must set its checked state", termsCheckbox.isChecked)
+      // The primary action sits below the fold on phone-sized screens.
       val createButton = findTextOnScrollableScreen(context, device, "Create my Server ID")
       assertNotNull("Server identity creation action is not visible after scrolling", createButton)
       assertTrue("Accepting the terms should enable Server ID creation", createButton!!.isEnabled)
@@ -505,8 +509,8 @@ class CallerSmokeTest {
       prefs.edit()
         .putString("access_token", "0".repeat(64))
         .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
-        .putString("phone", "+15550001001")
-        .putString("selected_sim_phone", "+15550001001")
+        .putString("phone", "+12025550101")
+        .putString("selected_sim_phone", "+12025550101")
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_call_target_kind")
         .remove("debug_last_telecom_stage")
@@ -523,7 +527,7 @@ class CallerSmokeTest {
         .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
         .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
         .setShortDescription("Test-only calling provider; not a carrier SIM")
-        .setAddress(Uri.parse("tel:+15550001001"))
+        .setAddress(Uri.parse("tel:+12025550101"))
         .build()
       telecom.registerPhoneAccount(testAccount)
       testAccountRegistered = true
@@ -543,7 +547,7 @@ class CallerSmokeTest {
       // This avoids depending on the emulator's optional Contacts provider while
       // still testing the system outgoing-account chooser used after the user taps Call.
       device.pressHome()
-      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+15550001001"))
+      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+12025550101"))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       val dialerReady = device.wait(Until.hasObject(By.textContains("555")), 12_000)
       assertTrue("Android's system Phone dialer did not open with the requested number", dialerReady)
