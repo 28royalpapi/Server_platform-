@@ -124,7 +124,7 @@ internal class ServerTelecomCallEngine(
           .apply()
       }
       recordStage("backend_start_requested")
-      val started = api("start", JSONObject().put("to_phone", target))
+      val started = api("start", JSONObject().put("to_phone", target).put("source", "android_telecom"))
       callId = started.optString("call_id").takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("Server did not return a call ID.")
       ServerTelecomRegistry.setCurrentCallId(callId)
@@ -155,22 +155,20 @@ internal class ServerTelecomCallEngine(
         return
       }
       recordStage("call_offer_submitted")
-      if (route == "guest") {
-        val invite = started.optString("invitation_text", started.optString("sms_body", ""))
-        if (invite.isNotBlank()) {
-          ServerGuestInviteNotifications.show(context, callId.orEmpty(), target, invite)
-        } else {
-          throw IllegalStateException("Server created the guest route but did not return an invitation link.")
-        }
-      } else {
-        val acceptedPush = started.optJSONObject("push_delivery")?.optInt("sent", 0) ?: 0
-        if (acceptedPush == 0) {
-          Log.w(TAG, "No push provider accepted a wake alert; recipient must have the Server listener active.")
-        }
+      if (route != "server") {
+        throw IllegalStateException("RECIPIENT_NOT_SERVER_ENABLED")
+      }
+      val acceptedPush = started.optJSONObject("push_delivery")?.optInt("sent", 0) ?: 0
+      if (acceptedPush == 0) {
+        Log.w(TAG, "No push provider accepted a wake alert; recipient must have the Server listener active.")
       }
       beginPolling()
     } catch (error: Exception) {
-      failCall(error.message ?: "Unknown call-start error")
+      val reason = error.message.orEmpty()
+      val message = if (reason.contains("RECIPIENT_NOT_SERVER_ENABLED")) {
+        "This number is not enabled for Server internet calls. Use your carrier SIM for a normal mobile call, or have the recipient enable Server number calling."
+      } else reason.ifBlank { "Unknown call-start error" }
+      failCall(message)
     }
   }
 
