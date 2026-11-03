@@ -42,7 +42,7 @@ if(action==="join"){
  const {call:updatedCall,error:ce}=await loadGuestCall();
  if(ce||!updatedCall)return out({error:"CALL_NOT_FOUND"},404);
  if(!["ringing","connecting"].includes(updatedCall.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
- return out({ok:true,invite_id:invite.id,call:updatedCall,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
+ return out({ok:true,invite_id:invite.id,call:updatedCall,ice_servers:[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
 }
 if(action==="poll"){
  const after=Math.max(0,Number.isSafeInteger(b.after_seq)?Number(b.after_seq):Number(b.after)||0);
