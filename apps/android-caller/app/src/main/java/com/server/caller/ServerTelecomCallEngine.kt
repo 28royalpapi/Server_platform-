@@ -104,7 +104,7 @@ internal class ServerTelecomCallEngine(
   }
 
   private suspend fun placeOutgoing(rawTarget: String) {
-    recordStage("call_engine_service_started")
+    recordStage("call_engine_connection_started")
     try {
       val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
       val capabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
@@ -120,7 +120,7 @@ internal class ServerTelecomCallEngine(
         prefs.edit()
           .putLong("debug_last_call_engine_entered_at", System.currentTimeMillis())
           .putString("debug_last_call_target_kind", "phone")
-          .putBoolean("debug_call_engine_service_started", true)
+          .putBoolean("debug_telecom_connection_engine_started", true)
           .apply()
       }
       recordStage("backend_start_requested")
@@ -142,6 +142,10 @@ internal class ServerTelecomCallEngine(
         return
       }
       val offer = createLocalDescription(offer = true)
+      if (hangupRequested) {
+        finishCall(callId.orEmpty(), "local")
+        return
+      }
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
       recordStage("call_offer_submitted")
       if (route == "guest") {
@@ -177,6 +181,10 @@ internal class ServerTelecomCallEngine(
       iceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(iceServers)
       connection.markConnecting()
+      if (hangupRequested) {
+        finishCall(id, "local")
+        return
+      }
       beginPolling()
     } catch (error: Exception) {
       failCall(error.message ?: "Could not answer the incoming Server call.")
