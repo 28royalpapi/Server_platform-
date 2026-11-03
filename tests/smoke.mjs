@@ -26,6 +26,7 @@ const iosModel=read("apps/ios-caller/ServerCaller/ServerViewModel.swift");
 const iosView=read("apps/ios-caller/ServerCaller/ContentView.swift");
 const auth=read("supabase/functions/server-auth/index.ts");
 const androidIncoming=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallService.kt");
+const androidIncomingAlert=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallAlertService.kt");
 const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFirebaseMessagingService.kt");
 const androidBuild=read("apps/android-caller/app/build.gradle.kts");
 const androidProguard=read("apps/android-caller/app/proguard-rules.pro");
@@ -106,14 +107,18 @@ assert.doesNotMatch(androidCallNotifications,/setBypassDnd\(true\)/,
   "Server must not bypass Do Not Disturb");
 assert.match(androidCallNotifications,/ACTION_ANSWER/);
 assert.match(androidCallNotifications,/ACTION_DECLINE/);
-assert.match(androidCallNotifications,/ServerIncomingCallService\.showIncomingCall/,
-  "Android 12+ CallStyle must be sent to the phone-call foreground service");
-assert.match(androidIncoming,/buildIncomingNotification/,
-  "the foreground service must own the incoming CallStyle notification");
+assert.match(androidCallNotifications,/ServerIncomingCallAlertService\.showIncomingCall/,
+  "Android 12+ CallStyle must use its dedicated phone-call foreground service");
+assert.match(androidCallNotifications,/ServerIncomingCallAlertService\.clearIncomingCall/,
+  "ending a call must clear its dedicated alert notification");
+assert.match(androidIncomingAlert,/buildIncomingNotification/,
+  "the dedicated alert service must build the incoming CallStyle notification");
+assert.match(androidIncomingAlert,/startForeground\(/,
+  "the incoming CallStyle notification must be promoted by its own foreground service");
+assert.match(androidIncomingAlert,/ACTION_SILENCE/);
+assert.match(androidIncomingAlert,/ACTION_CLEAR/);
 assert.match(androidIncoming,/startForeground\(FOREGROUND_NOTIFICATION_ID, notification/,
-  "the incoming CallStyle notification must be the actual foreground-service notification");
-assert.match(androidIncoming,/ACTION_SILENCE_INCOMING_CALL/);
-assert.match(androidIncoming,/ACTION_CLEAR_INCOMING_CALL/);
+  "the background listener keeps its own low-importance foreground notification");
 
 assert.match(androidTelecom,/ServerCallNotifications\.show/);
 assert.match(androidTelecom,/answerFromNotification/);
@@ -205,6 +210,7 @@ assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallService"/);
+assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallAlertService"/);
 assert.match(androidManifest,/com.server.caller.ServerFirebaseMessagingService/);
 assert.match(androidBuild,/isMinifyEnabled = true/);
 assert.match(androidBuild,/isShrinkResources = true/);
