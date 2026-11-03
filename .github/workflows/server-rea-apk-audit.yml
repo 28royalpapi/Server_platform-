@@ -121,8 +121,8 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine preparePeer --json > artifacts/rea-caller-engine-peer.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine handleSignal --json > artifacts/rea-caller-engine-signals.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-caller-engine-ice-observer.json
-          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerTelecomCallEngine.AnonymousClass1 --json > artifacts/rea-caller-engine-ice-state-class.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine.AnonymousClass1 invokeSuspend --json > artifacts/rea-caller-engine-ice-state.json
+          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" 'com.server.caller.ServerTelecomCallEngine$onIceConnectionChange$1' --json > artifacts/rea-caller-engine-ice-state-class.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" 'com.server.caller.ServerTelecomCallEngine$onIceConnectionChange$1' invokeSuspend --json > artifacts/rea-caller-engine-ice-state.json
           npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerGuestInviteNotifications --json > artifacts/rea-caller-guest-invite-class.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
           node --input-type=module <<'NODE'
@@ -141,7 +141,7 @@ jobs:
             ['rea-caller-engine-outgoing.json', ['api("start"', 'createLocalDescription', 'api("signal"']],
             ['rea-caller-engine-peer.json', ['createPeerConnection', 'createAudioTrack']],
             ['rea-caller-engine-signals.json', ['offer', 'answer', 'addIceCandidate']],
-            ['rea-caller-engine-ice-observer.json', ['AnonymousClass1']],
+            ['rea-caller-engine-ice-observer.json', ['onIceConnectionChange']],
             ['rea-caller-engine-ice-state.json', ['CONNECTED', 'COMPLETED', 'set_active']],
             ['rea-caller-guest-invite-notification.json', ['Send invitation', 'ServerGuestInviteActivity']]
           ];
