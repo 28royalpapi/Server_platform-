@@ -23,7 +23,7 @@ async function iceServersForCall(identity:string, ttlSeconds:number) {
  const sharedSecret=Deno.env.get("SERVER_TURN_SHARED_SECRET")||"";
  if(!rawUrls||sharedSecret.length<32)return BASE_ICE_SERVERS;
  const turnUrls=rawUrls.split(",").map((url:string)=>url.trim())
-  .filter((url:string)=>/^turns?:[^\\s@]+$/i.test(url)).slice(0,8);
+  .filter((url:string)=>/^turns?:[^\s@]+$/i.test(url)).slice(0,8);
  if(!turnUrls.length)return BASE_ICE_SERVERS;
  const safeIdentity=identity.replace(/[^A-Za-z0-9_.-]/g,"").slice(0,80)||"server";
  const expires=Math.floor(Date.now()/1000)+Math.max(300,Math.min(3600,ttlSeconds+120));
