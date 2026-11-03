@@ -76,10 +76,14 @@ class CallerSmokeTest {
       }
       ServerCallNotifications.show(context, callId, "SVR-12AB34CD56")
       val notificationDeadline = System.currentTimeMillis() + 8_000
-      var posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      var posted = manager.activeNotifications.firstOrNull {
+        it.id == notificationId && it.notification.channelId == ServerCallNotifications.CHANNEL_ID
+      }
       while (posted == null && System.currentTimeMillis() < notificationDeadline) {
         Thread.sleep(100)
-        posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+        posted = manager.activeNotifications.firstOrNull {
+          it.id == notificationId && it.notification.channelId == ServerCallNotifications.CHANNEL_ID
+        }
       }
       assertNotNull("An incoming Server call must post a native ringing notification", posted)
       // Android ranks CallStyle notifications promoted by a phoneCall foreground
@@ -154,8 +158,14 @@ class CallerSmokeTest {
     val callId = "missed-" + UUID.randomUUID().toString()
     val notificationId = 7600 + (callId.hashCode() and 0x0000FFFF)
     try {
-      ServerCallNotifications.showMissed(context, callId, "SVR-12AB34CD56")
-      val posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      assertTrue("Missed-call notification should be accepted when notification permission is granted",
+        ServerCallNotifications.showMissed(context, callId, "SVR-12AB34CD56"))
+      val notificationDeadline = System.currentTimeMillis() + 5_000
+      var posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      while (posted == null && System.currentTimeMillis() < notificationDeadline) {
+        Thread.sleep(100)
+        posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      }
       assertNotNull("A call missed while offline must appear after reconnect", posted)
       assertEquals("The notification must be categorised as a missed call",
         android.app.Notification.CATEGORY_MISSED_CALL, posted!!.notification.category)
