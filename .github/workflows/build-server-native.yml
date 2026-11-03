@@ -232,7 +232,7 @@ jobs:
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#missedServerCallNotificationOffersQuietCallbackAction
@@ -249,7 +249,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [29, 30, 31, 32, 33, 35, 37]
+        api-level: [29, 30, 31, 32, 33, 34, 35, 37]
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -281,12 +281,11 @@ jobs:
       - name: Run Android API ${{ matrix.api-level }} Telecom and phone-picker acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # Android 17's platform package is 37.0; its emulator image remains API 37.
+          # Android 17 publishes the platform and 16 KB-page image under 37.0.
           api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
-          system-image-api-level: ${{ matrix.api-level }}
-          # Android 17's SDK packages are published on the Canary SDK channel.
+          system-image-api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
           channel: ${{ matrix.api-level == 37 && 'canary' || 'stable' }}
-          target: google_apis
+          target: ${{ matrix.api-level == 37 && 'google_apis_ps16k' || 'google_apis' }}
           arch: x86_64
           profile: pixel_2
           cores: 2
