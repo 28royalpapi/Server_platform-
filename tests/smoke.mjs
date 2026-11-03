@@ -12,6 +12,7 @@ const handoff=read("supabase/functions/server-handoff/index.ts");
 const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt");
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
+const androidEngine=read("apps/android-caller/app/src/main/java/com/server/caller/ServerTelecomCallEngine.kt");
 const androidBuild=read("apps/android-caller/app/build.gradle.kts");
 const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallNotifications.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
@@ -302,6 +303,10 @@ assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList
 assert.match(androidSetup,/requestCallPermissions/);
 assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
+assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\)/,
+  "Telecom ringback is requested only for a real Server recipient, never for a manual guest share");
+assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
+  "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+12025550101"\)\)/,
   "outgoing-call acceptance opens Android's real Phone dialer with a test target");
