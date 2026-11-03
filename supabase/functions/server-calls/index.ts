@@ -181,8 +181,8 @@ Deno.serve(async(req:Request)=>{
     if(!to){await db.from("server_calls").delete().eq("id",call.id);return out({error:"RECIPIENT_PHONE_REQUIRED"},400);}
     const callerKey=await sha("guest-caller:"+uid),targetKey=await sha("guest-target:"+to);
     const [callerLimit,targetLimit]=await Promise.all([
-      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_caller",p_key_hash:callerKey,p_window_seconds:3600,p_max_hits:10}),
-      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_target",p_key_hash:targetKey,p_window_seconds:3600,p_max_hits:5})
+      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_caller",p_key_hash:callerKey,p_window_seconds:3600,p_max_hits:60}),
+      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_target",p_key_hash:targetKey,p_window_seconds:3600,p_max_hits:15})
     ]);
     if(callerLimit.error||targetLimit.error||callerLimit.data!==true||targetLimit.data!==true){
       await db.from("server_calls").delete().eq("id",call.id);return out({error:"GUEST_INVITE_RATE_LIMITED"},429);
