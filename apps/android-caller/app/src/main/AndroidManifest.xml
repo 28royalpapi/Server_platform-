@@ -42,8 +42,6 @@
         <data android:scheme="server" android:host="device-setup" />
       </intent-filter>
     </activity>
-    <service android:name="com.server.caller.ServerCallEngineService"
-      android:exported="false" android:foregroundServiceType="phoneCall" />
     <service android:name="com.server.caller.ServerIncomingCallService"
       android:exported="false" android:foregroundServiceType="phoneCall" />
     <service android:name="com.server.caller.ServerIncomingCallAlertService"
@@ -52,7 +50,6 @@
       <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
     </service>
     <receiver android:name="com.server.caller.ServerCallActionReceiver" android:exported="false" />
-    <receiver android:name="com.server.caller.ServerEndCallReceiver" android:exported="false" />
     <activity android:name="com.server.caller.ServerGuestInviteActivity"
       android:exported="false" android:theme="@style/ServerCallRouterTheme" />
     <service
