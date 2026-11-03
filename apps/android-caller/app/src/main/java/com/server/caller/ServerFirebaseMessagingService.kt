@@ -91,6 +91,10 @@ internal object ServerPushRegistration {
     if (cleanToken.length !in 40..4096) return
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     if (prefs.getString("access_token", null).isNullOrBlank()) return
+    val serverId = prefs.getString("server_id", "").orEmpty()
+    if (serverId.isNotBlank() &&
+        prefs.getString("fcm_registered_token", null) == cleanToken &&
+        prefs.getString("fcm_registered_server_id", null) == serverId) return
     if (!registeringTokens.add(cleanToken)) return
 
     Thread({
@@ -122,7 +126,8 @@ internal object ServerPushRegistration {
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val status = connection.responseCode
             if (status in 200..299) {
-              prefs.edit().putString("fcm_registered_token", cleanToken).apply()
+              prefs.edit().putString("fcm_registered_token", cleanToken)
+                .putString("fcm_registered_server_id", prefs.getString("server_id", "").orEmpty()).apply()
               Log.i("ServerFirebase", "Android push token registered with Server.")
               return@Thread
             }
@@ -180,7 +185,7 @@ internal object ServerPushRegistration {
         val body = JSONObject().put("action", "remove_push_token").put("push_token", token)
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         if (connection.responseCode in 200..299) {
-          prefs.edit().remove("fcm_registered_token").apply()
+          prefs.edit().remove("fcm_registered_token").remove("fcm_registered_server_id").apply()
           Log.i("ServerFirebase", "Android push endpoint removed on sign-out.")
         }
       } catch (error: Exception) {
