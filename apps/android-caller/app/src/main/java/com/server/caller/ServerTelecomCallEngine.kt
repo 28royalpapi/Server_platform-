@@ -147,6 +147,10 @@ internal class ServerTelecomCallEngine(
         return
       }
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
+      if (hangupRequested) {
+        finishCall(callId.orEmpty(), "local")
+        return
+      }
       recordStage("call_offer_submitted")
       if (route == "guest") {
         val invite = started.optString("invitation_text", started.optString("sms_body", ""))
@@ -449,20 +453,6 @@ internal class ServerTelecomCallEngine(
     if (!BuildConfig.DEBUG) return
     prefs.edit().putString("debug_last_telecom_stage", stage)
       .putLong("debug_last_telecom_stage_at", System.currentTimeMillis()).apply()
-  }
-
-  private fun failCall(message: String) {
-    recordStage("call_setup_failed")
-    if (BuildConfig.DEBUG) prefs.edit().putString("debug_last_call_failure", message.take(240)).apply()
-    val id = callId
-    connection.markEnded()
-    if (!id.isNullOrBlank()) {
-      ServerCallNotifications.cancel(context, id)
-      scope.launch { try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {} }
-    }
-    cleanupPeer()
-    ServerCallEngineStatusNotifications.showFailure(context, message)
-    release()
   }
 
   private fun cleanupPeer() {
