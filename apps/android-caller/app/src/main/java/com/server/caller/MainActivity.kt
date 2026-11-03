@@ -173,7 +173,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply {
-      text = "Server-to-Server calls use your Server ID. Calls to people outside Server require an invitation or an available paid carrier route. Server is an internet-calling account, not a SIM/eSIM."
+      text = "Server-to-Server calls use your Server ID. Calls to people outside Server use a secure guest invitation link. The recipient needs internet to answer. Server does not place carrier voice calls."
       textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0)
     })
   }
@@ -435,59 +435,20 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     return candidate.takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
   }
 
-  /** Opens the user's SMS composer; Server never sends a paid or unsolicited SMS silently. */
-  private fun openGuestInviteComposer(number: String, body: String) {
-    val smsIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$number")).apply {
-      putExtra("sms_body", body)
-    }
+  /**
+   * Shares a guest invitation through an app the caller already has.
+   * Server does not silently send paid SMS or place a carrier voice call.
+   */
+  private fun shareGuestInvitation(body: String) {
     try {
-      startActivity(smsIntent)
-      setStatus("Guest invitation prepared in your SMS app. Tap Send there; then return to the call. The recipient must open it with internet and microphone access.")
+      val share = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, body)
+      }
+      startActivity(Intent.createChooser(share, "Share Server guest-call invitation"))
+      setStatus("Invitation ready. Choose an app you already use to send the secure link. The recipient needs internet and microphone access.")
     } catch (_: Exception) {
-      try {
-        val share = Intent(Intent.ACTION_SEND).apply {
-          type = "text/plain"
-          putExtra(Intent.EXTRA_TEXT, body)
-        }
-        startActivity(Intent.createChooser(share, "Share Server guest-call invitation"))
-        setStatus("Choose Messages or another app to share the invitation. The recipient needs internet and microphone access.")
-      } catch (e: Exception) {
-        setStatus("The guest invitation is ready, but no messaging app could open it. Copy and share this link manually: " + body, true)
-      }
-    }
-  }
-
-  /** Presents a user-confirmed route into the normal carrier dialer; it never silently places a paid call. */
-  private fun notifyCarrierFallback(number: String, reason: String) {
-    if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(number)) return
-    try {
-      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      val channelId = "server-carrier-fallback"
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        manager.createNotificationChannel(NotificationChannel(
-          channelId, "Server carrier-call fallback", NotificationManager.IMPORTANCE_HIGH
-        ).apply { description = "Lets you switch to a normal carrier call when Server cannot reach a user." })
-      }
-      val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).apply {
-        // Let Android and the user choose their normal carrier account, if needed.
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      }
-      val pending = PendingIntent.getActivity(
-        this, number.hashCode(), dialIntent,
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-      )
-      val notification = Notification.Builder(this, channelId)
-        .setSmallIcon(android.R.drawable.sym_action_call)
-        .setContentTitle("Try a normal carrier call")
-        .setContentText(reason)
-        .setStyle(Notification.BigTextStyle().bigText("$reason Tap to open the phone dialer and place a regular call. Your mobile operator may charge you."))
-        .setCategory(Notification.CATEGORY_CALL)
-        .setAutoCancel(true)
-        .setContentIntent(pending)
-        .build()
-      manager.notify(7341, notification)
-    } catch (_: Exception) {
-      Toast.makeText(this, "$reason Open your normal phone dialer to place a carrier call; charges may apply.", Toast.LENGTH_LONG).show()
+      setStatus("The guest invitation is ready, but no share app could open. Copy and share this link manually: " + body, true)
     }
   }
 
@@ -545,7 +506,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val deliveryMode = started.optString("delivery_mode", "")
       val invitationBody = started.optString("sms_body", "")
       if (currentRoute == "guest" && deliveryMode == "manual_sms" && invitationBody.isNotBlank() && normalizedPhone != null) {
-        openGuestInviteComposer(normalizedPhone, invitationBody)
+        shareGuestInvitation(invitationBody)
       } else {
         setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Server user… waiting for answer.")
       }
@@ -554,10 +515,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       // If Telecom launched this engine, tell the system dialer that the internet
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
-      val fallbackPhone = normalizedPhone
       cleanPeer(); callId = null
-      setStatus(e.message ?: "Could not start call.", true)
-      if (fallbackPhone != null) notifyCarrierFallback(fallbackPhone, "Server could not reach its call service.")
+      setStatus("Server could not start the internet call: " + (e.message ?: "Unknown error") +
+        ". No normal mobile call was placed. Check your internet connection and try again.", true)
     } finally { callButton.isEnabled = true }
   }
   private suspend fun incomingLoop() {
