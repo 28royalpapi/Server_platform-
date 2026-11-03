@@ -30,7 +30,6 @@ const auth=read("supabase/functions/server-auth/index.ts");
 const androidIncoming=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallService.kt");
 const androidIncomingAlert=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallAlertService.kt");
 const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFirebaseMessagingService.kt");
-const androidBuild=read("apps/android-caller/app/build.gradle.kts");
 const androidProguard=read("apps/android-caller/app/proguard-rules.pro");
 const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
