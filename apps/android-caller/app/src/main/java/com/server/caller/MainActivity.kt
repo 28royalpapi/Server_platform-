@@ -56,8 +56,15 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Server voice calls require an actual internet route which Android has validated. */
-internal fun isServerInternetUsable(hasInternetCapability: Boolean, isValidated: Boolean): Boolean =
-  hasInternetCapability && isValidated
+@Suppress("UNUSED_PARAMETER")
+@Suppress("UNUSED_PARAMETER")
+internal fun isServerInternetUsable(hasInternetCapability: Boolean, isValidated: Boolean): Boolean {
+  // NET_CAPABILITY_VALIDATED depends on Android's captive-portal probe. Some carrier
+  // networks and OEM builds leave it false even when app traffic can reach the internet.
+  // INTERNET is a better admission check; the authenticated Server request below is
+  // the real end-to-end connectivity test and reports failures explicitly.
+  return hasInternetCapability
+}
 
 internal fun isServerInternetUsable(capabilities: NetworkCapabilities?): Boolean =
   isServerInternetUsable(
@@ -77,6 +84,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var callId: String? = null
   private var activeStateSyncedFor: String? = null
   private var pendingDialedNumber: String? = null
+  // A system Phone-app call must not background this Activity until the actual
+  // Server request/media offer has been prepared. Guest invitations need the
+  // foreground Activity to show Android's share chooser.
+  private var pendingSystemDialerReturn = false
   private var currentRoute = "server"
   private var lastSeq = 0L
   private var peer: PeerConnection? = null
@@ -98,8 +109,19 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private lateinit var callButton: Button
   private lateinit var hangupButton: Button
 
+  private val guestShareLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+    // Return to Android's Phone app only after the foreground share chooser has
+    // completed. Launching the chooser from a background Activity is blocked on
+    // modern Android and some OEM builds.
+    returnToSystemPhoneUi()
+  }
+
   private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
     if (!granted) {
+      if (pendingSystemDialerReturn) {
+        pendingSystemDialerReturn = false
+        ServerTelecomRegistry.markEnded()
+      }
       setStatus("Microphone permission is required to place or answer calls.", true)
     } else if (::targetInput.isInitialized && targetInput.text.toString().isNotBlank() && callId == null) {
       // Continue the call action that triggered the permission prompt instead of
@@ -290,18 +312,29 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private fun yieldToSystemPhoneUi(incoming: Intent?) {
     // A call selected inside Server's own dialer must leave the call engine visible.
-    // Only calls launched from Android's external Telecom UI should background this activity.
     if (incoming?.getBooleanExtra("sava_dialer_launch", false) == true) return
     val action = incoming?.getStringExtra("server_action") ?: return
     if (action !in setOf("dial", "incoming", "answer", "decline", "hangup")) return
-    // The system-owned call UI is already foreground. For an outgoing dial request,
-    // give the queued engine coroutine time to reload the session and enter startCall
-    // before backgrounding this Activity; immediate task-backgrounding can race the
-    // Telecom handoff on Android 14 and OEM task schedulers.
-    val delayMillis = if (action == "dial") 1_500L else 300L
+    if (action == "dial" || action == "answer") {
+      // Do not race a fixed timer against DNS, mobile-network validation, auth refresh,
+      // permission UI, WebRTC initialisation or SDP creation. The matching call flow
+      // returns to the Phone app only after its setup succeeds.
+      pendingSystemDialerReturn = true
+      recordTelecomDebugStage("telecom_ui_return_deferred")
+      return
+    }
     root.postDelayed({
       if (!isFinishing && !isDestroyed) moveTaskToBack(true)
-    }, delayMillis)
+    }, 300L)
+  }
+
+  private fun returnToSystemPhoneUi() {
+    if (!pendingSystemDialerReturn) return
+    pendingSystemDialerReturn = false
+    recordTelecomDebugStage("telecom_ui_return_after_call_setup")
+    root.post {
+      if (!isFinishing && !isDestroyed) moveTaskToBack(true)
+    }
   }
 
   private fun handleAppLink(incoming: Intent?) {
@@ -466,8 +499,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, body)
       }
-      startActivity(Intent.createChooser(share, "Share Server guest-call invitation"))
-      setStatus("Invitation ready. Choose an internet messaging app to share the link. Choosing SMS may incur your mobile operator's SMS charge. The recipient needs internet and microphone access.")
+      val chooser = Intent.createChooser(share, "Share Server guest-call invitation")
+      if (pendingSystemDialerReturn) guestShareLauncher.launch(chooser) else startActivity(chooser)
+      setStatus("This number is not currently enabled for direct Server-to-Server calling. Share the internet invitation to reach them. Choosing SMS may incur your mobile operator's SMS charge; the recipient needs internet and microphone access.")
     } catch (_: Exception) {
       setStatus("The guest invitation is ready, but no share app could open. Copy and share this link manually: " + body, true)
     }
@@ -479,7 +513,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     val activeNetwork = connectivity.activeNetwork
     val networkCapabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
     if (!isServerInternetUsable(networkCapabilities)) {
-      recordTelecomDebugStage("start_call_no_validated_internet")
+      recordTelecomDebugStage("start_call_no_internet_capability")
       ServerTelecomRegistry.markEnded()
       val message = "Server needs internet to place this call. Turn on mobile data or connect to Wi-Fi, then try again."
       setStatus(message, true)
@@ -498,7 +532,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     val normalizedPhone = if (isServerId) null else normalizePhoneForServer(typedTarget)
     if (!isServerId && normalizedPhone == null) {
       recordTelecomDebugStage("start_call_target_invalid")
-      setStatus("Enter a Server ID (SVR- plus 10 characters) or a valid phone number, e.g. 08012345678 or +2348012345678.", true)
+      ServerTelecomRegistry.markEnded()
+      setStatus("The number supplied by the Phone app could not be read as a Nigerian or international number. No carrier call was placed.", true)
       return@launch
     }
     // Debug builds record that Telecom's system-originated tel: request reached
@@ -515,7 +550,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (isServerId) payload.put("to_server_id", serverId) else payload.put("to_phone", normalizedPhone)
     callButton.isEnabled = false
     try {
+      recordTelecomDebugStage("backend_start_requested")
       val started = api("start", payload)
+      recordTelecomDebugStage("backend_call_created")
       callId = started.getString("call_id"); ServerTelecomRegistry.setCurrentCallId(callId)
       activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
@@ -524,6 +561,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
       callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       beginCallPolling()
+      recordTelecomDebugStage("call_offer_submitted")
       val deliveryMode = started.optString("delivery_mode", "")
       val invitationBody = started.optString("invitation_text",
         started.optString("sms_body", ""))
@@ -539,9 +577,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         } else {
           setStatus("Call created, but no push provider accepted a wake alert. An already-active Server listener may still receive it; otherwise the recipient must reconnect or open Server. Carrier offline wake-up is not enabled.", true)
         }
+        returnToSystemPhoneUi()
       }
     } catch (e: Exception) {
-      recordTelecomDebugStage("call_backend_start_failed")
+      recordTelecomDebugStage("call_setup_failed")
       // If Telecom launched this engine, tell the system dialer that the internet
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
@@ -599,6 +638,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       setStatus("Incoming call accepted. Connecting audio…")
       beginCallPolling()
+      returnToSystemPhoneUi()
     } catch (e: Exception) { callId = null; cleanPeer(); setStatus(e.message ?: "Could not answer call.", true) }
   }
 
