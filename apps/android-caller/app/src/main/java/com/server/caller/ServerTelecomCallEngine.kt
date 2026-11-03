@@ -1,17 +1,13 @@
 package com.server.caller
 
 import android.Manifest
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
+undefinedimport android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.net.Uri
 import android.os.Build
 import android.telecom.Connection
 import android.util.Log
@@ -535,45 +531,6 @@ internal class ServerTelecomCallEngine(
   companion object { private const val TAG = "ServerTelecomEngine" }
 }
 
-/** Actionable browser-invite notification, separate from the native call screen. */
-internal object ServerGuestInviteNotifications {
-  private const val CHANNEL = "server-guest-invitations-v2"
-
-  fun show(context: Context, callId: String, phone: String, text: String) {
-    if (Build.VERSION.SDK_INT >= 33 &&
-      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(CHANNEL) == null) {
-      manager.createNotificationChannel(NotificationChannel(
-        CHANNEL, "Server guest-call invitations", NotificationManager.IMPORTANCE_HIGH
-      ).apply {
-        description = "Heads-up prompt to send a secure browser invitation to a non-Server contact."
-        lockscreenVisibility = Notification.VISIBILITY_PRIVATE
-      })
-    }
-    val intent = Intent(context, ServerGuestInviteActivity::class.java).apply {
-      putExtra(ServerGuestInviteActivity.EXTRA_TEXT, text)
-      putExtra(ServerGuestInviteActivity.EXTRA_PHONE, phone)
-      putExtra(ServerGuestInviteActivity.EXTRA_CALL_ID, callId)
-    }
-    val pending = PendingIntent.getActivity(
-      context, 8500 + (callId.hashCode() and 0x0000FFFF), intent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-    val notification = NotificationCompat.Builder(context, CHANNEL)
-      .setSmallIcon(android.R.drawable.sym_action_call)
-      .setContentTitle("Send Server invitation")
-      .setContentText("The recipient will not ring until you send the link. Tap to send it now.")
-      .setPriority(NotificationCompat.PRIORITY_HIGH)
-      .setCategory(NotificationCompat.CATEGORY_CALL)
-      .setAutoCancel(true)
-      .setContentIntent(pending)
-      .addAction(android.R.drawable.ic_menu_share, "Send invitation", pending)
-      .build()
-    manager.notify(8500 + (callId.hashCode() and 0x0000FFFF), notification)
-  }
-}
-
 internal object ServerCallEngineStatusNotifications {
   private const val CHANNEL = "server-call-status-v1"
   fun showFailure(context: Context, message: String) {
@@ -591,31 +548,5 @@ internal object ServerCallEngineStatusNotifications {
       .setContentText(message.take(180))
       .setAutoCancel(true)
       .build())
-  }
-}
-
-/** Opens sharing only after the user taps the invitation notification. */
-class ServerGuestInviteActivity : android.app.Activity() {
-  override fun onCreate(savedInstanceState: android.os.Bundle?) {
-    super.onCreate(savedInstanceState)
-    val text = intent.getStringExtra(EXTRA_TEXT).orEmpty()
-    val phone = intent.getStringExtra(EXTRA_PHONE).orEmpty()
-    if (text.isBlank()) { finish(); return }
-    val share = Intent(Intent.ACTION_SEND).apply {
-      type = "text/plain"
-      putExtra(Intent.EXTRA_TEXT, text)
-    }
-    val sms = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")).apply { putExtra("sms_body", text) }
-    val chooser = Intent.createChooser(share, "Send Server invitation").apply {
-      putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(sms))
-    }
-    try { startActivity(chooser) } catch (_: Exception) {}
-    finish()
-  }
-
-  companion object {
-    const val EXTRA_TEXT = "server_guest_invitation_text"
-    const val EXTRA_PHONE = "server_guest_invitation_phone"
-    const val EXTRA_CALL_ID = "server_guest_invitation_call_id"
   }
 }
