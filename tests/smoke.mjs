@@ -307,6 +307,8 @@ assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\
   "Telecom ringback is requested only for a real Server recipient, never for a manual guest share");
 assert.match(androidEngine,/put\("source", "android_telecom"\)/,
   "system Phone calls identify their origin so the backend can reject non-Server guest routes");
+assert.match(androidMain,/if \(pendingSystemDialerReturn\) payload\.put\("source", "android_telecom"\)/,
+  "the legacy Android Phone intent bridge must use the same backend no-guest route guard");
 assert.doesNotMatch(androidEngine,/ServerGuestInviteNotifications\.show/,
   "choosing Server from Android Phone must never launch a guest invitation page");
 assert.doesNotMatch(androidEngine,/ServerGuestInviteNotifications|ServerGuestInviteActivity/,
