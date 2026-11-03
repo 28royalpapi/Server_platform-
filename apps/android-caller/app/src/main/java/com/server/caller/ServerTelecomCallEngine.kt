@@ -319,7 +319,10 @@ internal class ServerTelecomCallEngine(
       if (row.has("credential")) builder.setPassword(row.optString("credential"))
       servers.add(builder.createIceServer())
     }
-    if (servers.isEmpty()) servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
+    if (servers.isEmpty()) {
+      servers.add(PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer())
+      servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
+    }
     val config = PeerConnection.RTCConfiguration(servers).apply {
       sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
     }
