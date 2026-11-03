@@ -198,24 +198,12 @@ Deno.serve(async(req:Request)=>{
     const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Accept to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
     const manualDelivery=(reason:string)=>out({
       ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,
-      invite_expires_at:expires,delivery_mode:"manual_sms",guest_invite_url:guestUrl,
-      sms_body:smsBody,delivery_message:reason
+      invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
+      guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason
     });
-    // Do not make the entire call depend on a separately paired SMS gateway. If there
-    // is no live gateway (or queue insertion fails), the caller can send this invite
-    // through the phone's own Messages app without another API provider or SMS key.
-    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices").select("id").eq("enabled",true)
-      .gte("last_seen_at",new Date(Date.now()-90000).toISOString()).limit(1).maybeSingle();
-    if(gatewayError||!gateway){
-      return manualDelivery("No live Server SMS gateway is connected. Send the prepared invitation from your phone's messaging app.");
-    }
-    const {error:qe}=await db.from("server_sms_jobs").insert({
-      category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,guest_invite_id:invite.id,status:"queued"
-    });
-    if(qe){
-      return manualDelivery("Automatic SMS delivery is unavailable. Send the prepared invitation from your phone's messaging app.");
-    }
-    return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,invite_expires_at:expires,delivery_mode:"gateway_sms"});
+    // Guest-call invitations must not silently consume a user's SMS balance.
+    // The caller explicitly chooses an existing share/messaging app instead.
+    return manualDelivery("Server does not send automatic or paid SMS for guest invitations. Share the secure invitation using an app already on your phone; the recipient needs internet to answer.");
   }
   return out({ok:true,call_id:call.id,route,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],call,call_expires_at:expiresAt,push_delivery:pushDelivery});
  }
