@@ -513,7 +513,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       beginCallPolling()
       val deliveryMode = started.optString("delivery_mode", "")
-      val invitationBody = started.optString("sms_body", "")
+      val invitationBody = started.optString("invitation_text",
+        started.optString("sms_body", ""))
       if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody)
       } else if (currentRoute == "guest") {
