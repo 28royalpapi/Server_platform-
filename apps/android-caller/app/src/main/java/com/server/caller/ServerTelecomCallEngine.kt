@@ -533,7 +533,7 @@ internal class ServerTelecomCallEngine(
 
 /** Actionable browser-invite notification, separate from the native call screen. */
 internal object ServerGuestInviteNotifications {
-  private const val CHANNEL = "server-guest-invitations-v1"
+  private const val CHANNEL = "server-guest-invitations-v2"
 
   fun show(context: Context, callId: String, phone: String, text: String) {
     if (Build.VERSION.SDK_INT >= 33 &&
@@ -541,8 +541,11 @@ internal object ServerGuestInviteNotifications {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(CHANNEL) == null) {
       manager.createNotificationChannel(NotificationChannel(
-        CHANNEL, "Server guest-call invitations", NotificationManager.IMPORTANCE_DEFAULT
-      ).apply { description = "Prompts you to send a secure browser invitation to a non-Server contact." })
+        CHANNEL, "Server guest-call invitations", NotificationManager.IMPORTANCE_HIGH
+      ).apply {
+        description = "Heads-up prompt to send a secure browser invitation to a non-Server contact."
+        lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+      })
     }
     val intent = Intent(context, ServerGuestInviteActivity::class.java).apply {
       putExtra(ServerGuestInviteActivity.EXTRA_TEXT, text)
@@ -556,7 +559,8 @@ internal object ServerGuestInviteNotifications {
     val notification = NotificationCompat.Builder(context, CHANNEL)
       .setSmallIcon(android.R.drawable.sym_action_call)
       .setContentTitle("Send Server invitation")
-      .setContentText("Tap to send the secure internet-call link to the selected contact.")
+      .setContentText("The recipient will not ring until you send the link. Tap to send it now.")
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_CALL)
       .setAutoCancel(true)
       .setContentIntent(pending)
