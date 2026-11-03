@@ -589,8 +589,8 @@ class CallerSmokeTest {
       assertTrue("The test must observe the expected rejected backend session", failure.isNotBlank())
       assertFalse("Server must not replace Android Phone with its internal setup page",
         device.hasObject(By.text("Calling, made natural")))
-      assertNotEquals("No Server Activity should be launched over Android Phone",
-        context.packageName, device.currentPackageName)
+      assertTrue("No Server Activity should be launched over Android Phone",
+        context.packageName != device.currentPackageName)
     } finally {
       val edit = prefs.edit()
       if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
