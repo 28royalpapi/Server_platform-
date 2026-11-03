@@ -303,7 +303,7 @@ assert.match(androidSetup,/requestCallPermissions/);
 assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
-assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+15550001001"\)\)/,
+assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+12025550101"\)\)/,
   "outgoing-call acceptance opens Android's real Phone dialer with a test target");
 assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
