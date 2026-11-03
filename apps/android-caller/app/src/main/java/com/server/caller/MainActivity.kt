@@ -620,12 +620,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
       cleanPeer(); callId = null
-      val reason = e.message ?: "Unknown error"
-      val userMessage = if (reason.contains("GUEST_INVITE_RATE_LIMITED")) {
-        "Too many invitations were created recently. Wait before retrying this contact; Server has not placed a normal mobile call."
-      } else {
-        "Server could not start the internet call: $reason. No normal mobile call was placed. Check your internet connection and try again."
-      }
+      val userMessage = "Server could not start the internet call: " + (e.message ?: "Unknown error") +
+        ". No normal mobile call was placed. Check your internet connection and try again."
       setStatus(userMessage, true)
       if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
     } finally { callButton.isEnabled = true }
