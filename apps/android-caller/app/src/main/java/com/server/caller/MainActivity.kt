@@ -238,6 +238,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       } catch (_: Exception) {}
       try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
       if (ServerTelecomRegistry.isEnabled(this@MainActivity)) ServerIncomingCallService.start(this@MainActivity)
+      // Re-sync after the authenticated /me request in case it refreshed the
+      // Server session while the first token-registration attempt was running.
+      ServerPushRegistration.syncFcmToken(this@MainActivity)
     }
     pendingDialedNumber?.let { number ->
       pendingDialedNumber = null
@@ -741,6 +744,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     am.mode = AudioManager.MODE_NORMAL
   }
   private fun signOut() {
+    // Best-effort server-side token removal; local sign-out still proceeds offline.
+    ServerPushRegistration.unregister(this)
     cleanPeer(); callId = null; incomingJob?.cancel(); incomingJob = null
     accessToken = null; refreshToken = null; accessExpiry = 0
     prefs.edit().remove("access_token").remove("refresh_token").remove("access_expiry").apply()
