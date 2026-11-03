@@ -177,6 +177,13 @@ class ServerConnectionService : ConnectionService() {
 
   override fun onCreateOutgoingConnection(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest): Connection {
     val phone = request.address?.schemeSpecificPart.orEmpty()
+    if (BuildConfig.DEBUG) {
+      getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
+        .putLong("debug_last_telecom_connection_service_entered_at", System.currentTimeMillis())
+        .putString("debug_last_telecom_request_scheme", request.address?.scheme.orEmpty())
+        .putInt("debug_last_telecom_request_target_length", phone.length)
+        .apply()
+    }
     val connection = ServerTelecomConnection(this).apply {
       setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
       setCallerDisplayName("Server internet call", TelecomManager.PRESENTATION_ALLOWED)
