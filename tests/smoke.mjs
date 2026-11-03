@@ -151,7 +151,17 @@ assert.match(androidTests,/telecomHangupUsesCallIdFromSystemIntentWhenActivityHa
 assert.match(androidManifest,/android\.permission\.ACCESS_NETWORK_STATE/,
    "the native call engine can distinguish a real internet connection from a disconnected device");
 assert.match(androidMain,/isServerInternetUsable\(networkCapabilities\)/,
-   "outgoing Server calls are blocked before signalling when no validated internet route exists");
+   "outgoing Server calls check for an internet-capable network before signalling");
+assert.match(androidMain,/return hasInternetCapability/,
+   "Android captive-portal validation must not falsely reject usable mobile-data networks");
+assert.match(androidMain,/pendingSystemDialerReturn/,
+   "system Phone UI handoff must wait for the actual outgoing-call setup result");
+assert.match(androidMain,/guestShareLauncher\.launch\(chooser\)/,
+   "guest invitations from a system dialer call must open the share chooser while Server is foregrounded");
+assert.match(androidMain,/recordTelecomDebugStage\("backend_start_requested"\)/,
+   "the outgoing Telecom regression records that a real backend call request was attempted");
+assert.match(androidMain,/recordTelecomDebugStage\("call_setup_failed"\)/,
+   "the outgoing Telecom regression records call setup failure rather than silently hiding it");
 assert.match(androidMain,/Server needs internet to place this call/,
    "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
 assert.match(androidTests,/phoneAccountCanReceiveIncomingCallThroughTelecom/);
@@ -159,8 +169,10 @@ assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/);
 assert.match(nativeWorkflow,/api-level: 31/);
 assert.match(nativeWorkflow,/api-level: '36'/);
-assert.match(androidTests,/serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate/,
-   "network-availability gating has an Android instrumentation test");
+assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives/,
+   "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
+assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,
+   "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
