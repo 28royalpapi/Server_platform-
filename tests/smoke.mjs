@@ -173,7 +173,7 @@ assert.match(androidTelecom,/engine\.startOutgoing\(phone\)/,
   "the system Phone provider starts signalling without launching the Server Activity");
 assert.doesNotMatch(androidTelecom,/ServerTelecomRegistry\.openApp\(this/,
   "outgoing and incoming Telecom call creation must not start a background Activity");
-assert.match(androidTelecom,/engine\.answerIncoming\(id\)/,
+assert.match(androidTelecom,/callEngine\?\.answerIncoming\(id\)/,
   "incoming calls are answered by the Telecom-bound WebRTC engine");
 assert.match(androidTelecom,/engine\.hangup\(\)/,
   "system disconnect events are handled by the Telecom-bound WebRTC engine");
