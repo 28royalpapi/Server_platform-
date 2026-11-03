@@ -481,22 +481,26 @@ internal class ServerTelecomCallEngine(
   }
 
   override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
-    when (state) {
-      PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
-        val id = callId ?: return
-        connection.markConnected()
-        if (activeStateSyncedFor != id) {
-          activeStateSyncedFor = id
-          scope.launch {
+    // WebRTC observer callbacks may arrive on a native signalling thread. Serialize
+    // all Android Telecom Connection state changes and backend state transitions
+    // through the engine's main-thread coroutine.
+    scope.launch {
+      if (disposed) return@launch
+      when (state) {
+        PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
+          val id = callId ?: return@launch
+          connection.markConnected()
+          if (activeStateSyncedFor != id) {
+            activeStateSyncedFor = id
             try { api("set_active", JSONObject().put("call_id", id)) }
             catch (error: Exception) { Log.w(TAG, "Could not sync active Server call: " + error.javaClass.simpleName) }
           }
         }
+        PeerConnection.IceConnectionState.FAILED -> {
+          failCall("Server could not establish WebRTC audio on this network. A TURN relay may be required.")
+        }
+        else -> Unit
       }
-      PeerConnection.IceConnectionState.FAILED -> {
-        ServerCallEngineStatusNotifications.showFailure(context, "Server audio failed to connect. This network may require a TURN relay.")
-      }
-      else -> Unit
     }
   }
 
