@@ -179,14 +179,10 @@ Deno.serve(async(req:Request)=>{
    if(route==="server"&&callee?.user_id){pushDelivery=await sendRecipientPush(db,callee.user_id,call.id,profile.server_id||"A Server user");}
    if(route==="guest"){
     if(!to){await db.from("server_calls").delete().eq("id",call.id);return out({error:"RECIPIENT_PHONE_REQUIRED"},400);}
-    const callerKey=await sha("guest-caller:"+uid),targetKey=await sha("guest-target:"+to);
-    const [callerLimit,targetLimit]=await Promise.all([
-      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_caller",p_key_hash:callerKey,p_window_seconds:3600,p_max_hits:60}),
-      db.rpc("server_rate_limit_allow",{p_scope:"guest_invite_target",p_key_hash:targetKey,p_window_seconds:3600,p_max_hits:15})
-    ]);
-    if(callerLimit.error||targetLimit.error||callerLimit.data!==true||targetLimit.data!==true){
-      await db.from("server_calls").delete().eq("id",call.id);return out({error:"GUEST_INVITE_RATE_LIMITED"},429);
-    }
+    // Pilot policy: guest calling has no caller/recipient invitation quota.
+    // Rate/plan caps are a product decision for a later paid rollout, not a
+    // prerequisite for WebRTC or Android Telecom. Keep each invite authenticated,
+    // token-hashed, one-call scoped and expiring; no automatic carrier SMS is sent.
     const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
     const tokenHash=await sha(token),expires=new Date(Date.now()+20*60*1000).toISOString();
     const {data:invite,error:ie}=await db.from("server_guest_invites").insert({
