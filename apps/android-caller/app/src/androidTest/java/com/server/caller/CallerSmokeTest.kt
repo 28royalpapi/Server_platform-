@@ -544,7 +544,7 @@ class CallerSmokeTest {
         .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
         .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
         .setShortDescription("Test-only calling provider; not a carrier SIM")
-        .setAddress(Uri.parse("tel:+12025550101"))
+        .setAddress(Uri.parse("tel:+2348012345678"))
         .build()
       telecom.registerPhoneAccount(testAccount)
       testAccountRegistered = true
@@ -565,8 +565,7 @@ class CallerSmokeTest {
       // with a tel: URI, so enter the test destination through the dialpad input
       // path exactly as a user does instead of treating the URI as prefilled text.
       device.pressHome()
-      context.startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      val dialerIntent = Intent(Intent.ACTION_DIAL)
+            val dialerIntent = Intent(Intent.ACTION_DIAL)
       val dialerPackage = telecom.defaultDialerPackage
         ?: context.packageManager.resolveActivity(dialerIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
           ?.activityInfo?.packageName
@@ -576,7 +575,7 @@ class CallerSmokeTest {
       context.startActivity(dialerIntent)
       val dialerReady = device.wait(Until.hasObject(By.pkg(resolvedDialerPackage)), 12_000)
       assertTrue("Android's system Phone dialer did not open (resolved package: " + resolvedDialerPackage + ")", dialerReady)
-      runShellCommand("input text 12025550101")
+      runShellCommand("input text 08012345678")
       val dialedNumberReady = device.wait(Until.hasObject(By.textContains("080")), 8_000)
       if (!dialedNumberReady) {
         try {
