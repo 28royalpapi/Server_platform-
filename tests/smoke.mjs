@@ -182,7 +182,7 @@ assert.match(androidReaWorkflow,/com\.server\.caller\.ServerTelecomCallEngine/,
   "compiled APK inspection must target the Telecom-bound WebRTC engine used by Android Phone");
 assert.match(androidReaWorkflow,/ServerConnectionService onCreateOutgoingConnection/,
   "compiled APK inspection must trace the outgoing Telecom callback into the call engine");
-assert.match(androidReaWorkflow,/ServerTelecomCallEngine onIceConnectionChange/,
+assert.match(androidReaWorkflow,/ServerTelecomCallEngine\$onIceConnectionChange/,
   "compiled APK inspection must verify the call engine's real ICE-connected state handling");
 assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity preparePeer|MainActivity handleSignal/,
   "the call-engine audit must not use the obsolete Activity WebRTC implementation");
@@ -338,7 +338,10 @@ assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"
 
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
-assert.match(calls,/GUEST_INVITE_RATE_LIMITED/);
+assert.doesNotMatch(calls,/server_rate_limit_allow|GUEST_INVITE_RATE_LIMITED/,
+  "the pilot does not impose invitation quotas on callers or recipients");
+assert.match(calls,/token_hash:tokenHash/,"guest invite links remain stored as token hashes");
+assert.match(calls,/expires_at:expires/,"guest invite links remain time-limited for basic abuse protection");
 assert.match(calls,/delivery_mode:"manual_share"/);
 assert.match(calls,/sms_body:smsBody/);
 assert.match(calls,/Server does not send automatic or paid SMS for guest invitations/);
