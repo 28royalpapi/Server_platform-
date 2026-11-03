@@ -198,9 +198,10 @@ assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity prep
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/, "Android 8 remains a minimum-install compatibility check");
 assert.match(nativeWorkflow,/api-level:\s*\$\{\{\s*matrix\.api-level\s*==\s*37\s*&&\s*'37\.0'\s*\|\|\s*matrix\.api-level\s*\}\}/, "Android 17 uses the SDK platform's 37.0 package identifier");
-assert.match(nativeWorkflow,/system-image-api-level:\s*\$\{\{\s*matrix\.api-level\s*\}\}/, "the Android 17 emulator uses the API 37 system image alongside platform 37.0");
-assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*35,\s*37\]/, "Android 10, 11, 12, 12L, 13, 15 and 17 are covered");
-assert.match(nativeWorkflow,/api-level: 34/, "Android 14 is tested by the full native emulator workflow");
+assert.match(nativeWorkflow,/system-image-api-level:\s*\$\{\{\s*matrix\.api-level\s*==\s*37\s*&&\s*'37\.0'\s*\|\|\s*matrix\.api-level\s*\}\}/, "Android 17 uses the 37.0 emulator image namespace");
+assert.match(nativeWorkflow,/target:\s*\$\{\{\s*matrix\.api-level\s*==\s*37\s*&&\s*'google_apis_ps16k'/, "Android 17 uses the supported 16 KB-page Google APIs image");
+assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*37\]/, "Android 10 through 17, excluding only Android 16's separate API 36 job, are covered");
+assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*37\]/, "Android 14 has its own compatibility matrix leg as well as the full workflow");
 assert.match(nativeWorkflow,/api-level: '36'/, "Android 16 stable is tested independently");
 assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives/,
    "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
@@ -329,8 +330,12 @@ assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackReque
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL\)/,
   "outgoing-call acceptance opens Android's real Phone dialer");
-assert.match(androidTests,/input text 08012345678/,
-  "the system Phone UI receives a valid Nigerian test number through its actual dialpad input");
+assert.match(androidTests,/By\.res\(resolvedDialerPackage, "digits"\)/,
+  "the test locates the Phone dialer's destination EditText");
+assert.match(androidTests,/digitsField!!\.click\(\)[\s\S]*input text 08012345678/,
+  "the test focuses the real destination field before entering a Nigerian test number");
+assert.match(androidTests,/enablePhoneAccountWithTestShell\(context, serverHandle\)/,
+  "Telecom test setup enables the account without depending on OEM-specific Settings layouts");
 assert.match(androidTests,/telecom\.defaultDialerPackage/,
   "the Phone-picker test resolves the installed default dialer instead of assuming a package name");
 assert.match(html,/Ask every time/,
