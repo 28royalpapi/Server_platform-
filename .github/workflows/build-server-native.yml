@@ -432,3 +432,35 @@ jobs:
             artifacts/**
             /tmp/server-ios-build.log
           if-no-files-found: warn
+
+  publish-android-preview-release:
+    if: github.ref == 'refs/heads/android-finish'
+    needs:
+      - android-build-and-emulator-smoke
+      - android-8-minimum-install-smoke
+      - android-12-compatibility-smoke
+      - android-16-stable-compatibility-smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the tested Android build
+        uses: actions/download-artifact@v4
+        with:
+          name: server-android-debug-apks
+          path: artifacts/server-android-debug-apks
+      - name: Publish the tested universal APK to the existing website download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find artifacts/server-android-debug-apks -type f -name 'app-universal-release.apk' -print -quit)"
+          if [[ -z "$APK" || ! -s "$APK" ]]; then
+            echo "ERROR: tested universal Android release APK is missing." >&2
+            find artifacts/server-android-debug-apks -maxdepth 8 -type f -print >&2
+            exit 1
+          fi
+          sha256sum "$APK"
+          gh release upload server-android-connector-preview "$APK#Server-Android-Connector-preview.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "ANDROID_PREVIEW_RELEASE_ASSET_PUBLISHED"
