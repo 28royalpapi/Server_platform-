@@ -22,13 +22,21 @@ internal object ServerCallNotifications {
   const val ACTION_DECLINE = "com.server.caller.action.DECLINE_INCOMING"
   const val EXTRA_CALL_ID = "server_call_id"
 
+  // Incoming alerts have their own notification identity and foreground service.
+  // The background listener uses its own low-importance channel and notification ID.
+  // Android does not reliably move an already-posted notification to a different
+  // channel when the same notification ID is reused.
   fun notificationId(callId: String): Int =
-    if (Build.VERSION.SDK_INT >= 31) ServerIncomingCallService.FOREGROUND_NOTIFICATION_ID
-    else 7400 + (callId.hashCode() and 0x0000FFFF)
+    100_000 + (callId.hashCode() and 0x3FFFFFFF)
+
+  internal fun canPostNotifications(context: Context): Boolean =
+    Build.VERSION.SDK_INT < 33 ||
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
   fun show(context: Context, callId: String, callerIdentity: String, onlyAlertOnce: Boolean = false, silent: Boolean = false) {
+    if (callId.isBlank() || !canPostNotifications(context)) return
     if (Build.VERSION.SDK_INT >= 31) {
-      ServerIncomingCallService.showIncomingCall(context, callId, callerIdentity, silent || onlyAlertOnce)
+      ServerIncomingCallAlertService.showIncomingCall(context, callId, callerIdentity, silent || onlyAlertOnce)
     } else {
       val notification = buildIncomingNotification(context, callId, callerIdentity, silent) ?: return
       (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notificationId(callId), notification)
@@ -36,8 +44,9 @@ internal object ServerCallNotifications {
   }
 
   fun silence(context: Context, callId: String, callerIdentity: String) {
+    if (!canPostNotifications(context)) return
     if (Build.VERSION.SDK_INT >= 31) {
-      ServerIncomingCallService.silenceIncomingCall(context, callId, callerIdentity)
+      ServerIncomingCallAlertService.silenceIncomingCall(context, callId, callerIdentity)
     } else {
       (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId(callId))
       show(context, callId, callerIdentity, onlyAlertOnce = true, silent = true)
@@ -51,8 +60,7 @@ internal object ServerCallNotifications {
     silent: Boolean
   ): Notification? {
     if (callId.isBlank()) return null
-    if (Build.VERSION.SDK_INT >= 33 &&
-      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return null
+    if (!canPostNotifications(context)) return null
 
     val app = context.applicationContext
     if (silent) ensureSilentChannel(app) else ensureChannel(app)
@@ -144,7 +152,7 @@ internal object ServerCallNotifications {
   private const val MISSED_CHANNEL_ID = "server-missed-calls-v1"
 
   fun cancel(context: Context, callId: String) {
-    if (Build.VERSION.SDK_INT >= 31) ServerIncomingCallService.clearIncomingCall(context, callId)
+    if (Build.VERSION.SDK_INT >= 31) ServerIncomingCallAlertService.clearIncomingCall(context, callId)
     else (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId(callId))
   }
 
