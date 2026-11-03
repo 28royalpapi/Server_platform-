@@ -257,6 +257,12 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     } catch (e: Exception) { setStatus("Could not register the Server calling account: ${e.message}", true) }
   }
 
+  override fun onResume() {
+    super.onResume()
+    // A transient registration failure is retried when the user returns to Server.
+    if (!accessToken.isNullOrBlank()) ServerPushRegistration.syncFcmToken(this)
+  }
+
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
