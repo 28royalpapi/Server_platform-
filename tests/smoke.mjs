@@ -357,6 +357,11 @@ assert.match(guest,/stun:stun\.cloudflare\.com:3478/,
   "guest invitations use the same additional STUN discovery path");
 assert.match(guestWeb,/stun:stun\.cloudflare\.com:3478/,
   "browser guest peer has both STUN endpoints as a safe fallback");
+assert.match(calls,/SERVER_TURN_URLS/,"authenticated calls can receive configured TURN relay endpoints");
+assert.match(calls,/SERVER_TURN_SHARED_SECRET/,"TURN credentials are signed server-side and never embedded in the APK");
+assert.match(calls,/crypto\.subtle\.sign\("HMAC"/,"TURN credentials use coturn REST HMAC authentication");
+assert.match(guest,/SERVER_TURN_URLS/,"guest calls use the same optional TURN relay configuration");
+assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches Android and browser STUN discovery");
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
 assert.match(calls,/sms_body:smsBody/);
