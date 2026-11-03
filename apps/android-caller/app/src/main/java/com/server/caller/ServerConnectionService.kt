@@ -143,14 +143,14 @@ object ServerTelecomRegistry {
     ServerCallNotifications.cancel(context, callId)
     val connection = incomingConnections[callId]
     if (connection != null) connection.answerFromNotification()
-    else ServerCallEngineService.startAnswer(context, callId)
+    else reportIncoming(context, callId, "Server caller")
   }
 
   fun declineFromNotification(context: Context, callId: String) {
     ServerCallNotifications.cancel(context, callId)
     val connection = incomingConnections[callId]
     if (connection != null) connection.declineFromNotification()
-    else ServerCallEngineService.end(context, callId)
+    else ServerIncomingCallService.endCall(context, callId)
   }
 
   fun reportIncoming(context: Context, callId: String, callerIdentity: String) {
@@ -170,6 +170,11 @@ object ServerTelecomRegistry {
 }
 
 class ServerConnectionService : ConnectionService() {
+  private val activeEngines = java.util.concurrent.ConcurrentHashMap.newKeySet<ServerTelecomCallEngine>()
+
+  internal fun retainEngine(engine: ServerTelecomCallEngine) { activeEngines.add(engine) }
+  internal fun releaseEngine(engine: ServerTelecomCallEngine) { activeEngines.remove(engine) }
+
   override fun onCreateOutgoingConnection(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest): Connection {
     val phone = request.address?.schemeSpecificPart.orEmpty()
     val connection = ServerTelecomConnection(this).apply {
@@ -180,9 +185,12 @@ class ServerConnectionService : ConnectionService() {
       setDialing()
     }
     ServerTelecomRegistry.attach(connection)
-    // Telecom calls this service from the system Phone app. Start the call engine
-    // directly as a phoneCall foreground service; never launch an Activity here.
-    ServerCallEngineService.startOutgoing(this, phone)
+    // Telecom binds this ConnectionService for the lifetime of the call. The
+    // WebRTC engine runs here; it must not launch a background Activity or service.
+    val engine = ServerTelecomCallEngine(this, connection)
+    connection.attachEngine(engine)
+    retainEngine(engine)
+    engine.startOutgoing(phone)
     return connection
   }
 
@@ -206,13 +214,18 @@ class ServerConnectionService : ConnectionService() {
       })
       setRinging()
       ServerTelecomRegistry.attach(this, callId)
-      // Android Telecom itself owns the incoming UI. No app Activity is needed.
+      val engine = ServerTelecomCallEngine(this@ServerConnectionService, this)
+      attachEngine(engine)
+      retainEngine(engine)
     }
   }
 }
 
 internal class ServerTelecomConnection(context: Context) : Connection() {
   private val app = context.applicationContext
+  @Volatile private var callEngine: ServerTelecomCallEngine? = null
+
+  internal fun attachEngine(engine: ServerTelecomCallEngine) { callEngine = engine }
 
   override fun onShowIncomingCallUi() {
     val callId = extras?.getString("server_call_id").orEmpty()
@@ -231,26 +244,28 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
 
   override fun onAnswer() {
     super.onAnswer()
-    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
+    val id = extras?.getString("server_call_id").orEmpty()
+    ServerCallNotifications.cancel(app, id)
     setInitializing()
-    ServerCallEngineService.startAnswer(app, extras?.getString("server_call_id").orEmpty())
+    callEngine?.answerIncoming(id)
   }
 
   override fun onReject() {
-    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
+    val id = extras?.getString("server_call_id").orEmpty()
+    ServerCallNotifications.cancel(app, id)
     setDisconnected(DisconnectCause(DisconnectCause.REJECTED))
     ServerTelecomRegistry.detach(this)
     destroy()
-    ServerCallEngineService.end(app, extras?.getString("server_call_id").orEmpty())
+    callEngine?.declineIncoming(id)
   }
 
   override fun onDisconnect() {
-    ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
-    setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
     val id = extras?.getString("server_call_id").orEmpty().ifBlank { ServerTelecomRegistry.currentCallId().orEmpty() }
+    ServerCallNotifications.cancel(app, id)
+    setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
     ServerTelecomRegistry.detach(this)
     destroy()
-    ServerCallEngineService.end(app, id)
+    callEngine?.hangup()
   }
 
   fun markConnecting() { setInitializing() }
