@@ -306,9 +306,11 @@ assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
 assert.match(calls,/GUEST_INVITE_RATE_LIMITED/);
-assert.match(calls,/delivery_mode:"manual_sms"/);
+assert.match(calls,/delivery_mode:"manual_share"/);
 assert.match(calls,/sms_body:smsBody/);
-assert.match(calls,/No live Server SMS gateway is connected/);
+assert.match(calls,/Server does not send automatic or paid SMS for guest invitations/);
+assert.doesNotMatch(calls,/category:"guest_invite"/,"guest invitations are never queued for automatic paid SMS delivery");
+assert.match(calls,/invitation_text:smsBody/,"the backend returns a secure shareable guest invitation message");
 assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
 assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations use the system share sheet rather than forcing SMS");
@@ -323,7 +325,7 @@ assert.doesNotMatch(androidMain,/30_000/,"Android does not end guest or Server c
 assert.doesNotMatch(androidMain,/EXTRA_PHONE_ACCOUNT_HANDLE|selectedCellularAccount/,
   "carrier fallback leaves SIM selection to Android and the user");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
-assert.match(androidMain,/deliveryMode == "manual_sms"/);
+assert.match(androidMain,/deliveryMode == "manual_share"/);
 assert.match(iosModel,/guestInviteMessage/);
 assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
