@@ -75,6 +75,7 @@ internal class ServerTelecomCallEngine(
   private var actionJob: Job? = null
   private var pollingJob: Job? = null
   private var disposed = false
+  @Volatile private var hangupRequested = false
 
   init {
     accessToken = prefs.getString("access_token", null)
@@ -95,8 +96,11 @@ internal class ServerTelecomCallEngine(
   }
 
   fun hangup() {
-    val id = callId ?: ServerTelecomRegistry.currentCallId()
-    actionJob = scope.launch { finishCall(id.orEmpty(), "local") }
+    hangupRequested = true
+    if (actionJob?.isActive != true) {
+      val id = callId ?: ServerTelecomRegistry.currentCallId()
+      actionJob = scope.launch { finishCall(id.orEmpty(), "local") }
+    }
   }
 
   private suspend fun placeOutgoing(rawTarget: String) {
@@ -124,11 +128,19 @@ internal class ServerTelecomCallEngine(
       callId = started.optString("call_id").takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("Server did not return a call ID.")
       ServerTelecomRegistry.setCurrentCallId(callId)
+      if (hangupRequested) {
+        finishCall(callId.orEmpty(), "local")
+        return
+      }
       route = started.optString("route", "guest")
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       recordStage("backend_call_created")
       preparePeer(iceServers)
+      if (hangupRequested) {
+        finishCall(callId.orEmpty(), "local")
+        return
+      }
       val offer = createLocalDescription(offer = true)
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
       recordStage("call_offer_submitted")
@@ -158,6 +170,10 @@ internal class ServerTelecomCallEngine(
     try {
       recordStage("incoming_answer_requested")
       val accepted = api("accept", JSONObject().put("call_id", id))
+      if (hangupRequested) {
+        finishCall(id, "local")
+        return
+      }
       iceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(iceServers)
       connection.markConnecting()
@@ -176,9 +192,8 @@ internal class ServerTelecomCallEngine(
     } catch (error: Exception) {
       Log.w(TAG, "Server call-end request failed: " + error.javaClass.simpleName)
     } finally {
-      if (target.isNotBlank()) {
-        if (cause == "remote") connection.markRemoteEnded() else connection.markEnded()
-      }
+      // Telecom's onReject/onDisconnect already moved the native Connection to
+      // DISCONNECTED. Only remote hangup and engine failures change its state here.
       cleanupPeer()
       release()
     }
