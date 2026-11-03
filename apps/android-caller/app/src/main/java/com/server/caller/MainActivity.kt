@@ -583,6 +583,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
     val payload = JSONObject()
     if (isServerId) payload.put("to_server_id", serverId) else payload.put("to_phone", normalizedPhone)
+    // Both Telecom's bound ConnectionService and this legacy OS-intent bridge
+    // must identify a Phone-originated request so the backend never converts
+    // an Android system call into a guest invitation/share page.
+    if (pendingSystemDialerReturn) payload.put("source", "android_telecom")
     callButton.isEnabled = false
     try {
       recordTelecomDebugStage("backend_start_requested")
