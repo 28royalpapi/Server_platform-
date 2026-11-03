@@ -95,6 +95,25 @@ class ServerIncomingCallService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
+    if (intent?.action == ACTION_END_CALL) {
+      val callId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+      scope.launch {
+        try {
+          val token = freshAccessToken()
+          if (!token.isNullOrBlank() && callId.isNotBlank()) {
+            postJson("/functions/v1/server-calls", JSONObject().put("action", "end").put("call_id", callId), token)
+          }
+        } catch (error: Exception) {
+          Log.w(TAG, "Could not decline Server call: " + error.javaClass.simpleName)
+        } finally {
+          if (callId.isNotBlank()) {
+            ServerTelecomRegistry.markEnded(callId)
+            ServerCallNotifications.cancel(this@ServerIncomingCallService, callId)
+          }
+        }
+      }
+      return START_STICKY
+    }
     if (pollingJob?.isActive != true) {
       pollingJob = scope.launch { pollIncomingCalls() }
     }
@@ -262,6 +281,7 @@ class ServerIncomingCallService : Service() {
     private const val ACTION_SHOW_INCOMING_CALL = "com.server.caller.action.FGS_SHOW_INCOMING"
     private const val ACTION_SILENCE_INCOMING_CALL = "com.server.caller.action.FGS_SILENCE_INCOMING"
     private const val ACTION_CLEAR_INCOMING_CALL = "com.server.caller.action.FGS_CLEAR_INCOMING"
+    private const val ACTION_END_CALL = "com.server.caller.action.FGS_END_CALL"
     private const val EXTRA_CALL_ID = "server_call_id"
     private const val EXTRA_CALLER_ID = "server_caller_id"
 
@@ -290,6 +310,10 @@ class ServerIncomingCallService : Service() {
 
     fun clearIncomingCall(context: Context, callId: String) {
       dispatch(context, ACTION_CLEAR_INCOMING_CALL, callId)
+    }
+
+    fun endCall(context: Context, callId: String) {
+      dispatch(context, ACTION_END_CALL, callId)
     }
 
     fun start(context: Context) {
