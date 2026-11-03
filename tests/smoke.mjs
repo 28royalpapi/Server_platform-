@@ -317,6 +317,7 @@ assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations use 
 assert.doesNotMatch(androidMain,/private fun notifyCarrierFallback|Try a normal carrier call|charges may apply/,"Android must not offer a paid cellular fallback when Server calling fails");
 assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
 assert.match(androidMain,/no push provider accepted a wake alert/,"the caller is told when no push provider accepted an incoming-call alert");
+assert.match(androidMain,/Choosing SMS may incur your mobile operator's SMS charge/,"Android discloses that a caller-selected SMS may be billable");
 assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");
 assert.match(androidFirebase,/fcm_registered_server_id/,"push-token registration is scoped to the signed-in Server identity");
 assert.match(androidFirebase,/fun unregister\(context: Context\)/,"FCM endpoint cleanup is attempted when a user signs out");
