@@ -812,7 +812,7 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
             else { return nil }
             return RTCIceServer(urlStrings: urls, username: row["username"] as? String ?? "", credential: row["credential"] as? String ?? "")
         }
-        let config = RTCConfiguration(); config.iceServers = servers.isEmpty ? [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])] : servers
+        let config = RTCConfiguration(); config.iceServers = servers.isEmpty ? [RTCIceServer(urlStrings: ["stun:stun.cloudflare.com:3478"]), RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])] : servers
         config.sdpSemantics = .unifiedPlan
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         guard let madePeer = factory?.peerConnection(with: config, constraints: constraints, delegate: self) else { throw ServerError.message("Could not create WebRTC peer connection.") }
