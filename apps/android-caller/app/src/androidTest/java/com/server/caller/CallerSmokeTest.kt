@@ -527,7 +527,7 @@ class CallerSmokeTest {
         .putString("access_token", "0".repeat(64))
         .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
         .putString("phone", "+2348012345678")
-        .putString("selected_sim_phone", "+08012345678")
+        .putString("selected_sim_phone", "+2348012345678")
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_call_target_kind")
         .remove("debug_last_telecom_stage")
