@@ -13,7 +13,7 @@ The current codebase supports:
 - Server-to-Server signalling and WebRTC call setup when both endpoints have internet.
 - Android Telecom incoming-call integration for Server internet calls.
 - Push-notification wake-up for registered Server devices when FCM/APNs is configured.
-- Guest-browser invitations for non-Server recipients, with a user-confirmed SMS composer when no paired Server SMS gateway is live.
+- Guest-browser invitations for non-Server recipients, shared manually through an app the caller already uses. Guest invitations are not automatically sent as paid SMS.
 - Expiring invitations and missed-call reconciliation after a Server device reconnects.
 
 The current production backend has no registered push endpoints and no enabled Server SMS gateway. This means that those delivery paths must be configured and physically tested before claiming reliable background delivery.
