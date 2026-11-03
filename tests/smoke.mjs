@@ -328,8 +328,10 @@ assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackReque
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL\)/,
   "outgoing-call acceptance opens Android's real Phone dialer");
-assert.match(androidTests,/input text 12025550101/,
-  "the system Phone UI receives the test number through its actual dialpad input");
+assert.match(androidTests,/input text 08012345678/,
+  "the system Phone UI receives a valid Nigerian test number through its actual dialpad input");
+assert.match(androidTests,/telecom\.defaultDialerPackage/,
+  "the Phone-picker test resolves the installed default dialer instead of assuming a package name");
 assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
