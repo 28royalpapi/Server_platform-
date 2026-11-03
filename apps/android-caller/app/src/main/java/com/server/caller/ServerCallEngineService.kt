@@ -74,7 +74,8 @@ class ServerCallEngineService : Service(), PeerConnection.Observer {
   private val pendingIce = mutableListOf<IceCandidate>()
   private var inviteText: String? = null
   private var invitePhone: String? = null
-  private var operation: Job? = null
+  private var actionJob: Job? = null
+  private var pollingJob: Job? = null
   private var ending = false
 
   override fun onCreate() {
@@ -102,15 +103,15 @@ class ServerCallEngineService : Service(), PeerConnection.Observer {
     when (action) {
       ACTION_OUTGOING -> {
         val target = intent.getStringExtra(EXTRA_TARGET).orEmpty()
-        if (operation?.isActive != true) operation = scope.launch { runOutgoing(target) }
+        if (actionJob?.isActive != true) actionJob = scope.launch { runOutgoing(target) }
       }
       ACTION_ANSWER -> {
         val id = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
-        if (operation?.isActive != true) operation = scope.launch { runAnswer(id) }
+        if (actionJob?.isActive != true) actionJob = scope.launch { runAnswer(id) }
       }
       ACTION_END -> {
         val id = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
-        if (operation?.isActive != true) operation = scope.launch { runEnd(id) }
+        if (actionJob?.isActive != true) actionJob = scope.launch { runEnd(id) }
       }
     }
     return START_NOT_STICKY
@@ -237,8 +238,8 @@ class ServerCallEngineService : Service(), PeerConnection.Observer {
   }
 
   private fun beginPolling() {
-    if (operation?.isActive == true) return
-    operation = scope.launch {
+    if (pollingJob?.isActive == true) return
+    pollingJob = scope.launch {
       while (currentCoroutineContext().isActive && !ending && !callId.isNullOrBlank()) {
         try {
           val id = callId ?: break
@@ -595,7 +596,8 @@ class ServerCallEngineService : Service(), PeerConnection.Observer {
   }
 
   override fun onDestroy() {
-    operation?.cancel()
+    actionJob?.cancel()
+    pollingJob?.cancel()
     cleanupPeer()
     scope.cancel()
     super.onDestroy()
