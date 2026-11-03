@@ -492,6 +492,7 @@ class CallerSmokeTest {
     val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
     val previousTelecomStage = prefs.getString("debug_last_telecom_stage", null)
+    val previousHiddenRouter = prefs.getBoolean("debug_telecom_router_hidden", false)
     val previousDefaultOutgoing = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
     val device = UiDevice.getInstance(instrumentation)
     var testAccountRegistered = false
@@ -580,9 +581,11 @@ class CallerSmokeTest {
       lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
       assertEquals("Outgoing Telecom flow must wait for the Server backend result before returning to the Phone app",
         "call_setup_failed", lastTelecomStage)
-      assertEquals("A failed outgoing Server call must leave the explanatory error visible, not vanish behind the Phone app",
-        context.packageName, device.currentPackageName)
-      assertTrue("The caller must see a clear Server call-start failure",
+      assertTrue("A system dialer request must route through the transparent Server call bridge",
+        prefs.getBoolean("debug_telecom_router_hidden", false))
+      assertFalse("Server must not replace Android Phone with its internal page showing the dialled number",
+        device.hasObject(By.text("Calling, made natural")))
+      assertTrue("The caller must receive a visible failure message without a second Server page",
         device.wait(Until.hasObject(By.textContains("Server could not start the internet call")), 5_000))
     } finally {
       val edit = prefs.edit()
@@ -592,6 +595,7 @@ class CallerSmokeTest {
       if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
       if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
       if (previousTelecomStage == null) edit.remove("debug_last_telecom_stage") else edit.putString("debug_last_telecom_stage", previousTelecomStage)
+      edit.putBoolean("debug_telecom_router_hidden", previousHiddenRouter)
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
       ServerTelecomRegistry.register(context)
