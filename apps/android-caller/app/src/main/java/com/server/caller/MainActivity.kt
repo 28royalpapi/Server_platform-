@@ -514,10 +514,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       beginCallPolling()
       val deliveryMode = started.optString("delivery_mode", "")
       val invitationBody = started.optString("sms_body", "")
-      if (currentRoute == "guest" && deliveryMode == "manual_sms" && invitationBody.isNotBlank() && normalizedPhone != null) {
+      if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody)
       } else {
-        setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Server user… waiting for answer.")
+        setStatus(if (currentRoute == "guest") "The secure guest invitation is ready to share. The recipient needs internet and microphone access to answer." else "Calling another Server user… waiting for answer.")
       }
     } catch (e: Exception) {
       recordTelecomDebugStage("call_backend_start_failed")
