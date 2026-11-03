@@ -351,6 +351,14 @@ assert.doesNotMatch(calls,/server_rate_limit_allow|GUEST_INVITE_RATE_LIMITED/,
 assert.match(calls,/token_hash:tokenHash/,"guest invite links remain stored as token hashes");
 assert.match(calls,/expires_at:expires/,"guest invite links remain time-limited for basic abuse protection");
 assert.match(calls,/delivery_mode:"manual_share"/);
+assert.match(calls,/stun:stun\.cloudflare\.com:3478/,
+  "authenticated Server calls offer a second free STUN discovery path");
+assert.match(guest,/stun:stun\.cloudflare\.com:3478/,
+  "guest invitations use the same additional STUN discovery path");
+assert.match(guestWeb,/stun:stun\.cloudflare\.com:3478/,
+  "browser guest peer has both STUN endpoints as a safe fallback");
+assert.match(androidTelecom,/ServerTelecomCallEngine/,
+  "the Android caller uses the Telecom-bound native WebRTC engine");
 assert.match(calls,/sms_body:smsBody/);
 assert.match(calls,/Server does not send automatic or paid SMS for guest invitations/);
 assert.doesNotMatch(calls,/category:"guest_invite"/,"guest invitations are never queued for automatic paid SMS delivery");
