@@ -166,7 +166,17 @@ assert.match(androidMain,/Server needs internet to place this call/,
    "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
 assert.match(androidTests,/phoneAccountCanReceiveIncomingCallThroughTelecom/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
-assert.match(androidTests,/debug_telecom_router_hidden/);
+assert.match(androidTests,/debug_telecom_connection_engine_started/);
+assert.match(androidTelecom,/ServerTelecomCallEngine\(this, connection\)/,
+  "outgoing calls are processed by the Android Telecom-bound WebRTC engine");
+assert.match(androidTelecom,/engine\.startOutgoing\(phone\)/,
+  "the system Phone provider starts signalling without launching the Server Activity");
+assert.doesNotMatch(androidTelecom,/ServerTelecomRegistry\.openApp\(this/,
+  "outgoing and incoming Telecom call creation must not start a background Activity");
+assert.match(androidTelecom,/engine\.answerIncoming\(id\)/,
+  "incoming calls are answered by the Telecom-bound WebRTC engine");
+assert.match(androidTelecom,/engine\.hangup\(\)/,
+  "system disconnect events are handled by the Telecom-bound WebRTC engine");
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/);
 assert.match(nativeWorkflow,/api-level: 31/);
