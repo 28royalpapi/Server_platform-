@@ -3,8 +3,27 @@ plugins {
   id("org.jetbrains.kotlin.android")
 }
 
+val serverSigningStorePath = providers.environmentVariable("SERVER_ANDROID_KEYSTORE_PATH").orNull
+val serverSigningStorePassword = providers.environmentVariable("SERVER_ANDROID_KEYSTORE_PASSWORD").orNull
+val serverSigningKeyAlias = providers.environmentVariable("SERVER_ANDROID_KEY_ALIAS").orNull
+val serverSigningKeyPassword = providers.environmentVariable("SERVER_ANDROID_KEY_PASSWORD").orNull
+val hasPersistentServerSigning = !serverSigningStorePath.isNullOrBlank() &&
+  !serverSigningStorePassword.isNullOrBlank() && !serverSigningKeyAlias.isNullOrBlank() &&
+  !serverSigningKeyPassword.isNullOrBlank()
+
 android {
   namespace = "com.server.caller"
+  signingConfigs {
+    if (hasPersistentServerSigning) {
+      create("serverPreview") {
+        storeFile = file(serverSigningStorePath!!)
+        storeType = "JKS"
+        storePassword = serverSigningStorePassword
+        keyAlias = serverSigningKeyAlias
+        keyPassword = serverSigningKeyPassword
+      }
+    }
+  }
   compileSdk = 36
   defaultConfig {
     applicationId = "com.server.caller"
@@ -46,9 +65,10 @@ android {
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      // Temporary preview signing allows direct Android installation without Play Store.
-      // Replace with a persistent private upload key before the production release.
-      signingConfig = signingConfigs.getByName("debug")
+      // A persistent private preview key enables in-place updates across CI runners.
+      // The debug signer is only a local fallback; CI never publishes that APK.
+      signingConfig = if (hasPersistentServerSigning) signingConfigs.getByName("serverPreview")
+        else signingConfigs.getByName("debug")
       // Avoid shipping x86 emulator libraries in the phone installer.
       ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
