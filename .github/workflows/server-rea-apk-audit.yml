@@ -107,28 +107,51 @@ jobs:
           done
           echo 'REA_GATEWAY_CODE_PASS: decoded startup/pairing/SMS methods and verified the compiled project defaults.'
 
-      - name: Inspect caller WebRTC and connected-call state code with REA
+      - name: Inspect actual Telecom WebRTC call engine and guest invitation code with REA
         shell: bash
         run: |
           set -euo pipefail
           APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
           npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-caller-package.json
-          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.MainActivity --json > artifacts/rea-caller-main-class.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity startCall --json > artifacts/rea-caller-start-call.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity preparePeer --json > artifacts/rea-caller-prepare-peer.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity handleSignal --json > artifacts/rea-caller-handle-signal.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" 'com.server.caller.MainActivity$onIceConnectionChange$1$1' invokeSuspend --json > artifacts/rea-caller-ice-state-sync.json
+          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerConnectionService --json > artifacts/rea-caller-telecom-class.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateOutgoingConnection --json > artifacts/rea-caller-telecom-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateIncomingConnection --json > artifacts/rea-caller-telecom-incoming.json
+          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerTelecomCallEngine --json > artifacts/rea-caller-engine-class.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine placeOutgoing --json > artifacts/rea-caller-engine-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine preparePeer --json > artifacts/rea-caller-engine-peer.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine handleSignal --json > artifacts/rea-caller-engine-signals.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-caller-engine-ice-state.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const input = JSON.parse(fs.readFileSync('artifacts/rea-caller-ice-state-sync.json', 'utf8'));
-          const source = input?.normalized_result?.source?.text || '';
-          if (input?.normalized_result?.body_status !== 'available' || !source.includes('set_active')) {
-            console.error('REA did not confirm that the compiled ICE-connected coroutine syncs the active call state.');
-            process.exit(1);
+          const read = name => {
+            const input = JSON.parse(fs.readFileSync('artifacts/' + name, 'utf8'));
+            if (input?.normalized_result?.body_status !== 'available') {
+              console.error('REA did not decode a required compiled Android method: ' + name);
+              process.exit(1);
+            }
+            return input?.normalized_result?.source?.text || '';
+          };
+          const checks = [
+            ['rea-caller-telecom-outgoing.json', ['ServerTelecomCallEngine', 'startOutgoing']],
+            ['rea-caller-telecom-incoming.json', ['ServerTelecomCallEngine', 'attachEngine']],
+            ['rea-caller-engine-outgoing.json', ['api("start"', 'createLocalDescription', 'api("signal"']],
+            ['rea-caller-engine-peer.json', ['createPeerConnection', 'createAudioTrack']],
+            ['rea-caller-engine-signals.json', ['offer', 'answer', 'addIceCandidate']],
+            ['rea-caller-engine-ice-state.json', ['CONNECTED', 'COMPLETED', 'set_active']],
+            ['rea-caller-guest-invite-notification.json', ['Send invitation', 'ServerGuestInviteActivity']]
+          ];
+          for (const [file, markers] of checks) {
+            const source = read(file);
+            const missing = markers.filter(marker => !source.includes(marker));
+            if (missing.length) {
+              console.error('REA compiled-code inspection missing markers in ' + file + ': ' + missing.join(', '));
+              process.exit(1);
+            }
           }
-          console.log('REA_CALL_STATE_PASS: the compiled connected-call coroutine requests backend state active.');
+          console.log('REA_TELECOM_WEBRTC_PASS: inspected the actual compiled ConnectionService, WebRTC engine, ICE state updates and guest invitation notification.');
           NODE
-          echo 'REA inspected the compiled caller entry, WebRTC setup, offer/answer/ICE handling and connected-call state update.'
+          echo 'REA inspected compiled Telecom call routing, WebRTC peer creation, SDP/ICE signalling, ICE-connected state and guest invitation handoff.'
 
       - name: Upload compiled APKs and REA evidence
         if: always()
@@ -142,11 +165,15 @@ jobs:
             artifacts/rea-gateway-pairing-method.json
             artifacts/rea-gateway-sms-method.json
             artifacts/rea-caller-package.json
-            artifacts/rea-caller-main-class.json
-            artifacts/rea-caller-start-call.json
-            artifacts/rea-caller-prepare-peer.json
-            artifacts/rea-caller-handle-signal.json
-            artifacts/rea-caller-ice-state-sync.json
+            artifacts/rea-caller-telecom-class.json
+            artifacts/rea-caller-telecom-outgoing.json
+            artifacts/rea-caller-telecom-incoming.json
+            artifacts/rea-caller-engine-class.json
+            artifacts/rea-caller-engine-outgoing.json
+            artifacts/rea-caller-engine-peer.json
+            artifacts/rea-caller-engine-signals.json
+            artifacts/rea-caller-engine-ice-state.json
+            artifacts/rea-caller-guest-invite-notification.json
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: warn
