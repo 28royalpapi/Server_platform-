@@ -12,6 +12,7 @@ const handoff=read("supabase/functions/server-handoff/index.ts");
 const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt");
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
+const androidBuild=read("apps/android-caller/app/build.gradle.kts");
 const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallNotifications.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
@@ -182,6 +183,12 @@ assert.match(androidReaWorkflow,/com\.server\.caller\.ServerTelecomCallEngine/,
   "compiled APK inspection must target the Telecom-bound WebRTC engine used by Android Phone");
 assert.match(androidReaWorkflow,/ServerConnectionService onCreateOutgoingConnection/,
   "compiled APK inspection must trace the outgoing Telecom callback into the call engine");
+assert.match(androidBuild,/create\("serverPreview"\)/,
+  "preview releases support a persistent private Android signing key");
+assert.match(nativeWorkflow,/SERVER_ANDROID_KEYSTORE_BASE64/,
+  "release CI imports the persistent preview signing key from a GitHub Actions secret");
+assert.match(nativeWorkflow,/preview_signing_ready/,
+  "the website release asset is published only after stable signing is configured");
 assert.match(androidReaWorkflow,/ServerTelecomCallEngine\$onIceConnectionChange/,
   "compiled APK inspection must verify the call engine's real ICE-connected state handling");
 assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity preparePeer|MainActivity handleSignal/,
