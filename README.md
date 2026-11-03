@@ -13,7 +13,7 @@ Server is a website-led onboarding and internet-calling project. Android uses a 
 |---|---|
 | `server-auth` | Device-bound Server ID registration, optional phone OTP verification/linking, high-entropy opaque session tokens (30 days), renewal and revocation |
 | `server-calls` | Private-session authorization, profiles/preferences, calls, incoming-call lookup and WebRTC signalling |
-| `server-gateway` | One-time Android SIM gateway pairing and SMS queue polling/send status |
+| `server-gateway` | Optional Android SIM gateway for user-requested phone-number verification OTPs; guest-call invitations are never automatically queued as paid SMS |
 | `server-guest` | Time-limited guest browser call invitation and WebRTC signalling |
 | `server-send-sms` | Optional Supabase Auth Send SMS Hook adapter; the main custom OTP flow does not require Supabase Auth's SMS hook |
 | `server-handoff` | Two-minute single-use exchange transfers verified onboarding to a native app |
@@ -43,7 +43,7 @@ The core Server ID flow does not need an SMS gateway. A gateway is needed only w
 
 ## Calling limitations
 
-Server-to-Server calls and guest browser calls use WebRTC. Guest calls require the guest to open the invitation while online and grant microphone access. Only a public STUN server is configured by default; restrictive networks need a separately operated TURN relay. An SMS link cannot cause a traditional cellular ring or work when a guest has no data. On Android, after the user enables Server in Calling accounts, a foreground listener service currently polls for incoming calls and reports them to Telecom; this uses an ongoing Android notification and is a first implementation, not a push-based production design. iOS PushKit/APNs incoming-call delivery is not configured.
+Server-to-Server calls and guest browser calls use WebRTC. Guest-call invitations are shared manually through an app the caller already uses; Server does not automatically send paid guest-invitation SMS or place a cellular voice call. If the caller explicitly chooses SMS in another app, that app's mobile-network charges may apply. Guest calls require the recipient to open the invitation while online and grant microphone access. Only a public STUN server is configured by default; restrictive networks need a separately operated TURN relay. A message or link cannot cause a traditional cellular ring or work when a guest has no data. On Android, after the user enables Server in Calling accounts, a foreground listener service currently polls for incoming calls and reports them to Telecom; this uses an ongoing Android notification and is a first implementation, not a push-based production design. iOS PushKit/APNs incoming-call delivery is not configured.
 
 ## Normal dialer integration
 
