@@ -121,8 +121,83 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine preparePeer --json > artifacts/rea-caller-engine-peer.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine handleSignal --json > artifacts/rea-caller-engine-signals.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-caller-engine-ice-observer.json
-          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" 'com.server.caller.ServerTelecomCallEngine$onIceConnectionChange$1' --json > artifacts/rea-caller-engine-ice-state-class.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" 'com.server.caller.ServerTelecomCallEngine$onIceConnectionChange$1' invokeSuspend --json > artifacts/rea-caller-engine-ice-state.json
+          # JADX/REA exposes this Kotlin lambda under an unstable AnonymousClassN
+          # name. Inspect the observer method with REA and verify the actual
+          # compiler-generated class descriptor directly in every DEX file.
+          for dex in $(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerGuestInviteNotifications --json > artifacts/rea-caller-guest-invite-class.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const read = name => {
+            const input = JSON.parse(fs.readFileSync('artifacts/' + name, 'utf8'));
+            if (input?.normalized_result?.body_status !== 'available') {
+              console.error('REA did not decode a required compiled Android method: ' + name);
+              process.exit(1);
+            }
+            return input?.normalized_result?.source?.text || '';
+          };
+          const checks = [
+            ['rea-caller-telecom-outgoing.json', ['ServerTelecomCallEngine', 'startOutgoing']],
+            ['rea-caller-telecom-incoming.json', ['ServerTelecomCallEngine', 'attachEngine']],
+            ['rea-caller-engine-outgoing.json', ['api("start"', 'createLocalDescription', 'api("signal"']],
+            ['rea-caller-engine-peer.json', ['createPeerConnection', 'createAudioTrack']],
+            ['rea-caller-engine-signals.json', ['offer', 'answer', 'addIceCandidate']],
+            ['rea-caller-engine-ice-observer.json', ['onIceConnectionChange', 'AnonymousClass1']],
+            ['rea-caller-guest-invite-notification.json', ['Send invitation', 'ServerGuestInviteActivity']]
+
+          ];
+          for (const [file, markers] of checks) {
+            const source = read(file);
+            const missing = markers.filter(marker => !source.includes(marker));
+            if (missing.length) {
+              console.error('REA compiled-code inspection missing markers in ' + file + ': ' + missing.join(', '));
+              process.exit(1);
+            }
+          }
+          const dexClasses = fs.readFileSync('artifacts/rea-caller-engine-dex-classes.txt', 'utf8');
+          if (!dexClasses.includes('ServerTelecomCallEngine$onIceConnectionChange$1')) {
+            console.error('Compiled DEX does not contain the ICE observer coroutine class.');
+            process.exit(1);
+          }
+          const outgoing = read('rea-caller-engine-outgoing.json');
+          if (outgoing.includes('ServerGuestInviteNotifications.show')) {
+            console.error('The compiled Telecom Phone path still opens a guest invitation page.');
+            process.exit(1);
+          }
+          console.log('REA_TELECOM_WEBRTC_PASS: inspected compiled ConnectionService, WebRTC engine, ICE observer, DEX coroutine descriptor and verified no guest-page handoff from Telecom.');
+          NODE
+          echo 'REA inspected compiled Telecom call routing, WebRTC peer creation, SDP/ICE signalling, ICE-connected state and guest invitation handoff.'
+
+      - name: Upload compiled APKs and REA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-rea-mobile-audit
+          path: |
+            artifacts/rea-gateway-package.json
+            artifacts/rea-gateway-startup-method.json
+            artifacts/rea-gateway-dex-strings.txt
+            artifacts/rea-gateway-pairing-method.json
+            artifacts/rea-gateway-sms-method.json
+            artifacts/rea-caller-package.json
+            artifacts/rea-caller-telecom-class.json
+            artifacts/rea-caller-telecom-outgoing.json
+            artifacts/rea-caller-telecom-incoming.json
+            artifacts/rea-caller-engine-class.json
+            artifacts/rea-caller-engine-outgoing.json
+            artifacts/rea-caller-engine-peer.json
+            artifacts/rea-caller-engine-signals.json
+            artifacts/rea-caller-engine-ice-observer.json
+            artifacts/rea-caller-engine-dex-classes.txt
+            artifacts/rea-caller-guest-invite-class.json
+            artifacts/rea-caller-guest-invite-notification.json
+            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
+          if-no-files-found: warn
+); do
+            unzip -p "$APK" "$dex" | strings
+          done > artifacts/rea-caller-engine-dex-classes.txt
+          grep -Fq 'ServerTelecomCallEngine$onIceConnectionChange$1' artifacts/rea-caller-engine-dex-classes.txt
           npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerGuestInviteNotifications --json > artifacts/rea-caller-guest-invite-class.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
           node --input-type=module <<'NODE'
