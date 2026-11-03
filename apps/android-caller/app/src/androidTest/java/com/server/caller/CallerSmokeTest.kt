@@ -526,8 +526,8 @@ class CallerSmokeTest {
       prefs.edit()
         .putString("access_token", "0".repeat(64))
         .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
-        .putString("phone", "+12025550101")
-        .putString("selected_sim_phone", "+12025550101")
+        .putString("phone", "+2348012345678")
+        .putString("selected_sim_phone", "+08012345678")
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_call_target_kind")
         .remove("debug_last_telecom_stage")
@@ -566,10 +566,18 @@ class CallerSmokeTest {
       // path exactly as a user does instead of treating the URI as prefilled text.
       device.pressHome()
       context.startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      val dialerReady = device.wait(Until.hasObject(By.pkg("com.android.dialer")), 12_000)
-      assertTrue("Android's system Phone dialer did not open", dialerReady)
+      val dialerIntent = Intent(Intent.ACTION_DIAL)
+      val dialerPackage = telecom.defaultDialerPackage
+        ?: context.packageManager.resolveActivity(dialerIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+          ?.activityInfo?.packageName
+      assertNotNull("Android did not expose a default system Phone dialer for ACTION_DIAL", dialerPackage)
+      val resolvedDialerPackage = dialerPackage!!
+      assertTrue("The default Phone app must not be the Server connector itself", resolvedDialerPackage != context.packageName)
+      context.startActivity(dialerIntent)
+      val dialerReady = device.wait(Until.hasObject(By.pkg(resolvedDialerPackage)), 12_000)
+      assertTrue("Android's system Phone dialer did not open (resolved package: " + resolvedDialerPackage + ")", dialerReady)
       runShellCommand("input text 12025550101")
-      val dialedNumberReady = device.wait(Until.hasObject(By.textContains("202")), 8_000)
+      val dialedNumberReady = device.wait(Until.hasObject(By.textContains("080")), 8_000)
       if (!dialedNumberReady) {
         try {
           val hierarchy = File(context.cacheDir, "server-phone-dialer-number-hierarchy.txt")
@@ -584,8 +592,9 @@ class CallerSmokeTest {
       // action as resource id dialpad_floating_action_button with content-desc
       // "dial", not the English label "Call". Prefer that stable resource id.
       val callButton = device.wait(
-        Until.findObject(By.res("com.android.dialer:id/dialpad_floating_action_button")), 6_000
-      ) ?: device.wait(Until.findObject(By.descContains("Call")), 2_000)
+        Until.findObject(By.res(resolvedDialerPackage, "dialpad_floating_action_button")), 6_000
+      ) ?: device.wait(Until.findObject(By.descContains("dial")), 2_000)
+        ?: device.wait(Until.findObject(By.descContains("Call")), 2_000)
         ?: device.wait(Until.findObject(By.text("Call")), 2_000)
       if (callButton == null) {
         try {
@@ -616,8 +625,10 @@ class CallerSmokeTest {
       val deadline = System.currentTimeMillis() + 20_000
       while (System.currentTimeMillis() < deadline && prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) Thread.sleep(200)
       var lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
-      assertTrue("Choosing Server from the preinstalled Phone app did not reach Server’s call engine (last stage: " + lastTelecomStage + ")",
-        prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L)
+      val engineEnteredAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
+      val failure = prefs.getString("debug_last_call_failure", null).orEmpty()
+      assertTrue("Choosing Server from the preinstalled Phone app did not complete phone-target validation (last stage: " + lastTelecomStage + "; failure: " + failure.ifBlank { "not recorded" } + ")",
+        engineEnteredAt > 0L)
       assertEquals("The system dialer telephone number must enter the phone-number call path",
         "phone", prefs.getString("debug_last_call_target_kind", null))
 
@@ -632,7 +643,6 @@ class CallerSmokeTest {
         "call_setup_failed", lastTelecomStage)
       assertTrue("The Telecom-bound ConnectionService must own the call engine",
         prefs.getBoolean("debug_telecom_connection_engine_started", false))
-      val failure = prefs.getString("debug_last_call_failure", null).orEmpty()
       assertTrue("The test must observe the expected rejected backend session", failure.isNotBlank())
       assertFalse("Server must not replace Android Phone with its internal setup page",
         device.hasObject(By.text("Calling, made natural")))
