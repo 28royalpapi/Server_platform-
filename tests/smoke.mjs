@@ -16,6 +16,7 @@ const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/s
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
+const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
 const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
 const androidTestCountCheck=read("scripts/assert-android-test-count.py");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
@@ -177,6 +178,14 @@ assert.match(androidTelecom,/callEngine\?\.answerIncoming\(id\)/,
   "incoming calls are answered by the Telecom-bound WebRTC engine");
 assert.match(androidTelecom,/callEngine\?\.hangup\(\)/,
   "system disconnect events are handled by the Telecom-bound WebRTC engine");
+assert.match(androidReaWorkflow,/com\.server\.caller\.ServerTelecomCallEngine/,
+  "compiled APK inspection must target the Telecom-bound WebRTC engine used by Android Phone");
+assert.match(androidReaWorkflow,/ServerConnectionService onCreateOutgoingConnection/,
+  "compiled APK inspection must trace the outgoing Telecom callback into the call engine");
+assert.match(androidReaWorkflow,/ServerTelecomCallEngine onIceConnectionChange/,
+  "compiled APK inspection must verify the call engine's real ICE-connected state handling");
+assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity preparePeer|MainActivity handleSignal/,
+  "the call-engine audit must not use the obsolete Activity WebRTC implementation");
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/);
 assert.match(nativeWorkflow,/api-level: 31/);
