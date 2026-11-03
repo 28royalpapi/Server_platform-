@@ -165,6 +165,8 @@ assert.match(androidMain,/recordTelecomDebugStage\("call_setup_failed"\)/,
 assert.match(androidMain,/Server needs internet to place this call/,
    "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
 assert.match(androidTests,/phoneAccountCanReceiveIncomingCallThroughTelecom/);
+assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
+assert.match(androidTests,/debug_telecom_router_hidden/);
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/);
 assert.match(nativeWorkflow,/api-level: 31/);
