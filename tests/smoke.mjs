@@ -308,8 +308,10 @@ assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
   "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
-assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL, Uri\.parse\("tel:\+12025550101"\)\)/,
-  "outgoing-call acceptance opens Android's real Phone dialer with a test target");
+assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL\)/,
+  "outgoing-call acceptance opens Android's real Phone dialer");
+assert.match(androidTests,/input text 12025550101/,
+  "the system Phone UI receives the test number through its actual dialpad input");
 assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
