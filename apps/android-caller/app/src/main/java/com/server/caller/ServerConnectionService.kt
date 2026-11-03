@@ -183,6 +183,7 @@ class ServerConnectionService : ConnectionService() {
       setAudioModeIsVoip(true)
       setExtras(Bundle().apply { putString("server_remote_phone", phone) })
       setDialing()
+      setRingbackRequested(true)
     }
     ServerTelecomRegistry.attach(connection)
     // Telecom binds this ConnectionService for the lifetime of the call. The
@@ -276,9 +277,10 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
     setExtras(updated)
   }
 
-  fun markConnected() { setActive() }
+  fun markConnected() { setRingbackRequested(false); setActive() }
 
   fun markEnded() {
+    setRingbackRequested(false)
     ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
     ServerTelecomRegistry.detach(this)
@@ -286,6 +288,7 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
   }
 
   fun markRemoteEnded() {
+    setRingbackRequested(false)
     ServerCallNotifications.cancel(app, extras?.getString("server_call_id").orEmpty())
     setDisconnected(DisconnectCause(DisconnectCause.REMOTE))
     ServerTelecomRegistry.detach(this)
