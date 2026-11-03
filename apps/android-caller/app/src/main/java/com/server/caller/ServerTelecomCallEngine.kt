@@ -133,6 +133,9 @@ internal class ServerTelecomCallEngine(
         return
       }
       route = started.optString("route", "guest")
+      // A Server account route can ring the remote Server user. A guest invite
+      // cannot ring an ordinary carrier number until the recipient opens its link.
+      connection.setRingbackRequested(route == "server")
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       recordStage("backend_call_created")
