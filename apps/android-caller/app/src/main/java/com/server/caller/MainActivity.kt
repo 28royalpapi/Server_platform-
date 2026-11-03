@@ -260,7 +260,19 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   override fun onResume() {
     super.onResume()
     // A transient registration failure is retried when the user returns to Server.
-    if (!accessToken.isNullOrBlank()) ServerPushRegistration.syncFcmToken(this)
+    if (accessToken.isNullOrBlank()) return
+    ServerPushRegistration.syncFcmToken(this)
+
+    // The user may have just returned from Android's Calling accounts settings.
+    // Re-read the OS-owned PhoneAccount state and start the persistent incoming
+    // listener only after Server has actually been enabled there.
+    if (ServerTelecomRegistry.isEnabled(this)) {
+      incomingJob?.cancel()
+      incomingJob = null
+      ServerIncomingCallService.start(this)
+    } else if (incomingJob?.isActive != true) {
+      incomingJob = lifecycleScope.launch { incomingLoop() }
+    }
   }
 
   override fun onNewIntent(intent: Intent) {
