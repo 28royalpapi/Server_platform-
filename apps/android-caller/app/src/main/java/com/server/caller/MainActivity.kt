@@ -516,8 +516,16 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val invitationBody = started.optString("sms_body", "")
       if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody)
+      } else if (currentRoute == "guest") {
+        setStatus("The secure guest invitation is ready to share. The recipient needs internet and microphone access to answer.")
       } else {
-        setStatus(if (currentRoute == "guest") "The secure guest invitation is ready to share. The recipient needs internet and microphone access to answer." else "Calling another Server user… waiting for answer.")
+        val pushDelivery = started.optJSONObject("push_delivery")
+        val submitted = pushDelivery?.optInt("sent", 0) ?: 0
+        if (submitted > 0) {
+          setStatus("The push provider accepted an incoming-call alert request. Delivery is not confirmed; waiting for the recipient to answer.")
+        } else {
+          setStatus("Call created, but no push provider accepted a wake alert. An already-active Server listener may still receive it; otherwise the recipient must reconnect or open Server. Carrier offline wake-up is not enabled.", true)
+        }
       }
     } catch (e: Exception) {
       recordTelecomDebugStage("call_backend_start_failed")
