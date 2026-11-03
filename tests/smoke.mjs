@@ -175,7 +175,7 @@ assert.doesNotMatch(androidTelecom,/ServerTelecomRegistry\.openApp\(this/,
   "outgoing and incoming Telecom call creation must not start a background Activity");
 assert.match(androidTelecom,/callEngine\?\.answerIncoming\(id\)/,
   "incoming calls are answered by the Telecom-bound WebRTC engine");
-assert.match(androidTelecom,/engine\.hangup\(\)/,
+assert.match(androidTelecom,/callEngine\?\.hangup\(\)/,
   "system disconnect events are handled by the Telecom-bound WebRTC engine");
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/);
