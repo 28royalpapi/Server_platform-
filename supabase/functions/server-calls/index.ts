@@ -188,6 +188,11 @@ Deno.serve(async(req:Request)=>{
     // Otherwise keep the caller on the existing guest invitation route.
     callee=found&&found.phone_verified_at&&found.allow_number_based_server_calls===true?found:null;
     route=callee?"server":"guest";
+    // System Phone -> Server is a genuine calling-account route, not a guest
+    // invitation workflow. Never turn a dialer call into a browser/share page.
+    if(b.source==="android_telecom"&&route!=="server"){
+     return out({error:"RECIPIENT_NOT_SERVER_ENABLED"},404);
+    }
    }
    const now=new Date().toISOString();
    const callTtlSeconds=route==="guest"?GUEST_CALL_TTL_SECONDS:SERVER_CALL_TTL_SECONDS;
