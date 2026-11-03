@@ -281,8 +281,10 @@ jobs:
       - name: Run Android API ${{ matrix.api-level }} Telecom and phone-picker acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ matrix.api-level }}
-          # Android 17's current SDK package is published on the Canary SDK channel.
+          # Android 17's platform package is 37.0; its emulator image remains API 37.
+          api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
+          system-image-api-level: ${{ matrix.api-level }}
+          # Android 17's SDK packages are published on the Canary SDK channel.
           channel: ${{ matrix.api-level == 37 && 'canary' || 'stable' }}
           target: google_apis
           arch: x86_64
