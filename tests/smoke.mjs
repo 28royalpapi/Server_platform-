@@ -197,7 +197,8 @@ assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity prep
   "the call-engine audit must not use the obsolete Activity WebRTC implementation");
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/, "Android 8 remains a minimum-install compatibility check");
-assert.match(nativeWorkflow,/api-level:\s*\$\{\{\s*matrix\.api-level\s*\}\}/, "Android 10–17 compatibility runs use the API matrix");
+assert.match(nativeWorkflow,/api-level:\s*\$\{\{\s*matrix\.api-level\s*==\s*37\s*&&\s*'37\.0'\s*\|\|\s*matrix\.api-level\s*\}\}/, "Android 17 uses the SDK platform's 37.0 package identifier");
+assert.match(nativeWorkflow,/system-image-api-level:\s*\$\{\{\s*matrix\.api-level\s*\}\}/, "the Android 17 emulator uses the API 37 system image alongside platform 37.0");
 assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*35,\s*37\]/, "Android 10, 11, 12, 12L, 13, 15 and 17 are covered");
 assert.match(nativeWorkflow,/api-level: 34/, "Android 14 is tested by the full native emulator workflow");
 assert.match(nativeWorkflow,/api-level: '36'/, "Android 16 stable is tested independently");
