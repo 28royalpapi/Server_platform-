@@ -188,12 +188,12 @@ class CallerSmokeTest {
     }
   }
 
-  @Test fun serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate() {
+  @Test fun serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives() {
     assertFalse("No active network must block Server internet calling",
       isServerInternetUsable(false, false))
     assertFalse("A connected transport without INTERNET capability must not start a Server call",
       isServerInternetUsable(false, true))
-    assertFalse("Internet that Android has not validated must not be treated as usable",
+    assertTrue("A mobile-data/Wi-Fi network with INTERNET capability must be tried even if Android's validation probe is false",
       isServerInternetUsable(true, false))
     assertTrue("Validated Wi-Fi or mobile data must allow Server to attempt the call",
       isServerInternetUsable(true, true))
@@ -491,6 +491,7 @@ class CallerSmokeTest {
     val previousPhone = prefs.getString("phone", null)
     val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
+    val previousTelecomStage = prefs.getString("debug_last_telecom_stage", null)
     val previousDefaultOutgoing = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
     val device = UiDevice.getInstance(instrumentation)
     var testAccountRegistered = false
@@ -506,6 +507,7 @@ class CallerSmokeTest {
         .putString("selected_sim_phone", "+15550001001")
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_call_target_kind")
+        .remove("debug_last_telecom_stage")
         .commit()
 
       ServerTelecomRegistry.register(context)
@@ -562,11 +564,26 @@ class CallerSmokeTest {
 
       val deadline = System.currentTimeMillis() + 20_000
       while (System.currentTimeMillis() < deadline && prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) Thread.sleep(200)
-      val lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
+      var lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
       assertTrue("Choosing Server from the preinstalled Phone app did not reach Server’s call engine (last stage: " + lastTelecomStage + ")",
         prefs.getLong("debug_last_call_engine_entered_at", 0L) > 0L)
       assertEquals("The system dialer telephone number must enter the phone-number call path",
         "phone", prefs.getString("debug_last_call_target_kind", null))
+
+      // This test intentionally uses an invalid session, so a real backend rejection
+      // is expected. The important acceptance condition is that the Activity reaches
+      // the authenticated Server endpoint, reports the failure on-screen and does not
+      // disappear behind Android's Phone UI before the user can see the reason.
+      val backendDeadline = System.currentTimeMillis() + 15_000
+      while (System.currentTimeMillis() < backendDeadline &&
+        prefs.getString("debug_last_telecom_stage", null) != "call_setup_failed") Thread.sleep(150)
+      lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
+      assertEquals("Outgoing Telecom flow must wait for the Server backend result before returning to the Phone app",
+        "call_setup_failed", lastTelecomStage)
+      assertEquals("A failed outgoing Server call must leave the explanatory error visible, not vanish behind the Phone app",
+        context.packageName, device.currentPackageName)
+      assertTrue("The caller must see a clear Server call-start failure",
+        device.wait(Until.hasObject(By.textContains("Server could not start the internet call")), 5_000))
     } finally {
       val edit = prefs.edit()
       if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
@@ -574,6 +591,7 @@ class CallerSmokeTest {
       if (previousPhone == null) edit.remove("phone") else edit.putString("phone", previousPhone)
       if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
       if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
+      if (previousTelecomStage == null) edit.remove("debug_last_telecom_stage") else edit.putString("debug_last_telecom_stage", previousTelecomStage)
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
       ServerTelecomRegistry.register(context)
