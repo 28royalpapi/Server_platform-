@@ -455,7 +455,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         putExtra(Intent.EXTRA_TEXT, body)
       }
       startActivity(Intent.createChooser(share, "Share Server guest-call invitation"))
-      setStatus("Invitation ready. Choose an app you already use to send the secure link. The recipient needs internet and microphone access.")
+      setStatus("Invitation ready. Choose an internet messaging app to share the link. Choosing SMS may incur your mobile operator's SMS charge. The recipient needs internet and microphone access.")
     } catch (_: Exception) {
       setStatus("The guest invitation is ready, but no share app could open. Copy and share this link manually: " + body, true)
     }
