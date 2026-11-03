@@ -510,6 +510,10 @@ class CallerSmokeTest {
     val previousToken = prefs.getString("access_token", null)
     val previousExpiry = prefs.getLong("access_expiry", 0L)
     val previousPhone = prefs.getString("phone", null)
+    val previousSelectedSimPhone = prefs.getString("selected_sim_phone", null)
+    val previousConnectionServiceEnteredAt = prefs.getLong("debug_last_telecom_connection_service_entered_at", 0L)
+    val previousRequestScheme = prefs.getString("debug_last_telecom_request_scheme", null)
+    val previousRequestTargetLength = prefs.getInt("debug_last_telecom_request_target_length", -1)
     val previousEngineAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
     val previousTelecomStage = prefs.getString("debug_last_telecom_stage", null)
@@ -529,6 +533,9 @@ class CallerSmokeTest {
         .putString("phone", "+2348012345678")
         .putString("selected_sim_phone", "+2348012345678")
         .remove("debug_last_call_engine_entered_at")
+        .remove("debug_last_telecom_connection_service_entered_at")
+        .remove("debug_last_telecom_request_scheme")
+        .remove("debug_last_telecom_request_target_length")
         .remove("debug_last_call_target_kind")
         .remove("debug_last_telecom_stage")
         .remove("debug_telecom_connection_engine_started")
@@ -565,7 +572,7 @@ class CallerSmokeTest {
       // with a tel: URI, so enter the test destination through the dialpad input
       // path exactly as a user does instead of treating the URI as prefilled text.
       device.pressHome()
-            val dialerIntent = Intent(Intent.ACTION_DIAL)
+      val dialerIntent = Intent(Intent.ACTION_DIAL)
       val dialerPackage = telecom.defaultDialerPackage
         ?: context.packageManager.resolveActivity(dialerIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
           ?.activityInfo?.packageName
@@ -625,8 +632,9 @@ class CallerSmokeTest {
       while (System.currentTimeMillis() < deadline && prefs.getLong("debug_last_call_engine_entered_at", 0L) == 0L) Thread.sleep(200)
       var lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
       val engineEnteredAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
-      val failure = prefs.getString("debug_last_call_failure", null).orEmpty()
-      assertTrue("Choosing Server from the preinstalled Phone app did not complete phone-target validation (last stage: " + lastTelecomStage + "; failure: " + failure.ifBlank { "not recorded" } + ")",
+      var failure = prefs.getString("debug_last_call_failure", null).orEmpty()
+      val connectionServiceEnteredAt = prefs.getLong("debug_last_telecom_connection_service_entered_at", 0L)
+      assertTrue("Choosing Server from the preinstalled Phone app did not complete phone-target validation (last stage: " + lastTelecomStage + "; failure: " + failure.ifBlank { "not recorded" } + "; ConnectionService entry: " + connectionServiceEnteredAt + ")",
         engineEnteredAt > 0L)
       assertEquals("The system dialer telephone number must enter the phone-number call path",
         "phone", prefs.getString("debug_last_call_target_kind", null))
@@ -638,11 +646,12 @@ class CallerSmokeTest {
       while (System.currentTimeMillis() < backendDeadline &&
         prefs.getString("debug_last_telecom_stage", null) != "call_setup_failed") Thread.sleep(150)
       lastTelecomStage = prefs.getString("debug_last_telecom_stage", "not-recorded")
+      failure = prefs.getString("debug_last_call_failure", null).orEmpty()
       assertEquals("Outgoing Telecom flow must wait for the Server backend result before returning to the Phone app",
         "call_setup_failed", lastTelecomStage)
       assertTrue("The Telecom-bound ConnectionService must own the call engine",
         prefs.getBoolean("debug_telecom_connection_engine_started", false))
-      assertTrue("The test must observe the expected rejected backend session", failure.isNotBlank())
+      assertTrue("The test must observe the expected rejected backend session (failure: " + failure.ifBlank { "not recorded" } + ")", failure.isNotBlank())
       assertFalse("Server must not replace Android Phone with its internal setup page",
         device.hasObject(By.text("Calling, made natural")))
       assertTrue("No Server Activity should be launched over Android Phone",
@@ -652,6 +661,10 @@ class CallerSmokeTest {
       if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
       edit.putLong("access_expiry", previousExpiry)
       if (previousPhone == null) edit.remove("phone") else edit.putString("phone", previousPhone)
+      if (previousSelectedSimPhone == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousSelectedSimPhone)
+      if (previousConnectionServiceEnteredAt == 0L) edit.remove("debug_last_telecom_connection_service_entered_at") else edit.putLong("debug_last_telecom_connection_service_entered_at", previousConnectionServiceEnteredAt)
+      if (previousRequestScheme == null) edit.remove("debug_last_telecom_request_scheme") else edit.putString("debug_last_telecom_request_scheme", previousRequestScheme)
+      if (previousRequestTargetLength < 0) edit.remove("debug_last_telecom_request_target_length") else edit.putInt("debug_last_telecom_request_target_length", previousRequestTargetLength)
       if (previousEngineAt == 0L) edit.remove("debug_last_call_engine_entered_at") else edit.putLong("debug_last_call_engine_entered_at", previousEngineAt)
       if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
       if (previousTelecomStage == null) edit.remove("debug_last_telecom_stage") else edit.putString("debug_last_telecom_stage", previousTelecomStage)
