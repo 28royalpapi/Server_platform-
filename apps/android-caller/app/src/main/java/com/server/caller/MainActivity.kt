@@ -130,6 +130,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    // Android Telecom enters this Activity only as a call-routing bridge. The
+    // visible call surface belongs to Android Phone, not Server's internal form.
+    val systemCallEntry = intent?.getStringExtra("server_action") in
+      setOf("dial", "incoming", "answer", "decline", "hangup", "missed_callback")
+    if (systemCallEntry) setTheme(R.style.ServerCallRouterTheme)
     super.onCreate(savedInstanceState)
     accessToken = prefs.getString("access_token", null)
     refreshToken = prefs.getString("refresh_token", null)
@@ -137,6 +142,17 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     currentPhone = prefs.getString("phone", "") ?: ""
     currentServerId = prefs.getString("server_id", "") ?: ""
     buildUi()
+    if (systemCallEntry) {
+      // Never replace the user's Phone app with the internal "Server call engine"
+      // page or show the dialled contact number in a second, app-owned screen.
+      root.visibility = View.GONE
+      window.setBackgroundDrawableResource(android.R.color.transparent)
+      window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+      window.setDimAmount(0f)
+      prefs.edit().putBoolean("debug_telecom_router_hidden", true).apply()
+    } else {
+      prefs.edit().putBoolean("debug_telecom_router_hidden", false).apply()
+    }
     if (!configured()) setStatus("Add the Server Supabase URL and publishable key to the build configuration.", true)
     else if (!accessToken.isNullOrBlank()) showSignedIn()
     else showSetupRequired()
@@ -299,6 +315,13 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
+    if (intent.getStringExtra("server_action") in setOf("dial", "incoming", "answer", "decline", "hangup", "missed_callback")) {
+      root.visibility = View.GONE
+      window.setBackgroundDrawableResource(android.R.color.transparent)
+      window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+      window.setDimAmount(0f)
+      prefs.edit().putBoolean("debug_telecom_router_hidden", true).apply()
+    }
     handleTelecomIntent(intent)
     handleAppLink(intent)
     if (ServerTelecomRegistry.isEnabled(this)) {
@@ -492,17 +515,30 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
    * Shares a guest invitation through an app the caller already has.
    * Server does not silently send paid SMS or place a carrier voice call.
    */
-  private fun shareGuestInvitation(body: String) {
+  private fun shareGuestInvitation(body: String, recipientPhone: String) {
     try {
       val share = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, body)
       }
-      val chooser = Intent.createChooser(share, "Share Server guest-call invitation")
+      // Put an SMS composer with the dialled contact already filled in at the
+      // top of Android's chooser. The user still presses Send; Server never sends
+      // a carrier SMS silently or charges the user without consent.
+      val sms = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$recipientPhone")).apply {
+        putExtra("sms_body", body)
+      }
+      val chooser = Intent.createChooser(share, "Send Server invitation to ${mask(recipientPhone)}").apply {
+        putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(sms))
+      }
       if (pendingSystemDialerReturn) guestShareLauncher.launch(chooser) else startActivity(chooser)
-      setStatus("This number is not currently enabled for direct Server-to-Server calling. Share the internet invitation to reach them. Choosing SMS may incur your mobile operator's SMS charge; the recipient needs internet and microphone access.")
+      setStatus("This person is not receiving a direct Server-to-Server call. Send the secure internet invitation to ${mask(recipientPhone)}; they must open it and tap Answer. SMS may incur your carrier's charge.")
+      if (pendingSystemDialerReturn) {
+        Toast.makeText(this, "Choose SMS or another messaging app, then send the Server call invitation.", Toast.LENGTH_LONG).show()
+      }
     } catch (_: Exception) {
-      setStatus("The guest invitation is ready, but no share app could open. Copy and share this link manually: " + body, true)
+      val message = "The invitation is ready, but Android could not open a sharing app. Copy and send the link manually."
+      setStatus(message + " " + body, true)
+      if (pendingSystemDialerReturn) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
   }
 
@@ -565,7 +601,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val invitationBody = started.optString("invitation_text",
         started.optString("sms_body", ""))
       if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
-        shareGuestInvitation(invitationBody)
+        shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
         setStatus("The secure guest invitation is ready to share. The recipient needs internet and microphone access to answer.")
       } else {
@@ -584,8 +620,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
       cleanPeer(); callId = null
-      setStatus("Server could not start the internet call: " + (e.message ?: "Unknown error") +
-        ". No normal mobile call was placed. Check your internet connection and try again.", true)
+      val reason = e.message ?: "Unknown error"
+      val userMessage = if (reason.contains("GUEST_INVITE_RATE_LIMITED")) {
+        "Too many invitations were created recently. Wait before retrying this contact; Server has not placed a normal mobile call."
+      } else {
+        "Server could not start the internet call: $reason. No normal mobile call was placed. Check your internet connection and try again."
+      }
+      setStatus(userMessage, true)
+      if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
     } finally { callButton.isEnabled = true }
   }
   private suspend fun incomingLoop() {
