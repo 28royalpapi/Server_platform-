@@ -60,8 +60,8 @@ class CallerSmokeTest {
       null, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", ukE164, null))
     assertEquals("A literal + prefixed saved contact number is trusted without postal country metadata",
       ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", ukE164, null, normalizedNumberIsExplicitInternational = true))
-    assertEquals("A provider-normalized number conflicting with the contact country is rejected",
-      null, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", "+2348012345678", "United Kingdom"))
+    assertEquals("A provider-normalized number conflicting with contact country is ignored in favour of the contact country",
+      ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", "+2348012345678", "United Kingdom"))
     assertEquals("The contact postal country supplies the destination region when provider normalization is absent",
       ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", null, "United Kingdom"))
     assertEquals("The contact country can also be supplied as an ISO region code",

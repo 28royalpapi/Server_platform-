@@ -110,7 +110,9 @@ internal object ServerPhoneNumberNormalizer {
       // Android may auto-fill NORMALIZED_NUMBER using the device's current
       // country. Trust it only when the contact's own country independently agrees.
       if (contactRegion != null && normalizedRegion == contactRegion) return toE164(normalized, "ZZ")
-      if (normalizedRegion != null && contactRegion != null && normalizedRegion != contactRegion) return null
+      // A mismatch means the provider probably inferred NORMALIZED_NUMBER from
+      // the caller's device country. Discard that guess and parse the original
+      // national-format number using the matched contact's saved country instead.
     }
 
     return contactRegion?.let { toE164(value, it) }
@@ -118,8 +120,9 @@ internal object ServerPhoneNumberNormalizer {
 
   /**
    * Pure resolver used by tests. A provider-generated NORMALIZED_NUMBER is accepted
-   * only when its region agrees with contact-country metadata. An explicitly
-   * + prefixed saved number is independently trustworthy.
+   * only when its region agrees with contact-country metadata. If it disagrees, the
+   * original national number is parsed using the contact country instead. An
+   * explicitly + prefixed saved number is independently trustworthy.
    */
   fun toE164WithContactMetadata(
     raw: String,
@@ -146,7 +149,8 @@ internal object ServerPhoneNumberNormalizer {
     if (normalized != null && contactRegion != null) {
       val parsedRegion = regionForE164(normalized)
       if (parsedRegion == contactRegion) return toE164(normalized, "ZZ")
-      if (parsedRegion != null && parsedRegion != contactRegion) return null
+      // Otherwise the NORMALIZED_NUMBER may have been inferred from this device's
+      // locale. Fall through and parse the original value using contactRegion.
     }
 
     if (contactRegion != null) return toE164(value, contactRegion)
