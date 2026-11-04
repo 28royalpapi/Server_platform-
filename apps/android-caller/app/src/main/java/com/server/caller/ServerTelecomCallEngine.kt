@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.telephony.TelephonyManager
 import android.telecom.Connection
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -111,7 +112,7 @@ internal class ServerTelecomCallEngine(
         throw IllegalStateException("Microphone permission is missing. Reopen Server setup and allow microphone access.")
       }
       val target = normalizePhone(rawTarget)
-        ?: throw IllegalStateException("The number from Android Phone could not be read as a Nigerian or international number.")
+        ?: throw IllegalStateException("The saved contact number could not be recognised for this phone's SIM country.")
       if (BuildConfig.DEBUG) {
         prefs.edit()
           .putLong("debug_last_call_engine_entered_at", System.currentTimeMillis())
@@ -151,9 +152,24 @@ internal class ServerTelecomCallEngine(
         return
       }
       recordStage("call_offer_submitted")
-      if (route != "server") {
-        throw IllegalStateException("RECIPIENT_NOT_SERVER_ENABLED")
+      if (route == "guest") {
+        val invitation = started.optString("invitation_text").ifBlank {
+          started.optString("sms_body")
+        }
+        if (invitation.isBlank()) throw IllegalStateException("Server did not return a secure guest invitation.")
+        if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target, invitation)) {
+          throw IllegalStateException(
+            "Allow Server notifications to share a secure call invitation with someone who does not use Server."
+          )
+        }
+        recordStage("guest_invitation_ready")
+        // The recipient answers on the secure browser page. Keep the Telecom call
+        // and WebRTC offer alive while the browser joins; do not launch an Activity
+        // over Android's Phone app from this background ConnectionService.
+        beginPolling()
+        return
       }
+      if (route != "server") throw IllegalStateException("Server returned an unsupported call route.")
       val acceptedPush = started.optJSONObject("push_delivery")?.optInt("sent", 0) ?: 0
       if (acceptedPush == 0) {
         Log.w(TAG, "No push provider accepted a wake alert; recipient must have the Server listener active.")
@@ -201,6 +217,7 @@ internal class ServerTelecomCallEngine(
     } catch (error: Exception) {
       Log.w(TAG, "Server call-end request failed: " + error.javaClass.simpleName)
     } finally {
+      if (target.isNotBlank()) ServerGuestInviteNotifications.cancel(context, target)
       // Telecom's onReject/onDisconnect already moved the native Connection to
       // DISCONNECTED. Only remote hangup and engine failures change its state here.
       cleanupPeer()
@@ -218,6 +235,7 @@ internal class ServerTelecomCallEngine(
     connection.markEnded()
     cleanupPeer()
     ServerCallNotifications.cancel(context, id.orEmpty())
+    ServerGuestInviteNotifications.cancel(context, id.orEmpty())
     ServerCallEngineStatusNotifications.showFailure(context, message)
     release()
   }
@@ -241,6 +259,7 @@ internal class ServerTelecomCallEngine(
             val endedId = callId
             if (!endedId.isNullOrBlank()) {
               ServerCallNotifications.cancel(context, endedId)
+              ServerGuestInviteNotifications.cancel(context, endedId)
               connection.markRemoteEnded()
             }
             cleanupPeer()
@@ -285,6 +304,7 @@ internal class ServerTelecomCallEngine(
         val id = callId
         if (!id.isNullOrBlank()) {
           ServerCallNotifications.cancel(context, id)
+          ServerGuestInviteNotifications.cancel(context, id)
           connection.markRemoteEnded()
         }
         cleanupPeer()
@@ -435,18 +455,18 @@ internal class ServerTelecomCallEngine(
       }
     }
 
-  private fun normalizePhone(raw: String): String? {
-    val value = raw.trim()
-    val digits = value.filter { it.isDigit() }
-    val candidate = when {
-      value.startsWith("+") -> "+$digits"
-      value.startsWith("00") -> "+" + digits.drop(2)
-      digits.startsWith("234") && digits.length == 13 -> "+$digits"
-      digits.length == 11 && digits.startsWith("0") -> "+234" + digits.drop(1)
-      digits.length == 10 && digits.firstOrNull() in '7'..'9' -> "+234$digits"
-      else -> return null
+  private fun normalizePhone(raw: String): String? =
+    ServerPhoneNumberNormalizer.toE164(raw, simCountryIso())
+
+  @Suppress("DEPRECATION")
+  private fun simCountryIso(): String {
+    return try {
+      val iso = (context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager)
+        .simCountryIso.trim()
+      iso.takeIf { Regex("^[A-Za-z]{2}$").matches(it) }?.uppercase(java.util.Locale.ROOT) ?: "NG"
+    } catch (_: Exception) {
+      "NG"
     }
-    return candidate.takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
   }
 
   private fun recordStage(stage: String) {

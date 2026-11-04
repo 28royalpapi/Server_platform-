@@ -13,6 +13,9 @@ const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
 const androidEngine=read("apps/android-caller/app/src/main/java/com/server/caller/ServerTelecomCallEngine.kt");
+const androidPhoneNormalizer=read("apps/android-caller/app/src/main/java/com/server/caller/ServerPhoneNumberNormalizer.kt");
+const androidGuestNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteNotifications.kt");
+const androidGuestShare=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteShareActivity.kt");
 const androidBuild=read("apps/android-caller/app/build.gradle.kts");
 const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallNotifications.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
@@ -310,21 +313,32 @@ assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\)/,
   "Telecom ringback is requested only for a real Server recipient, never for a manual guest share");
 assert.match(androidEngine,/put\("source", "android_telecom"\)/,
-  "system Phone calls identify their origin so the backend can reject non-Server guest routes");
+  "system Phone calls identify their origin so the backend can use the explicit native guest-share route");
 assert.match(androidMain,/if \(pendingSystemDialerReturn\) payload\.put\("source", "android_telecom"\)/,
   "the legacy Android Phone intent bridge must use the same backend no-guest route guard");
-assert.doesNotMatch(androidEngine,/ServerGuestInviteNotifications\.show/,
-  "choosing Server from Android Phone must never launch a guest invitation page");
-assert.doesNotMatch(androidEngine,/ServerGuestInviteNotifications|ServerGuestInviteActivity/,
-  "the Android calling connector must not package a guest-invitation screen or notification");
-assert.doesNotMatch(androidManifest,/ServerGuestInviteActivity/,
-  "the Android manifest must not expose a guest invitation Activity");
+assert.match(androidEngine,/ServerGuestInviteNotifications\.show\(context, callId\.orEmpty\(\), target, invitation\)/,
+  "a non-Server contact receives an explicit notification to share the expiring browser invitation");
+assert.match(androidGuestNotifications,/NotificationCompat\.Action|addAction/,
+  "the no-install route uses a native notification action rather than opening a caller webpage");
+assert.match(androidGuestShare,/Intent\(Intent\.ACTION_SEND\)/,
+  "the caller explicitly opens Android's native share chooser");
+assert.match(androidGuestShare,/Intent\(Intent\.ACTION_SENDTO, Uri\.fromParts\("smsto", phone, null\)\)/,
+  "the SMS composer is addressed to the selected saved contact");
+assert.doesNotMatch(androidGuestShare,/sendTextMessage|SmsManager\.send/,"Server never sends an SMS without the caller tapping Send");
+assert.match(androidManifest,/android:name="com\.server\.caller\.ServerGuestInviteShareActivity"/,
+  "the native share activity is available only after the user taps the guest invitation notification");
+assert.match(androidPhoneNormalizer,/PhoneNumberUtils\.formatNumberToE164/,
+  "national-format saved contacts are normalised internally with Android's phone-number library");
+assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164\(raw, simCountryIso\(\)\)/,
+  "the user's SIM country controls national number interpretation without editing contacts");
+assert.match(androidTests,/savedContactNumbersNormalizeWithoutAnInternationalPlus/,
+  "national-format contacts have a dedicated Android normalisation test");
 assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
-assert.match(calls,/b\.source==="android_telecom"&&route!=="server"/,
-  "the backend rejects non-Server destinations before creating a dialer guest-invitation call");
-assert.match(calls,/RECIPIENT_NOT_SERVER_ENABLED/,
-  "a non-Server destination gets a truthful dialer error rather than a fake call or invitation page");
+assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
+  "a system Phone call may use the secure guest browser route when the recipient does not have Server");
+assert.match(calls,/delivery_mode:"manual_share"/,
+  "guest invitations are returned for an explicit user-initiated share rather than automatic SMS");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
   "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
@@ -332,8 +346,10 @@ assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL\)/,
   "outgoing-call acceptance opens Android's real Phone dialer");
 assert.match(androidTests,/By\.res\(resolvedDialerPackage, "digits"\)/,
   "the test locates the Phone dialer's destination EditText");
-assert.match(androidTests,/digitsField!!\.click\(\)[\s\S]*input text 08012345678/,
-  "the test focuses the real destination field before entering a Nigerian test number");
+assert.match(androidTests,/digitsField!!\.setText\("08012345678"\)/,
+  "the test enters the Nigerian number into the real destination EditText without keyboard keycode assumptions");
+assert.match(androidTests,/Hide keyboard/,
+  "the phone picker test dismisses the IME before verifying the visible dial action");
 assert.match(androidTests,/enablePhoneAccountWithTestShell\(context, serverHandle\)/,
   "Telecom test setup enables the account without depending on OEM-specific Settings layouts");
 assert.match(androidTests,/telecom\.defaultDialerPackage/,

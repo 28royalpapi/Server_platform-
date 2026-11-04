@@ -28,6 +28,21 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
+  @Test fun savedContactNumbersNormalizeWithoutAnInternationalPlus() {
+    assertEquals("080 Nigerian contacts should normalise internally",
+      "+2348012345678", ServerPhoneNumberNormalizer.toE164("08012345678", "NG"))
+    assertEquals("Contact spacing and punctuation must not require editing",
+      "+2348012345678", ServerPhoneNumberNormalizer.toE164("080 123-45678", "NG"))
+    assertEquals("An already international Nigerian number must remain unchanged",
+      "+2348012345678", ServerPhoneNumberNormalizer.toE164("+2348012345678", "NG"))
+    assertEquals("A 00 international prefix must be understood",
+      "+442079460958", ServerPhoneNumberNormalizer.toE164("00442079460958", "NG"))
+    assertEquals("A national-format contact uses the SIM country when supplied",
+      "+442079460958", ServerPhoneNumberNormalizer.toE164("020 7946 0958", "GB"))
+    assertEquals("Invalid non-phone text must be rejected",
+      null, ServerPhoneNumberNormalizer.toE164("not a phone number", "NG"))
+  }
+
   @Test fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -605,22 +620,37 @@ class CallerSmokeTest {
         }
       }
       assertNotNull("Android Phone did not expose an editable destination field", digitsField)
-      digitsField!!.click()
-      runShellCommand("input text 08012345678")
-      val dialedNumberReady = device.wait(Until.hasObject(By.textContains("080")), 8_000)
-      if (!dialedNumberReady) {
+      // Set the actual dialpad EditText rather than typing into whichever
+      // search field the OEM Phone app happens to display first.
+      digitsField!!.setText("08012345678")
+      val enteredDigits = device.wait(
+        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("0801")), 8_000
+      )
+      if (enteredDigits == null) {
         try {
           val hierarchy = File(context.cacheDir, "server-phone-dialer-number-hierarchy.txt")
           device.dumpWindowHierarchy(hierarchy)
-          Log.e("ServerUITest", "Phone dialer did not show the typed destination; hierarchy:\\n" + hierarchy.readText())
+          Log.e("ServerUITest", "Phone dialpad did not retain the national-format test number; hierarchy:\\n" + hierarchy.readText())
         } catch (error: Exception) {
-          Log.e("ServerUITest", "Could not capture Phone dialer hierarchy: " + error.javaClass.simpleName)
+          Log.e("ServerUITest", "Could not capture Phone number hierarchy: " + error.javaClass.simpleName)
         }
       }
-      assertTrue("Android's Phone dialer did not show the entered test destination", dialedNumberReady)
-      // Google Phone on the Android 12 AOSP image exposes the green dial
-      // action as resource id dialpad_floating_action_button with content-desc
-      // "dial", not the English label "Call". Prefer that stable resource id.
+      assertNotNull("Android Phone must retain the saved-contact-style number 08012345678", enteredDigits)
+
+      // Dismiss the IME through its own accessibility control where possible.
+      // On Android 15/16 the call FAB is laid out behind the keyboard and is
+      // correctly marked invisible until the IME closes.
+      val hideIme = device.findObject(By.descContains("Hide keyboard"))
+        ?: device.findObject(By.res("com.android.systemui", "ime_nav_btn"))
+      if (hideIme != null) hideIme.click() else device.pressBack()
+      Thread.sleep(500)
+      val numberStillVisible = device.wait(
+        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("0801")), 3_000
+      )
+      assertNotNull("Hiding the keyboard must leave the entered destination in the dialpad", numberStillVisible)
+
+      // Google Phone exposes the green dial action under this resource ID on
+      // AOSP images. The IME is closed before searching for the visible control.
       val callButton = device.wait(
         Until.findObject(By.res(resolvedDialerPackage, "dialpad_floating_action_button")), 6_000
       ) ?: device.wait(Until.findObject(By.descContains("dial")), 2_000)
@@ -630,12 +660,13 @@ class CallerSmokeTest {
         try {
           val hierarchy = File(context.cacheDir, "server-phone-dialer-call-action-hierarchy.txt")
           device.dumpWindowHierarchy(hierarchy)
-          Log.e("ServerUITest", "Phone dialer displayed the number but no Call action was found; hierarchy:\\n" + hierarchy.readText())
+          Log.e("ServerUITest", "Phone dialer still has no visible Call action after IME dismissal; hierarchy:\\n" + hierarchy.readText())
+          Log.e("ServerUITest", "Phone app package=$resolvedDialerPackage")
         } catch (error: Exception) {
           Log.e("ServerUITest", "Could not capture Phone Call action hierarchy: " + error.javaClass.simpleName)
         }
       }
-      assertNotNull("Android's Phone dialer did not expose its Call action", callButton)
+      assertNotNull("Android's Phone dialer did not expose its Call action after the keyboard closed", callButton)
       callButton!!.click()
 
       val chooserDeadline = System.currentTimeMillis() + 15_000
@@ -645,6 +676,20 @@ class CallerSmokeTest {
         serverChoice = device.findObject(By.text("Server"))
         testChoice = device.findObject(By.text("Test call provider (mock)"))
         Thread.sleep(200)
+      }
+      if (serverChoice == null || testChoice == null) {
+        try {
+          val hierarchy = File(context.cacheDir, "server-outgoing-account-chooser-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.e("ServerUITest", "The system Phone app did not expose both call-provider choices.\\n" +
+            "defaultDialerPackage=" + telecom.defaultDialerPackage + "\\n" +
+            "defaultOutgoing=" + telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL) + "\\n" +
+            "callCapableAccounts=" + telecom.callCapablePhoneAccounts + "\\n" +
+            "hierarchy:\\n" + hierarchy.readText())
+          Log.e("ServerUITest", "Telecom state:\\n" + runShellCommand("dumpsys telecom").take(22000))
+        } catch (error: Exception) {
+          Log.e("ServerUITest", "Could not capture outgoing-account chooser diagnostics: " + error.javaClass.simpleName)
+        }
       }
       assertNotNull("The preinstalled Phone app did not show Server as an outgoing-call choice", serverChoice)
       assertNotNull("The preinstalled Phone app did not show a second calling provider beside Server", testChoice)
@@ -658,6 +703,21 @@ class CallerSmokeTest {
       val engineEnteredAt = prefs.getLong("debug_last_call_engine_entered_at", 0L)
       var failure = prefs.getString("debug_last_call_failure", null).orEmpty()
       val connectionServiceEnteredAt = prefs.getLong("debug_last_telecom_connection_service_entered_at", 0L)
+      if (engineEnteredAt == 0L) {
+        try {
+          val hierarchy = File(context.cacheDir, "server-telecom-handoff-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.e("ServerUITest", "The user chose Server but Telecom did not enter ConnectionService.\\n" +
+            "currentPackage=" + device.currentPackageName + "\\n" +
+            "defaultOutgoing=" + telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL) + "\\n" +
+            "callCapableAccounts=" + telecom.callCapablePhoneAccounts + "\\n" +
+            "hierarchy:\\n" + hierarchy.readText())
+          Log.e("ServerUITest", "Telecom state after selecting Server:\\n" + runShellCommand("dumpsys telecom").take(22000))
+          Log.e("ServerUITest", "Activity state after selecting Server:\\n" + runShellCommand("dumpsys activity activities").take(12000))
+        } catch (error: Exception) {
+          Log.e("ServerUITest", "Could not capture Telecom handoff diagnostics: " + error.javaClass.simpleName)
+        }
+      }
       assertTrue("Choosing Server from the preinstalled Phone app did not complete phone-target validation (last stage: " + lastTelecomStage + "; failure: " + failure.ifBlank { "not recorded" } + "; ConnectionService entry: " + connectionServiceEnteredAt + ")",
         engineEnteredAt > 0L)
       assertEquals("The system dialer telephone number must enter the phone-number call path",
