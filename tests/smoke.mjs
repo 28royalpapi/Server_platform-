@@ -215,11 +215,13 @@ assert.ok(nativeWorkflow.includes("disk-size: ${{ matrix.api-level == 37 && '12G
 assert.ok(!nativeWorkflow.includes("android-16-stable-compatibility-smoke"), "Android 16 is tested once in the unified version matrix");
 assert.ok(androidTests.includes("Manifest.permission.READ_CONTACTS"), "the Telecom instrumentation test grants Contacts access before testing national-format dialer destinations");
 assert.ok(androidPhoneNormalizer.includes('private val E164 = Regex("^\\\\+[1-9][0-9]{1,14}$")'), "global E.164 parsing accepts short valid international numbers after libphonenumber validates them");
+assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/, "system Phone chooser test uses explicit E.164 destination to isolate Telecom integration");
 assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives/,
    "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
 assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,
    "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
+assert.ok(!nativeWorkflow.includes("launcherShowsServerIdFirstOnboardingWithoutSimPermissions"), "per-version calling matrix is isolated from WebView onboarding accessibility; the Android 8 minimum-install job covers onboarding");
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
 assert.match(iosModel,/ServerVoIPPushRegistry/);

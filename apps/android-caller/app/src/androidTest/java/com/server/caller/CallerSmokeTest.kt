@@ -725,20 +725,23 @@ class CallerSmokeTest {
       assertNotNull("Android Phone did not expose an editable destination field", digitsField)
       // Set the actual dialpad EditText rather than typing into whichever
       // search field the OEM Phone app happens to display first.
-      digitsField!!.setText("08012345678")
+      // This test verifies Telecom provider selection, not national-number
+      // country inference. Use explicit E.164 so the emulator's locale/SIM does
+      // not change the dialled destination.
+      digitsField!!.setText("+2348012345678")
       val enteredDigits = device.wait(
-        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("0801")), 8_000
+        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("+234801")), 8_000
       )
       if (enteredDigits == null) {
         try {
           val hierarchy = File(context.cacheDir, "server-phone-dialer-number-hierarchy.txt")
           device.dumpWindowHierarchy(hierarchy)
-          Log.e("ServerUITest", "Phone dialpad did not retain the national-format test number; hierarchy:\\n" + hierarchy.readText())
+          Log.e("ServerUITest", "Phone dialpad did not retain the explicit E.164 test number; hierarchy:\\n" + hierarchy.readText())
         } catch (error: Exception) {
           Log.e("ServerUITest", "Could not capture Phone number hierarchy: " + error.javaClass.simpleName)
         }
       }
-      assertNotNull("Android Phone must retain the saved-contact-style number 08012345678", enteredDigits)
+      assertNotNull("Android Phone must retain the explicit E.164 destination +2348012345678", enteredDigits)
 
       // Close only Gboard's navigation-bar IME button. Android Phone's own
       // Back action hides the dialpad itself, so never fall back to pressBack().
@@ -762,9 +765,9 @@ class CallerSmokeTest {
         }
       }
       val numberStillVisible = device.wait(
-        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("0801")), 3_000
+        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("+234801")), 3_000
       )
-      assertNotNull("The saved-contact destination must remain in the Phone dialpad", numberStillVisible)
+      assertNotNull("The explicit E.164 destination must remain in the Phone dialpad", numberStillVisible)
 
       // Google Phone exposes the green dial action under this resource ID on
       // AOSP images. Do not collapse the Phone dialpad to dismiss Gboard.
