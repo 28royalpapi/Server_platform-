@@ -28,17 +28,29 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @Test fun savedContactNumbersNormalizeWithoutAnInternationalPlus() {
-    assertEquals("080 Nigerian contacts should normalise internally",
+  @Test fun internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode() {
+    assertEquals("080 Nigerian contacts normalise without the user editing the contact",
       "+2348012345678", ServerPhoneNumberNormalizer.toE164("08012345678", "NG"))
-    assertEquals("Contact spacing and punctuation must not require editing",
+    assertEquals("Nigerian punctuation and spaces are accepted",
       "+2348012345678", ServerPhoneNumberNormalizer.toE164("080 123-45678", "NG"))
-    assertEquals("An already international Nigerian number must remain unchanged",
-      "+2348012345678", ServerPhoneNumberNormalizer.toE164("+2348012345678", "NG"))
-    assertEquals("A 00 international prefix must be understood",
-      "+442079460958", ServerPhoneNumberNormalizer.toE164("00442079460958", "NG"))
-    assertEquals("A national-format contact uses the SIM country when supplied",
+    assertEquals("Nigeria to a UK contact using +44 works without changing the caller region",
+      "+447911123456", ServerPhoneNumberNormalizer.toE164("+447911123456", "NG"))
+    assertEquals("Nigeria to a UK contact using 0044 works without a plus sign",
+      "+447911123456", ServerPhoneNumberNormalizer.toE164("0044 7911 123456", "NG"))
+    assertEquals("A UK national mobile number is parsed using a GB contact/device region",
+      "+447911123456", ServerPhoneNumberNormalizer.toE164("07911 123456", "GB"))
+    assertEquals("A UK national landline is parsed using a GB contact/device region",
       "+442079460958", ServerPhoneNumberNormalizer.toE164("020 7946 0958", "GB"))
+    assertEquals("International numbers stay international even when the caller is in Nigeria",
+      "+2348012345678", ServerPhoneNumberNormalizer.toE164("+2348012345678", "GB"))
+    assertEquals("The SIM home region takes priority for the caller's default dialling plan",
+      "GB", ServerPhoneNumberNormalizer.resolveRegion("gb", "ng", "ng"))
+    assertEquals("The attached network is used when SIM country is unavailable",
+      "NG", ServerPhoneNumberNormalizer.resolveRegion(null, "ng", "gb"))
+    assertEquals("Device locale is used when both SIM and network country are unavailable",
+      "GB", ServerPhoneNumberNormalizer.resolveRegion(null, null, "gb"))
+    assertEquals("Nigeria is the final fallback for a first-market device",
+      "NG", ServerPhoneNumberNormalizer.resolveRegion(null, null, null))
     assertEquals("Invalid non-phone text must be rejected",
       null, ServerPhoneNumberNormalizer.toE164("not a phone number", "NG"))
   }

@@ -327,14 +327,22 @@ assert.match(androidGuestShare,/Intent\(Intent\.ACTION_SENDTO, Uri\.fromParts\("
 assert.doesNotMatch(androidGuestShare,/sendTextMessage|SmsManager\.send/,"Server never sends an SMS without the caller tapping Send");
 assert.match(androidManifest,/android:name="com\.server\.caller\.ServerGuestInviteShareActivity"/,
   "the native share activity is available only after the user taps the guest invitation notification");
-assert.match(androidPhoneNormalizer,/PhoneNumberUtils\.formatNumberToE164/,
-  "national-format saved contacts are normalised internally with Android's phone-number library");
+assert.match(androidPhoneNormalizer,/PhoneNumberUtil\.getInstance\(\)/,
+  "all supported Android releases use the same bundled international numbering metadata");
+assert.match(androidPhoneNormalizer,/phoneUtil\.parse\(value, defaultRegion\)/,
+  "national-format contacts are interpreted using the caller's country region");
+assert.match(androidPhoneNormalizer,/value.startsWith\("\+"/,
+  "explicit international contacts retain their destination country code");
+assert.match(androidPhoneNormalizer,/simCountryIso/);
+assert.match(androidPhoneNormalizer,/networkCountryIso/);
+assert.match(androidPhoneNormalizer,/Locale\.getDefault\(\)\.country/,
+  "the default phone region is resolved from SIM, then network, then device locale");
 assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164\(raw, simCountryIso\(\)\)/,
   "the user's SIM country controls Telecom number interpretation without editing contacts");
 assert.match(androidMain,/ServerPhoneNumberNormalizer\.toE164\(raw, region\)/,
   "the legacy Android route uses the same SIM-aware number normaliser");
-assert.match(androidTests,/savedContactNumbersNormalizeWithoutAnInternationalPlus/,
-  "national-format contacts have a dedicated Android normalisation test");
+assert.match(androidTests,/internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode/,
+  "Nigeria and UK contacts are tested in both international and national formats on every Android matrix image");
 assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,

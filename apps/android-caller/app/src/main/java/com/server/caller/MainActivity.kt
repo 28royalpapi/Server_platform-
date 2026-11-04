@@ -17,7 +17,6 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.Build
-import android.telephony.TelephonyManager
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -498,16 +497,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).apply()
   }
 
-  @Suppress("DEPRECATION")
-  private fun normalizePhoneForServer(raw: String): String? {
-    val region = try {
-      val iso = (getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager).simCountryIso.trim()
-      iso.takeIf { Regex("^[A-Za-z]{2}$").matches(it) }?.uppercase(java.util.Locale.ROOT) ?: "NG"
-    } catch (_: Exception) {
-      "NG"
-    }
-    return ServerPhoneNumberNormalizer.toE164(raw, region)
-  }
+  private fun normalizePhoneForServer(raw: String): String? =
+    ServerPhoneNumberNormalizer.toE164(raw, ServerPhoneNumberNormalizer.deviceRegion(this))
 
   /**
    * Shares a guest invitation through an app the caller already has.

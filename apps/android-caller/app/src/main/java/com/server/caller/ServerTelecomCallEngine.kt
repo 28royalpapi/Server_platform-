@@ -9,7 +9,6 @@ import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
-import android.telephony.TelephonyManager
 import android.telecom.Connection
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -456,18 +455,7 @@ internal class ServerTelecomCallEngine(
     }
 
   private fun normalizePhone(raw: String): String? =
-    ServerPhoneNumberNormalizer.toE164(raw, simCountryIso())
-
-  @Suppress("DEPRECATION")
-  private fun simCountryIso(): String {
-    return try {
-      val iso = (context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager)
-        .simCountryIso.trim()
-      iso.takeIf { Regex("^[A-Za-z]{2}$").matches(it) }?.uppercase(java.util.Locale.ROOT) ?: "NG"
-    } catch (_: Exception) {
-      "NG"
-    }
-  }
+    ServerPhoneNumberNormalizer.toE164(raw, ServerPhoneNumberNormalizer.deviceRegion(context))
 
   private fun recordStage(stage: String) {
     if (!BuildConfig.DEBUG) return
