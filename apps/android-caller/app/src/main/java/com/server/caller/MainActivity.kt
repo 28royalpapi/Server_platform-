@@ -630,7 +630,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           if (id.isNotBlank() && id !in shownIncoming && id != callId) {
             shownIncoming.add(id)
             val sharedPhone = call.optString("caller_phone_e164").takeIf {
-              Regex("^\\+[1-9][0-9]{7,14}$").matches(it)
+              Regex("^\\+[1-9][0-9]{1,14}$").matches(it)
             }
             // Prefer only a verified, consented number so Android may resolve the
             // caller from the user's contacts. Otherwise display the Server ID.

@@ -294,11 +294,13 @@ jobs:
       - name: Run Android API ${{ matrix.api-level }} Telecom and phone-picker acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # Android 17 publishes the platform and 16 KB-page image under 37.0.
+          # Android 17 is released; use the stable 37.0 platform and 16 KB-page image.
           api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
           system-image-api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
-          channel: ${{ matrix.api-level == 37 && 'canary' || 'stable' }}
+          channel: stable
           target: ${{ matrix.api-level == 37 && 'google_apis_ps16k' || 'google_apis' }}
+          # Android 17 16 KB-page emulators need a larger userdata partition for the APK/test APK.
+          disk-size: ${{ matrix.api-level == 37 && '12G' || '6G' }}
           arch: x86_64
           profile: pixel_2
           cores: 2
@@ -318,6 +320,9 @@ jobs:
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#explicitInternationalNumbersAndCallerRegionFallbackRemainSupported
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsServerIdFirstOnboardingWithoutSimPermissions
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersExplicitShareAndSmsActions
@@ -350,94 +355,6 @@ jobs:
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
-
-  android-16-stable-compatibility-smoke:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v4
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
-      - name: Install Android 16 stable SDK components
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Enable KVM access for Android 16 emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this runner does not expose /dev/kvm for the Android 16 emulator." >&2
-            exit 1
-          fi
-          sudo chmod 666 /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
-      - name: Build caller and Android instrumentation tests
-        run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
-      - name: Run Android 16 (API 36) Telecom and offline-gate acceptance tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: '36'
-          system-image-api-level: '36'
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          ram-size: 3072M
-          emulator-boot-timeout: 420
-          disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
-          pre-emulator-launch-script: |
-            set -eu
-            echo "ANDROID_16_ADB_PRESTART $(date -u +%FT%TZ)"
-            adb start-server
-            adb devices -l
-          script: |
-            set -eu
-            sh scripts/wait-for-android-package-manager.sh
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalNumberingMetadataCoversEverySupportedRegion
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#destinationCountryFromSavedContactMetadataBeatsCallerRegion
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#explicitInternationalNumbersAndCallerRegionFallbackRemainSupported
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersExplicitShareAndSmsActions
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
-            python3 scripts/assert-android-test-count.py
-            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#missedServerCallNotificationOffersQuietCallbackAction
-            python3 scripts/assert-android-test-count.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: server-android-16-api36-acceptance-results
-          path: apps/android-caller/app/build/outputs/androidTest-results/**
-          if-no-files-found: warn
 
   ios-simulator-build-and-preview:
     if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'
@@ -546,7 +463,6 @@ jobs:
       - android-build-and-emulator-smoke
       - android-8-minimum-install-smoke
       - android-10-to-17-platform-matrix
-      - android-16-stable-compatibility-smoke
     runs-on: ubuntu-latest
     permissions:
       contents: write

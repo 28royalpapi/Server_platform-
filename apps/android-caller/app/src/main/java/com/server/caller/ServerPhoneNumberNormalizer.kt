@@ -19,7 +19,7 @@ import java.util.Locale
  * Contact data is queried locally and is never sent to the Server backend.
  */
 internal object ServerPhoneNumberNormalizer {
-  private val E164 = Regex("^\\+[1-9][0-9]{7,14}$")
+  private val E164 = Regex("^\\+[1-9][0-9]{1,14}$")
   private val REGION = Regex("^[A-Za-z]{2}$")
   private val phoneUtil: PhoneNumberUtil by lazy { PhoneNumberUtil.getInstance() }
 

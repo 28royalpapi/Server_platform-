@@ -160,7 +160,7 @@ object ServerTelecomRegistry {
       putString("server_caller_id", callerIdentity.take(80))
       // A Server ID is not a telephone number. Only attach a tel: address when
       // the backend supplied a valid E.164 number; never create tel:SVR-... URIs.
-      if (callerIdentity.matches(Regex("^\\+[1-9][0-9]{7,14}$"))) {
+      if (callerIdentity.matches(Regex("^\\+[1-9][0-9]{1,14}$"))) {
         putParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, Uri.parse("tel:$callerIdentity"))
         putString("server_remote_phone", callerIdentity)
       }
@@ -205,7 +205,7 @@ class ServerConnectionService : ConnectionService() {
     val extras = request.extras ?: Bundle()
     val requestPhone = request.address?.schemeSpecificPart.orEmpty()
     val phone = (extras.getString("server_remote_phone") ?: requestPhone)
-      .takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }.orEmpty()
+      .takeIf { it.matches(Regex("^\\+[1-9][0-9]{1,14}$")) }.orEmpty()
     val callerIdentity = extras.getString("server_caller_id").orEmpty()
       .ifBlank { phone.ifBlank { "Server caller" } }
     val callId = extras.getString("server_call_id").orEmpty()

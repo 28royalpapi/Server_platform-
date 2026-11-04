@@ -210,7 +210,11 @@ assert.ok(nativeWorkflow.includes("destinationCountryFromSavedContactMetadataBea
 assert.ok(nativeWorkflow.includes("explicitInternationalNumbersAndCallerRegionFallbackRemainSupported"), "the version matrix runs international-format parsing regressions");
 assert.ok(!nativeWorkflow.includes("internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode"), "no Android CI job selects the removed first-block test");
 assert.ok(nativeWorkflow.includes("if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'"), "the Android work branch does not run iOS CI");
-assert.match(nativeWorkflow,/api-level: '36'/, "Android 16 stable retains its focused stable-image smoke test in addition to the unified API 29-37 matrix");
+assert.match(nativeWorkflow,/channel: stable/, "Android 17 uses the released stable SDK channel, not Canary");
+assert.match(nativeWorkflow,/disk-size: \\\${\\\\{ matrix\\\\.api-level == 37 && '12G' \\\\|\\\\| '6G' \\\\}\\\\}/, "Android 17 receives enough userdata storage to install both test APKs");
+assert.ok(!nativeWorkflow.includes("android-16-stable-compatibility-smoke"), "Android 16 is tested once in the unified version matrix");
+assert.match(androidTests,/Manifest\\.permission\\.READ_CONTACTS/, "the Telecom instrumentation test grants Contacts access before testing national-format dialer destinations");
+assert.ok(androidPhoneNormalizer.includes('private val E164 = Regex("^\\\\+[1-9][0-9]{1,14}$")'), "global E.164 parsing accepts short valid international numbers after libphonenumber validates them");
 assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives/,
    "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
 assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,

@@ -87,8 +87,10 @@ class CallerSmokeTest {
       "+2348012345678", ServerPhoneNumberNormalizer.toE164("08012345678", "NG"))
     assertEquals("International + format does not depend on caller country",
       "+447911123456", ServerPhoneNumberNormalizer.toE164("+447911123456", "EG"))
-    assertEquals("International 00 prefix uses the caller region's international dialling prefix",
-      "+447911123456", ServerPhoneNumberNormalizer.toE164("0044 7911 123456", "NG"))
+    assertEquals("Nigeria's actual 009 international access prefix resolves a UK destination",
+      "+447911123456", ServerPhoneNumberNormalizer.toE164("00944 7911 123456", "NG"))
+    assertEquals("The 00 international access prefix works for a region that uses it",
+      "+447911123456", ServerPhoneNumberNormalizer.toE164("0044 7911 123456", "GB"))
     assertEquals("UK national format remains supported when the caller/default region is GB",
       "+447911123456", ServerPhoneNumberNormalizer.toE164("07911 123456", "GB"))
     assertEquals("A matched national-format contact without independent country metadata is rejected",
@@ -566,7 +568,7 @@ class CallerSmokeTest {
     // UiAutomation.grantRuntimePermission is not present on API 26 (Android 8).
     // The instrumentation shell permission grant works on every supported test
     // image and keeps these test-only grants out of the app's runtime flow.
-    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO)) {
+    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS)) {
       runShellCommand("pm grant ${context.packageName} $permission")
     }
   }
