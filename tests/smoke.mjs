@@ -209,7 +209,7 @@ assert.ok(nativeWorkflow.includes("internationalNumberingMetadataCoversEverySupp
 assert.ok(nativeWorkflow.includes("destinationCountryFromSavedContactMetadataBeatsCallerRegion"), "the version matrix runs the destination-country regression test");
 assert.ok(nativeWorkflow.includes("explicitInternationalNumbersAndCallerRegionFallbackRemainSupported"), "the version matrix runs international-format parsing regressions");
 assert.ok(!nativeWorkflow.includes("internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode"), "no Android CI job selects the removed first-block test");
-assert.match(nativeWorkflow,/if: github\.head_ref != 'android-finish' && github\.ref != 'refs\\/heads\\/android-finish'/, "the Android work branch does not run iOS CI");
+assert.ok(nativeWorkflow.includes("if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'"), "the Android work branch does not run iOS CI");
 assert.match(nativeWorkflow,/api-level: '36'/, "Android 16 stable retains its focused stable-image smoke test in addition to the unified API 29-37 matrix");
 assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives/,
    "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
@@ -507,6 +507,20 @@ assert.ok(androidTestCountCheck.includes("if total < 1"),
   "Android CI must fail when an instrumentation selector executes zero tests");
 assert.ok(nativeWorkflow.includes("scripts/assert-android-test-count.py"),
   "Android compatibility jobs must verify that tests actually ran");
+for (const method of [
+  "internationalNumberingMetadataCoversEverySupportedRegion",
+  "destinationCountryFromSavedContactMetadataBeatsCallerRegion",
+  "explicitInternationalNumbersAndCallerRegionFallbackRemainSupported",
+  "preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice",
+  "phoneAccountCanReceiveIncomingCallThroughTelecom",
+  "enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls",
+  "serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata",
+  "incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings",
+  "missedServerCallNotificationOffersQuietCallbackAction"
+]) {
+  assert.ok(androidTests.includes(`fun ${method}(`), `Android instrumentation method ${method} must exist`);
+  assert.ok(nativeWorkflow.includes(`CallerSmokeTest#${method}`), `Android version matrix must execute ${method}`);
+}
 assert.ok(!nativeWorkflow.includes("android12PhoneAccountCanReceiveServerCallThroughTelecom"),
   "Android 12 must not use the old nonexistent test method selector");
 assert.ok(nativeWorkflow.includes("phoneAccountCanReceiveIncomingCallThroughTelecom"),
