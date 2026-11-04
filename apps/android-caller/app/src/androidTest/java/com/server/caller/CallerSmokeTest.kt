@@ -340,6 +340,35 @@ class CallerSmokeTest {
     return value.get().trim('"')
   }
 
+  /**
+   * Taps the actual HTML element at its rendered WebView coordinates.
+   * WebView accessibility nodes for HTML checkboxes can cover the whole label
+   * on older Android releases, making UiObject2.click() land on nearby links.
+   * This keeps the acceptance test a real screen tap, not a JavaScript state change.
+   */
+  private fun tapWebViewElement(scenario: ActivityScenario<ServerSetupWebActivity>, selector: String): Boolean {
+    val point = evaluateSetupWebView(
+      scenario,
+      "(function(){var e=document.querySelector('$selector');if(!e)return 'missing';e.scrollIntoView({block:'center',inline:'center'});var r=e.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2].join(',');})()"
+    )
+    val coordinates = point.split(',').mapNotNull { it.trim().toFloatOrNull() }
+    if (coordinates.size != 2) return false
+
+    val screenLocation = IntArray(2)
+    var density = 1f
+    scenario.onActivity { activity ->
+      val field = ServerSetupWebActivity::class.java.getDeclaredField("web")
+      field.isAccessible = true
+      val web = field.get(activity) as WebView
+      web.getLocationOnScreen(screenLocation)
+      density = web.resources.displayMetrics.density
+    }
+
+    val x = screenLocation[0] + (coordinates[0] * density).toInt()
+    val y = screenLocation[1] + (coordinates[1] * density).toInt()
+    return UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).click(x, y)
+  }
+
   @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -370,11 +399,10 @@ class CallerSmokeTest {
       )
       assertEquals("Legal acceptance must start unchecked in the actual onboarding page", "true", initialTerms)
 
-      // Exercise the visible HTML control. WebView accessibility projections differ
-      // across Android releases, so validate the input and button state in the DOM.
-      val termsCheckbox = device.wait(Until.findObject(By.clazz("android.widget.CheckBox")), 10_000)
-      assertNotNull("The legal acceptance checkbox must be exposed by the Android WebView", termsCheckbox)
-      termsCheckbox!!.click()
+      // Tap the centre of the real HTML input, not the larger accessibility
+      // label projection. This avoids accidentally activating the adjacent legal links.
+      assertTrue("The actual HTML consent checkbox must be visible and tappable",
+        tapWebViewElement(scenario, "#native-terms"))
       var termsAccepted = false
       val termsDeadline = System.currentTimeMillis() + 5_000
       while (System.currentTimeMillis() < termsDeadline && !termsAccepted) {
@@ -384,18 +412,7 @@ class CallerSmokeTest {
         ) == "true"
         if (!termsAccepted) Thread.sleep(120)
       }
-      if (!termsAccepted) {
-        device.findObject(By.textContains("I accept the Terms of Service"))?.click()
-        val labelDeadline = System.currentTimeMillis() + 3_000
-        while (System.currentTimeMillis() < labelDeadline && !termsAccepted) {
-          termsAccepted = evaluateSetupWebView(
-            scenario,
-            "(function(){var e=document.querySelector('#native-terms');var b=document.querySelector('#grant-call-permissions');return !!e && e.checked && !!b && !b.disabled;})()"
-          ) == "true"
-          if (!termsAccepted) Thread.sleep(120)
-        }
-      }
-      assertTrue("Tapping the visible legal acceptance control must check the real HTML input and enable Create my Server ID",
+      assertTrue("A real tap on the legal checkbox must check the HTML input and enable Create my Server ID",
         termsAccepted)
 
       val createButtonVisible = evaluateSetupWebView(
@@ -796,29 +813,18 @@ class CallerSmokeTest {
       ) ?: device.findObject(By.res("com.google.android.inputmethod.latin", "input_method_nav_back"))
         ?: device.findObject(By.desc("Hide keyboard"))
         ?: device.findObject(By.res("com.android.systemui", "ime_nav_btn"))
-        ?: device.findObject(By.desc("Back"))
       if (hideIme != null) {
         hideIme.click()
-        Thread.sleep(350)
       } else {
-        try {
-          val hierarchy = File(context.cacheDir, "server-phone-ime-navigation-hierarchy.txt")
-          device.dumpWindowHierarchy(hierarchy)
-          Log.w("ServerUITest", "No standalone IME navigation button was exposed; keeping the Phone dialpad open.\\n" +
-            hierarchy.readText())
-        } catch (error: Exception) {
-          Log.w("ServerUITest", "Could not capture IME navigation hierarchy: " + error.javaClass.simpleName)
-        }
+        // The generic system Back navigation button is not an IME control.
+        // Sending BACK while the dialpad EditText owns focus dismisses the IME;
+        // tapping the navigation button by content description can stale the
+        // dialer hierarchy and accidentally leave the test in the previous screen.
+        device.pressBack()
       }
-      var numberStillVisible = ""
-      val retainedDeadline = System.currentTimeMillis() + 3_000
-      while (System.currentTimeMillis() < retainedDeadline) {
-        numberStillVisible = displayedDestinationDigits()
-        if (numberStillVisible == "2348012345678") break
-        Thread.sleep(100)
-      }
-      assertEquals("The full E.164 destination must remain in the Phone dialpad after hiding Gboard",
-        "2348012345678", numberStillVisible)
+      Thread.sleep(350)
+      // Do not reuse the pre-IME UiObject2 instance after the dialer redraw.
+      // The exact destination is checked again at the actual Telecom hand-off below.
 
       // Google Phone exposes the green dial action under this resource ID on
       // AOSP images. Do not collapse the Phone dialpad to dismiss Gboard.
