@@ -287,7 +287,7 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Preinstall Android 17 16 KB system image with integrity retries
         if: matrix.api-level == 37
-        run: bash scripts/install-android-system-image.sh 'system-images;android-37;google_apis_ps16k;x86_64'
+        run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;x86_64'
       - name: Enable KVM access for Android API ${{ matrix.api-level }} emulator
         shell: bash
         run: |
