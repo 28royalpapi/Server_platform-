@@ -221,7 +221,8 @@ assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidat
 assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,
    "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
-assert.ok(!nativeWorkflow.includes("launcherShowsServerIdFirstOnboardingWithoutSimPermissions"), "per-version calling matrix is isolated from WebView onboarding accessibility; the Android 8 minimum-install job covers onboarding");
+const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-17-platform-matrix:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
+assert.ok(!androidVersionMatrix.includes("launcherShowsServerIdFirstOnboardingWithoutSimPermissions"), "per-version calling matrix is isolated from WebView onboarding accessibility; the Android 8 minimum-install job covers onboarding");
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
 assert.match(iosModel,/ServerVoIPPushRegistry/);
