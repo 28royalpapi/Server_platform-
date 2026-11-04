@@ -312,24 +312,7 @@ jobs:
             # The emulator runner executes /bin/sh commands; keep this block POSIX and line-oriented.
             set -eu
             sh scripts/wait-for-android-package-manager.sh
-            if [ "${{ matrix.api-level }}" = "37" ]; then
-              echo "ANDROID17_16KB_VALIDATION_START"
-              page_size="$(adb shell getconf PAGE_SIZE | tr -d '\\r')"
-              echo "ANDROID17_PAGE_SIZE=$page_size"
-              test "$page_size" = "16384"
-              adb shell df -h /data
-              apk="apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
-              if ! "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk"; then
-                echo "ERROR: Android 17 APK ZIP/native-library alignment validation failed."
-                exit 1
-              fi
-              if ! adb install -r "$apk"; then
-                echo "ERROR: Package Manager rejected Server APK on the Android 17 16 KB-page emulator."
-                adb logcat -d -b all | grep -Ei 'PackageManager|INSTALL_FAILED|lib|page|zip|avc' | tail -100 || true
-                exit 1
-              fi
-              echo "ANDROID17_16KB_VALIDATION_PASS"
-            fi
+            if [ "${{ matrix.api-level }}" = "37" ]; then sh scripts/android17-16kb-acceptance.sh; fi
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
             python3 scripts/assert-android-test-count.py --expected-tests 14
