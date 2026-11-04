@@ -26,7 +26,6 @@ internal object ServerPhoneNumberNormalizer {
   private data class ContactHints(
     val normalizedNumber: String? = null,
     val countryRegion: String? = null,
-    val contactMatched: Boolean = false,
     val normalizedNumberIsExplicitInternational: Boolean = false,
     val contactMatched: Boolean = false,
     val ambiguous: Boolean = false

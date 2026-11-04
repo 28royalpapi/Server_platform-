@@ -342,7 +342,7 @@ assert.match(androidPhoneNormalizer,/normalizedRegion == contactRegion/,
 assert.match(androidPhoneNormalizer,/ContactHints\(ambiguous = true\)/,
   "national-format numbers fail closed when contact lookup is unavailable");
 assert.match(androidPhoneNormalizer,/StructuredPostal\.COUNTRY/,
-  "contact postal country is used only when the normalized E.164 number is unavailable");
+  "contact country is compared with provider-normalized E.164 before that inferred value is trusted");
 assert.match(androidPhoneNormalizer,/toE164WithContactMetadata/,
   "the contact's destination country takes precedence over the caller's SIM region");
 assert.match(androidPhoneNormalizer,/phoneUtil\.format\(parsed, PhoneNumberUtil\.PhoneNumberFormat\.E164\)/,
