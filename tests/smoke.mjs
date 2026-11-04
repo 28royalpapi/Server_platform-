@@ -337,10 +337,10 @@ assert.match(androidPhoneNormalizer,/simCountryIso/);
 assert.match(androidPhoneNormalizer,/networkCountryIso/);
 assert.match(androidPhoneNormalizer,/Locale\.getDefault\(\)\.country/,
   "the default phone region is resolved from SIM, then network, then device locale");
-assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164\(raw, simCountryIso\(\)\)/,
-  "the user's SIM country controls Telecom number interpretation without editing contacts");
-assert.match(androidMain,/ServerPhoneNumberNormalizer\.toE164\(raw, region\)/,
-  "the legacy Android route uses the same SIM-aware number normaliser");
+assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164\(raw, ServerPhoneNumberNormalizer\.deviceRegion\(context\)\)/,
+  "Telecom uses the SIM home region with network and locale fallbacks for number interpretation");
+assert.match(androidMain,/ServerPhoneNumberNormalizer\.deviceRegion\(this\)/,
+  "the legacy Android route shares the same caller-region resolver as Telecom");
 assert.match(androidTests,/internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode/,
   "Nigeria and UK contacts are tested in both international and national formats on every Android matrix image");
 assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
