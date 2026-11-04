@@ -47,6 +47,8 @@ jobs:
     # GitHub Ubuntu runners expose /dev/kvm; grant the job user access before emulator-runner probes it.
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86_64
     outputs:
       preview_signing_ready: ${{ steps.server_preview_signing.outputs.ready }}
     steps:
@@ -61,6 +63,8 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK components
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Preinstall Android 14 emulator image with integrity retries
+        run: bash scripts/install-android-system-image.sh 'system-images;android-34;google_apis;x86_64'
       - name: Enable KVM access for Android emulator
         shell: bash
         run: |
@@ -187,6 +191,8 @@ jobs:
   android-8-minimum-install-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -259,6 +265,8 @@ jobs:
 
   android-10-to-17-platform-matrix:
     name: Android API ${{ matrix.api-level }} calling-account compatibility
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86_64
     strategy:
       fail-fast: false
       matrix:
@@ -277,6 +285,9 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK components for API ${{ matrix.api-level }} test
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Preinstall Android 17 16 KB system image with integrity retries
+        if: matrix.api-level == 37
+        run: bash scripts/install-android-system-image.sh 'system-images;android-37;google_apis_ps16k;x86_64'
       - name: Enable KVM access for Android API ${{ matrix.api-level }} emulator
         shell: bash
         run: |
