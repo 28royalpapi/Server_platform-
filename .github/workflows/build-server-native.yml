@@ -310,8 +310,9 @@ jobs:
           system-image-api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
           channel: stable
           target: ${{ matrix.api-level == 37 && 'google_apis_ps16k' || 'google_apis' }}
-          # Android 17 16 KB-page emulators need a larger userdata partition for the APK/test APK.
-          disk-size: ${{ matrix.api-level == 37 && '12G' || '6G' }}
+          # Keep API37 userdata within the runner's available disk. 3G is ample for
+          # the small x86_64 test APK and instrumentation report on a 16 KB image.
+          disk-size: ${{ matrix.api-level == 37 && '3G' || '6G' }}
           arch: x86_64
           profile: pixel_2
           cores: 2
