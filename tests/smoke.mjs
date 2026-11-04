@@ -203,9 +203,14 @@ assert.match(nativeWorkflow,/api-level: 26/, "Android 8 remains a minimum-instal
 assert.match(nativeWorkflow,/api-level:\s*\$\{\{\s*matrix\.api-level\s*==\s*37\s*&&\s*'37\.0'\s*\|\|\s*matrix\.api-level\s*\}\}/, "Android 17 uses the SDK platform's 37.0 package identifier");
 assert.match(nativeWorkflow,/system-image-api-level:\s*\$\{\{\s*matrix\.api-level\s*==\s*37\s*&&\s*'37\.0'\s*\|\|\s*matrix\.api-level\s*\}\}/, "Android 17 uses the 37.0 emulator image namespace");
 assert.match(nativeWorkflow,/target:\s*\$\{\{\s*matrix\.api-level\s*==\s*37\s*&&\s*'google_apis_ps16k'/, "Android 17 uses the supported 16 KB-page Google APIs image");
-assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*37\]/, "Android 10 through 17, excluding only Android 16's separate API 36 job, are covered");
-assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*37\]/, "Android 14 has its own compatibility matrix leg as well as the full workflow");
-assert.match(nativeWorkflow,/api-level: '36'/, "Android 16 stable is tested independently");
+assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36,\s*37\]/, "Android 10 through Android 17, including Android 12L API 32 and Android 16 API 36, are in the matrix");
+assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
+assert.ok(nativeWorkflow.includes("internationalNumberingMetadataCoversEverySupportedRegion"), "the version matrix runs the current global-numbering test");
+assert.ok(nativeWorkflow.includes("destinationCountryFromSavedContactMetadataBeatsCallerRegion"), "the version matrix runs the destination-country regression test");
+assert.ok(nativeWorkflow.includes("explicitInternationalNumbersAndCallerRegionFallbackRemainSupported"), "the version matrix runs international-format parsing regressions");
+assert.ok(!nativeWorkflow.includes("internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode"), "no Android CI job selects the removed first-block test");
+assert.match(nativeWorkflow,/if: github\.head_ref != 'android-finish' && github\.ref != 'refs\\/heads\\/android-finish'/, "the Android work branch does not run iOS CI");
+assert.match(nativeWorkflow,/api-level: '36'/, "Android 16 stable retains its focused stable-image smoke test in addition to the unified API 29-37 matrix");
 assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives/,
    "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
 assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,

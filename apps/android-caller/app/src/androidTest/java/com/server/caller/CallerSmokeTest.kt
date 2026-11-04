@@ -414,12 +414,12 @@ class CallerSmokeTest {
     val context = instrumentation.targetContext
     grantTelecomPermissions(context)
     val handle = ServerTelecomRegistry.handle(context)
-    val callId = "android12-incoming-" + UUID.randomUUID().toString()
-    val callerIdentity = "SVR-ANDROID12"
+    val callId = "telecom-incoming-" + UUID.randomUUID().toString()
+    val callerIdentity = "SVR-ANDROID-COMPAT"
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
     try {
-      assertTrue("Android 12 must expose the enabled Server PhoneAccount to Telecom", accountEnabled(context, handle))
+      assertTrue("Android must expose the enabled Server PhoneAccount to Telecom", accountEnabled(context, handle))
       ServerTelecomRegistry.reportIncoming(context, callId, callerIdentity)
       val deadline = System.currentTimeMillis() + 12_000
       var state: Int? = null
@@ -427,9 +427,9 @@ class CallerSmokeTest {
         state = ServerTelecomRegistry.incomingConnectionState(callId)
         Thread.sleep(100)
       }
-      assertEquals("Android 12 Telecom did not create a ringing Server incoming Connection",
+      assertEquals("Android Telecom did not create a ringing Server incoming Connection",
         Connection.STATE_RINGING, state)
-      assertEquals("Android 12 Telecom did not retain the Server caller identity",
+      assertEquals("Android Telecom did not retain the Server caller identity",
         callerIdentity, ServerTelecomRegistry.incomingCallerDisplayName(callId))
     } finally {
       ServerTelecomRegistry.markEnded(callId)

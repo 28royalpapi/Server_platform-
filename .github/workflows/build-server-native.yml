@@ -225,8 +225,15 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |
             set -eu
+            sh scripts/wait-for-android-package-manager.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalNumberingMetadataCoversEverySupportedRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#destinationCountryFromSavedContactMetadataBeatsCallerRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#explicitInternationalNumbersAndCallerRegionFallbackRemainSupported
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersExplicitShareAndSmsActions
@@ -255,7 +262,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [29, 30, 31, 32, 33, 34, 35, 37]
+        api-level: [29, 30, 31, 32, 33, 34, 35, 36, 37]
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -302,8 +309,15 @@ jobs:
           script: |
             # The emulator runner executes /bin/sh commands; keep this block POSIX and line-oriented.
             set -eu
+            sh scripts/wait-for-android-package-manager.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalNumberingMetadataCoversEverySupportedRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#destinationCountryFromSavedContactMetadataBeatsCallerRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#explicitInternationalNumbersAndCallerRegionFallbackRemainSupported
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersExplicitShareAndSmsActions
@@ -378,8 +392,15 @@ jobs:
             adb devices -l
           script: |
             set -eu
+            sh scripts/wait-for-android-package-manager.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalNumberingMetadataCoversEverySupportedRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#destinationCountryFromSavedContactMetadataBeatsCallerRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#explicitInternationalNumbersAndCallerRegionFallbackRemainSupported
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersExplicitShareAndSmsActions
@@ -407,7 +428,7 @@ jobs:
           if-no-files-found: warn
 
   ios-simulator-build-and-preview:
-    if: github.ref != 'refs/heads/android-finish'
+    if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
