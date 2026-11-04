@@ -222,7 +222,9 @@ assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backen
    "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-17-platform-matrix:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
-assert.ok(!androidVersionMatrix.includes("launcherShowsServerIdFirstOnboardingWithoutSimPermissions"), "per-version calling matrix is isolated from WebView onboarding accessibility; the Android 8 minimum-install job covers onboarding");
+assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every Android 10–17 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
+assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 14"), "every Android 10–17 API must execute all 14 acceptance tests without skipped or failed tests");
+assert.ok(androidVersionMatrix.includes("zipalign\" -c -P 16"), "Android 17 validates 16 KB ZIP/native-library alignment before installation");
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
 assert.match(iosModel,/ServerVoIPPushRegistry/);
@@ -389,8 +391,12 @@ assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL\)/,
   "outgoing-call acceptance opens Android's real Phone dialer");
 assert.match(androidTests,/By\.res\(resolvedDialerPackage, "digits"\)/,
   "the test locates the Phone dialer's destination EditText");
-assert.match(androidTests,/digitsField!!\.setText\("08012345678"\)/,
-  "the test enters the Nigerian number into the real destination EditText without keyboard keycode assumptions");
+assert.match(androidTests,/digitsField!!\\.setText\\("\\+2348012345678"\\)/,
+  "the test enters an explicit E.164 destination into the real dialer EditText without keycode assumptions");
+assert.match(androidTests,/displayedDestinationDigits/,
+  "dialer acceptance tolerates visual grouping while checking every E.164 digit");
+assert.match(androidTests,/debug_last_telecom_request_target_length/,
+  "outgoing-call acceptance verifies the full E.164 target reaches Android Telecom");
 assert.doesNotMatch(androidTests,/Hiding the keyboard must leave the entered destination in the dialpad|device\.pressBack\(\).*dialpad/,
   "the Phone picker must not press Back and accidentally close Android's dialpad");
 assert.match(androidTests,/input_method_nav_back/,
@@ -518,24 +524,29 @@ for (const method of [
   "internationalNumberingMetadataCoversEverySupportedRegion",
   "destinationCountryFromSavedContactMetadataBeatsCallerRegion",
   "explicitInternationalNumbersAndCallerRegionFallbackRemainSupported",
+  "launcherShowsServerIdFirstOnboardingWithoutSimPermissions",
+  "guestCallInvitationNotificationOffersExplicitShareAndSmsActions",
+  "serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives",
   "preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice",
-  "phoneAccountCanReceiveIncomingCallThroughTelecom",
   "enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls",
+  "phoneAccountCanReceiveIncomingCallThroughTelecom",
   "serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata",
   "incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings",
-  "missedServerCallNotificationOffersQuietCallbackAction"
+  "missedServerCallNotificationOffersQuietCallbackAction",
+  "vanishedUnansweredIncomingCallIsDisconnectedFromSystemTelecom",
+  "telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState"
 ]) {
   assert.ok(androidTests.includes(`fun ${method}(`), `Android instrumentation method ${method} must exist`);
-  assert.ok(nativeWorkflow.includes(`CallerSmokeTest#${method}`), `Android version matrix must execute ${method}`);
 }
+
 assert.ok(!nativeWorkflow.includes("android12PhoneAccountCanReceiveServerCallThroughTelecom"),
   "Android 12 must not use the old nonexistent test method selector");
-assert.ok(nativeWorkflow.includes("phoneAccountCanReceiveIncomingCallThroughTelecom"),
-  "Android 12/16 Telecom acceptance must target an existing test method");
+assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"),
+  "Android 12 and Android 16 run the complete shared instrumentation suite");
 assert.ok(androidTests.includes("fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings"));
 assert.ok(androidTests.includes("fun missedServerCallNotificationOffersQuietCallbackAction"));
-assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py"),
-  "the main emulator run must reject a zero-test result");
+assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --expected-tests 14"),
+  "the main API 34 emulator must execute all 14 acceptance tests without skips or failures");
 
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 console.log("Server backend/web contract checks: PASS");

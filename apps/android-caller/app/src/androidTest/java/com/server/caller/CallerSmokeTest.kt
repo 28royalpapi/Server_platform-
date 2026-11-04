@@ -10,6 +10,7 @@ import android.telecom.Connection
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import android.util.Log
+import android.webkit.WebView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -26,6 +27,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
@@ -317,6 +321,25 @@ class CallerSmokeTest {
       isServerInternetUsable(true, true))
   }
 
+  private fun evaluateSetupWebView(
+    scenario: ActivityScenario<ServerSetupWebActivity>,
+    javascript: String
+  ): String {
+    val value = AtomicReference("null")
+    val completed = CountDownLatch(1)
+    scenario.onActivity { activity ->
+      val field = ServerSetupWebActivity::class.java.getDeclaredField("web")
+      field.isAccessible = true
+      val web = field.get(activity) as WebView
+      web.evaluateJavascript(javascript) { result ->
+        value.set(result ?: "null")
+        completed.countDown()
+      }
+    }
+    assertTrue("Server onboarding WebView did not return its DOM state", completed.await(5, TimeUnit.SECONDS))
+    return value.get().trim('"')
+  }
+
   @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -328,7 +351,7 @@ class CallerSmokeTest {
     assertEquals("The launcher must open the Server website onboarding bridge",
       ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
 
-    ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
+    ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use { scenario ->
       val device = UiDevice.getInstance(instrumentation)
       assertTrue("Server onboarding brand is not visible",
         device.wait(Until.hasObject(By.text("server")), 20_000))
@@ -340,33 +363,47 @@ class CallerSmokeTest {
         !device.hasObject(By.textContains("Choose your SIM")))
       assertTrue("The old SIM permission button must not appear",
         !device.hasObject(By.textContains("Allow SIM access")))
-      // Click the actual checkbox input rather than its surrounding label text.
-      // Older Android System WebView versions may expose the label span separately
-      // and a label click does not reliably toggle the input/change event.
+
+      val initialTerms = evaluateSetupWebView(
+        scenario,
+        "(function(){var e=document.querySelector('#native-terms');return !!e && !e.checked;})()"
+      )
+      assertEquals("Legal acceptance must start unchecked in the actual onboarding page", "true", initialTerms)
+
+      // Exercise the visible HTML control. WebView accessibility projections differ
+      // across Android releases, so validate the input and button state in the DOM.
       val termsCheckbox = device.wait(Until.findObject(By.clazz("android.widget.CheckBox")), 10_000)
       assertNotNull("The legal acceptance checkbox must be exposed by the Android WebView", termsCheckbox)
-      assertTrue("Legal acceptance starts unchecked", !termsCheckbox!!.isChecked)
-      termsCheckbox.click()
-      // WebView accessibility updates the native checkbox node asynchronously on
-      // older System WebView builds. Re-query after the click rather than reading a
-      // stale UiObject2 snapshot immediately.
-      val checkedTerms = device.wait(
-        Until.findObject(By.clazz("android.widget.CheckBox").checked(true)), 4_000
-      )
-      if (checkedTerms == null) {
-        try {
-          val hierarchy = File(context.cacheDir, "server-terms-checkbox-hierarchy.txt")
-          device.dumpWindowHierarchy(hierarchy)
-          Log.e("ServerUITest", "Legal checkbox did not update after tap; hierarchy:\n" + hierarchy.readText())
-        } catch (error: Exception) {
-          Log.e("ServerUITest", "Could not capture terms checkbox hierarchy: " + error.javaClass.simpleName)
+      termsCheckbox!!.click()
+      var termsAccepted = false
+      val termsDeadline = System.currentTimeMillis() + 5_000
+      while (System.currentTimeMillis() < termsDeadline && !termsAccepted) {
+        termsAccepted = evaluateSetupWebView(
+          scenario,
+          "(function(){var e=document.querySelector('#native-terms');var b=document.querySelector('#grant-call-permissions');return !!e && e.checked && !!b && !b.disabled;})()"
+        ) == "true"
+        if (!termsAccepted) Thread.sleep(120)
+      }
+      if (!termsAccepted) {
+        device.findObject(By.textContains("I accept the Terms of Service"))?.click()
+        val labelDeadline = System.currentTimeMillis() + 3_000
+        while (System.currentTimeMillis() < labelDeadline && !termsAccepted) {
+          termsAccepted = evaluateSetupWebView(
+            scenario,
+            "(function(){var e=document.querySelector('#native-terms');var b=document.querySelector('#grant-call-permissions');return !!e && e.checked && !!b && !b.disabled;})()"
+          ) == "true"
+          if (!termsAccepted) Thread.sleep(120)
         }
       }
-      assertNotNull("Tapping the visible legal checkbox must update its checked state", checkedTerms)
-      // The primary action sits below the fold on phone-sized screens.
-      val createButton = findTextOnScrollableScreen(context, device, "Create my Server ID")
-      assertNotNull("Server identity creation action is not visible after scrolling", createButton)
-      assertTrue("Accepting the terms should enable Server ID creation", createButton!!.isEnabled)
+      assertTrue("Tapping the visible legal acceptance control must check the real HTML input and enable Create my Server ID",
+        termsAccepted)
+
+      val createButtonVisible = evaluateSetupWebView(
+        scenario,
+        "(function(){var b=document.querySelector('#grant-call-permissions');if(!b)return false;b.scrollIntoView({block:'center'});var r=b.getBoundingClientRect();return !b.disabled && getComputedStyle(b).display!=='none' && r.width>0 && r.height>0 && r.bottom>0 && r.top<window.innerHeight;})()"
+      )
+      assertEquals("Accepting legal terms must reveal an enabled Create my Server ID button in the viewport",
+        "true", createButtonVisible)
       assertTrue("Onboarding unexpectedly opened a custom number-entry dialer",
         !device.hasObject(By.textContains("Call a number")))
     }
@@ -729,19 +766,28 @@ class CallerSmokeTest {
       // country inference. Use explicit E.164 so the emulator's locale/SIM does
       // not change the dialled destination.
       digitsField!!.setText("+2348012345678")
-      val enteredDigits = device.wait(
-        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("+234801")), 8_000
-      )
-      if (enteredDigits == null) {
+      fun displayedDestinationDigits(): String {
+        val field = device.findObject(By.res(resolvedDialerPackage, "digits")) ?: digitsField
+        return field.text?.toString().orEmpty().filter { it.isDigit() }
+      }
+      var enteredDigits = ""
+      val entryDeadline = System.currentTimeMillis() + 8_000
+      while (System.currentTimeMillis() < entryDeadline) {
+        enteredDigits = displayedDestinationDigits()
+        if (enteredDigits == "2348012345678") break
+        Thread.sleep(100)
+      }
+      if (enteredDigits != "2348012345678") {
         try {
           val hierarchy = File(context.cacheDir, "server-phone-dialer-number-hierarchy.txt")
           device.dumpWindowHierarchy(hierarchy)
-          Log.e("ServerUITest", "Phone dialpad did not retain the explicit E.164 test number; hierarchy:\\n" + hierarchy.readText())
+          Log.e("ServerUITest", "Phone dialpad did not retain the complete E.164 digits; hierarchy:\\n" + hierarchy.readText())
         } catch (error: Exception) {
           Log.e("ServerUITest", "Could not capture Phone number hierarchy: " + error.javaClass.simpleName)
         }
       }
-      assertNotNull("Android Phone must retain the explicit E.164 destination +2348012345678", enteredDigits)
+      assertEquals("Android Phone must retain every digit of the E.164 destination regardless of visual formatting",
+        "2348012345678", enteredDigits)
 
       // Close only Gboard's navigation-bar IME button. Android Phone's own
       // Back action hides the dialpad itself, so never fall back to pressBack().
@@ -764,10 +810,15 @@ class CallerSmokeTest {
           Log.w("ServerUITest", "Could not capture IME navigation hierarchy: " + error.javaClass.simpleName)
         }
       }
-      val numberStillVisible = device.wait(
-        Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("+234801")), 3_000
-      )
-      assertNotNull("The explicit E.164 destination must remain in the Phone dialpad", numberStillVisible)
+      var numberStillVisible = ""
+      val retainedDeadline = System.currentTimeMillis() + 3_000
+      while (System.currentTimeMillis() < retainedDeadline) {
+        numberStillVisible = displayedDestinationDigits()
+        if (numberStillVisible == "2348012345678") break
+        Thread.sleep(100)
+      }
+      assertEquals("The full E.164 destination must remain in the Phone dialpad after hiding Gboard",
+        "2348012345678", numberStillVisible)
 
       // Google Phone exposes the green dial action under this resource ID on
       // AOSP images. Do not collapse the Phone dialpad to dismiss Gboard.
@@ -842,6 +893,10 @@ class CallerSmokeTest {
         engineEnteredAt > 0L)
       assertEquals("The system dialer telephone number must enter the phone-number call path",
         "phone", prefs.getString("debug_last_call_target_kind", null))
+      assertEquals("Outgoing Android Telecom request must use the telephone URI scheme",
+        "tel", prefs.getString("debug_last_telecom_request_scheme", null))
+      assertEquals("Android Telecom must preserve the + prefix and all 13 digits of the E.164 destination",
+        "+2348012345678".length, prefs.getInt("debug_last_telecom_request_target_length", -1))
 
       // This test intentionally uses an invalid session, so a real backend rejection
       // is expected. Telecom must reach its bound WebRTC engine without opening an

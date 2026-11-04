@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Fail closed when connectedDebugAndroidTest ran zero tests or reported failures."""
 from pathlib import Path
+import argparse
 import sys
 import xml.etree.ElementTree as ET
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--expected-tests", type=int, default=None)
+args = parser.parse_args()
 
 RESULTS = Path("apps/android-caller/app/build/outputs/androidTest-results/connected/debug")
 files = sorted(RESULTS.rglob("TEST-*.xml")) if RESULTS.exists() else []
@@ -28,6 +33,12 @@ for result in files:
 print(f"ANDROID_INSTRUMENTATION_RESULTS tests={total} failures={failures} errors={errors} skipped={skipped}")
 if total < 1:
     print("ERROR: instrumentation runner completed without executing a test.", file=sys.stderr)
+    raise SystemExit(1)
+if args.expected_tests is not None and total != args.expected_tests:
+    print(f"ERROR: expected exactly {args.expected_tests} instrumentation tests, observed {total}.", file=sys.stderr)
+    raise SystemExit(1)
+if skipped:
+    print("ERROR: Android instrumentation reported skipped tests.", file=sys.stderr)
     raise SystemExit(1)
 if failures or errors:
     print("ERROR: Android instrumentation reported failures or errors.", file=sys.stderr)
