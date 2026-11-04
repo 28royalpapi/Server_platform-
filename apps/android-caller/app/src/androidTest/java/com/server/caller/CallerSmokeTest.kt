@@ -813,17 +813,18 @@ class CallerSmokeTest {
       ) ?: device.findObject(By.res("com.google.android.inputmethod.latin", "input_method_nav_back"))
         ?: device.findObject(By.desc("Hide keyboard"))
         ?: device.findObject(By.res("com.android.systemui", "ime_nav_btn"))
-      if (hideIme != null) {
-        hideIme.click()
-      } else {
-        // The generic system Back navigation button is not an IME control.
-        // Sending BACK while the dialpad EditText owns focus dismisses the IME;
-        // tapping the navigation button by content description can stale the
-        // dialer hierarchy and accidentally leave the test in the previous screen.
-        device.pressBack()
+      val imeVisible = listOf(
+        "com.google.android.inputmethod.latin",
+        "com.android.inputmethod.latin"
+      ).any { imePackage -> device.hasObject(By.pkg(imePackage)) }
+      when {
+        hideIme != null -> hideIme.click()
+        imeVisible -> device.pressBack() // BACK is consumed by the visible IME first.
+        else -> Log.i("ServerUITest", "No software keyboard is visible; preserving the Phone dialpad.")
       }
       Thread.sleep(350)
-      // Do not reuse the pre-IME UiObject2 instance after the dialer redraw.
+      // UiAutomator.setText() can populate an EditText without opening an IME.
+      // Never send BACK when no keyboard is visible: that exits the dialpad.
       // The exact destination is checked again at the actual Telecom hand-off below.
 
       // Google Phone exposes the green dial action under this resource ID on
