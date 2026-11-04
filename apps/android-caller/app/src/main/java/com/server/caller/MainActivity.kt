@@ -498,7 +498,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private fun normalizePhoneForServer(raw: String): String? =
-    ServerPhoneNumberNormalizer.toE164(raw, ServerPhoneNumberNormalizer.deviceRegion(this))
+    ServerPhoneNumberNormalizer.toE164FromDevice(this, raw)
 
   /**
    * Shares a guest invitation through an app the caller already has.
@@ -557,7 +557,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (!isServerId && normalizedPhone == null) {
       recordTelecomDebugStage("start_call_target_invalid")
       ServerTelecomRegistry.markEnded()
-      setStatus("The number supplied by the Phone app could not be read as a Nigerian or international number. No carrier call was placed.", true)
+      setStatus("The destination country could not be resolved from this contact. Allow Contacts access or use an international number with its country code. No carrier call was placed.", true)
       return@launch
     }
     // Debug builds record that Telecom's system-originated tel: request reached

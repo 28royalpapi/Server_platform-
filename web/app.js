@@ -50,6 +50,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   let pendingPhoneNumber = "";
   let phoneLinkVerified = false;
   let persistedNumberConsent = false;
+  let destinationCountryContactsGranted = false;
   const normalizePhone = (raw) => {
     const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
     let candidate = value;
@@ -84,12 +85,13 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     grantCalls.disabled = true;
     grantCalls.textContent = "Waiting for Android permissions…";
-    showStatus("Android will request microphone permission, Phone-state access to check the Android calling-account setting, and notifications where supported.");
+    showStatus("Android will request microphone and Phone permissions, notifications where supported, and optional Contacts access. Contacts access lets Server read the selected contact’s saved E.164 number or country on this device only; your address book is not uploaded.");
     if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.requestCallPermissions();
   });
 
-  window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted, phoneStateGranted) => {
+  window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted, phoneStateGranted, contactsGranted) => {
+    destinationCountryContactsGranted = contactsGranted === true;
     grantCalls.disabled = false;
     grantCalls.textContent = "Create my Server ID and enable calling →";
     if (!microphoneGranted) {
@@ -132,7 +134,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
         showPhoneLinkStatus(persistedNumberConsent ? "This verified number is linked and permitted to receive Server internet calls." : "This verified number is linked, but Server calls by number are currently off.");
       }
     } catch { /* First-time number linking remains available. */ }
-    showStatus("Server identity created. Phone-number linking is optional; enable Server under Android Calling accounts to finish setup.", true);
+    const contactCountryNote = destinationCountryContactsGranted ? "" : " Contacts access was not granted; Server can still use international country codes and your phone’s default region, but some foreign national-format contacts may be ambiguous.";
+    showStatus("Server identity created. Phone-number linking is optional; enable Server under Android Calling accounts to finish setup." + contactCountryNote, true);
   };
 
   requestPhoneCodeButton && requestPhoneCodeButton.addEventListener("click", () => {

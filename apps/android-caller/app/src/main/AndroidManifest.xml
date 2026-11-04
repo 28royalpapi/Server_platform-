@@ -3,6 +3,8 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <!-- Required by Android Telecom APIs; Server does not use it to enumerate SIMs. -->
   <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+  <!-- Read only the selected contact match locally to resolve its E.164 number/country. -->
+  <uses-permission android:name="android.permission.READ_CONTACTS" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

@@ -330,19 +330,34 @@ assert.match(androidManifest,/android:name="com\.server\.caller\.ServerGuestInvi
 assert.match(androidPhoneNormalizer,/PhoneNumberUtil\.getInstance\(\)/,
   "all supported Android releases use the same bundled international numbering metadata");
 assert.match(androidPhoneNormalizer,/phoneUtil\.parse\(value, defaultRegion\)/,
-  "national-format contacts are interpreted using the caller's country region");
+  "national-format contact numbers are parsed with an explicit destination-region context");
+assert.match(androidPhoneNormalizer,/PhoneLookup\.CONTENT_FILTER_URI/,
+  "Android looks up only the selected saved-contact number before interpreting a national number");
+assert.match(androidPhoneNormalizer,/PhoneLookup\.NORMALIZED_NUMBER/,
+  "Android prefers the contact provider's E.164-normalized destination number");
+assert.match(androidPhoneNormalizer,/StructuredPostal\.COUNTRY/,
+  "contact postal country is used only when the normalized E.164 number is unavailable");
+assert.match(androidPhoneNormalizer,/toE164WithContactMetadata/,
+  "the contact's destination country takes precedence over the caller's SIM region");
 assert.match(androidPhoneNormalizer,/phoneUtil\.format\(parsed, PhoneNumberUtil\.PhoneNumberFormat\.E164\)/,
   "explicit international contacts retain their destination country code in E.164 form");
 assert.match(androidPhoneNormalizer,/simCountryIso/);
 assert.match(androidPhoneNormalizer,/networkCountryIso/);
 assert.match(androidPhoneNormalizer,/Locale\.getDefault\(\)\.country/,
   "the default phone region is resolved from SIM, then network, then device locale");
-assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164\(raw, ServerPhoneNumberNormalizer\.deviceRegion\(context\)\)/,
-  "Telecom uses the SIM home region with network and locale fallbacks for number interpretation");
-assert.match(androidMain,/ServerPhoneNumberNormalizer\.deviceRegion\(this\)/,
-  "the legacy Android route shares the same caller-region resolver as Telecom");
-assert.match(androidTests,/internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode/,
-  "Nigeria and UK contacts are tested in both international and national formats on every Android matrix image");
+assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164FromDevice\(context, raw\)/,
+  "Telecom resolves the destination from contact metadata before caller-region fallback");
+assert.match(androidMain,/ServerPhoneNumberNormalizer\.toE164FromDevice\(this, raw\)/,
+  "the legacy Android route shares the same contact-first country resolver as Telecom");
+assert.match(androidTests,/internationalNumberingMetadataCoversEverySupportedRegion/,
+  "worldwide numbering metadata is exercised on the Android test matrix");
+assert.match(androidTests,/destinationCountryFromSavedContactMetadataBeatsCallerRegion/,
+  "a saved contact country must override the caller SIM country");
+assert.match(androidSetup,/Manifest\.permission\.READ_CONTACTS/,
+  "Android requests permission to resolve saved-contact destination country locally");
+assert.match(androidManifest,/android\.permission\.READ_CONTACTS/);
+assert.match(app,/destinationCountryContactsGranted/,
+  "the onboarding UI explains that contact country lookup is optional and stays on-device");
 assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,

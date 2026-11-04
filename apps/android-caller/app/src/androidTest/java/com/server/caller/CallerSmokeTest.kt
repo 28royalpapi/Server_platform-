@@ -21,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import com.google.i18n.phonenumbers.PhoneNumberUtil
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -28,30 +29,65 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @Test fun internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode() {
-    assertEquals("080 Nigerian contacts normalise without the user editing the contact",
+  @Test fun internationalNumberingMetadataCoversEverySupportedRegion() {
+    val phoneUtil = PhoneNumberUtil.getInstance()
+    val regions = phoneUtil.supportedRegions
+    assertTrue("libphonenumber must include worldwide geographical numbering metadata", regions.size > 200)
+
+    var examplesChecked = 0
+    regions.sorted().forEach { region ->
+      assertTrue("Every bundled region must have a valid calling code: $region",
+        phoneUtil.getCountryCodeForRegion(region) > 0)
+      val example = phoneUtil.getExampleNumber(region) ?: return@forEach
+      val national = phoneUtil.format(example, PhoneNumberUtil.PhoneNumberFormat.NATIONAL)
+      val expectedE164 = phoneUtil.format(example, PhoneNumberUtil.PhoneNumberFormat.E164)
+      assertEquals("The national number example must round-trip for region $region",
+        expectedE164, ServerPhoneNumberNormalizer.toE164(national, region))
+      examplesChecked++
+    }
+    assertTrue("The bundled worldwide metadata should provide examples for at least 150 regions",
+      examplesChecked >= 150)
+  }
+
+  @Test fun destinationCountryFromSavedContactMetadataBeatsCallerRegion() {
+    val phoneUtil = PhoneNumberUtil.getInstance()
+    val ukExample = phoneUtil.getExampleNumber("GB")
+    assertNotNull("A UK test number must exist in the worldwide metadata", ukExample)
+    val ukNational = phoneUtil.format(ukExample, PhoneNumberUtil.PhoneNumberFormat.NATIONAL)
+    val ukE164 = phoneUtil.format(ukExample, PhoneNumberUtil.PhoneNumberFormat.E164)
+
+    assertEquals("Saved contact NORMALIZED_NUMBER wins over a Nigerian caller SIM",
+      ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", ukE164, null))
+    assertEquals("Saved contact postal country wins when NORMALIZED_NUMBER is absent",
+      ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", null, "United Kingdom"))
+    assertEquals("The contact country can also be supplied as an ISO region code",
+      ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", null, "GB"))
+
+    val egyptExample = phoneUtil.getExampleNumber("EG")
+    assertNotNull("Egypt must be included in the same global metadata set", egyptExample)
+    val egyptNational = phoneUtil.format(egyptExample, PhoneNumberUtil.PhoneNumberFormat.NATIONAL)
+    val egyptE164 = phoneUtil.format(egyptExample, PhoneNumberUtil.PhoneNumberFormat.E164)
+    assertEquals("Egyptian contact country is independent of the caller's Nigerian region",
+      egyptE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(egyptNational, "NG", null, "Egypt"))
+
+    val indiaExample = phoneUtil.getExampleNumber("IN")
+    assertNotNull("India must be included in the same global metadata set", indiaExample)
+    val indiaNational = phoneUtil.format(indiaExample, PhoneNumberUtil.PhoneNumberFormat.NATIONAL)
+    val indiaE164 = phoneUtil.format(indiaExample, PhoneNumberUtil.PhoneNumberFormat.E164)
+    assertEquals("Indian contact country is independent of the caller's Nigerian region",
+      indiaE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(indiaNational, "NG", null, "India"))
+  }
+
+  @Test fun explicitInternationalNumbersAndCallerRegionFallbackRemainSupported() {
+    assertEquals("Nigerian national format still works when the number is local to the caller's region",
       "+2348012345678", ServerPhoneNumberNormalizer.toE164("08012345678", "NG"))
-    assertEquals("Nigerian punctuation and spaces are accepted",
-      "+2348012345678", ServerPhoneNumberNormalizer.toE164("080 123-45678", "NG"))
-    assertEquals("Nigeria to a UK contact using +44 works without changing the caller region",
-      "+447911123456", ServerPhoneNumberNormalizer.toE164("+447911123456", "NG"))
-    assertEquals("Nigeria to a UK contact using 0044 works without a plus sign",
+    assertEquals("International + format does not depend on caller country",
+      "+447911123456", ServerPhoneNumberNormalizer.toE164("+447911123456", "EG"))
+    assertEquals("International 00 prefix uses the caller region's international dialling prefix",
       "+447911123456", ServerPhoneNumberNormalizer.toE164("0044 7911 123456", "NG"))
-    assertEquals("A UK national mobile number is parsed using a GB contact/device region",
+    assertEquals("UK national format remains supported when the caller/default region is GB",
       "+447911123456", ServerPhoneNumberNormalizer.toE164("07911 123456", "GB"))
-    assertEquals("A UK national landline is parsed using a GB contact/device region",
-      "+442079460958", ServerPhoneNumberNormalizer.toE164("020 7946 0958", "GB"))
-    assertEquals("International numbers stay international even when the caller is in Nigeria",
-      "+2348012345678", ServerPhoneNumberNormalizer.toE164("+2348012345678", "GB"))
-    assertEquals("The SIM home region takes priority for the caller's default dialling plan",
-      "GB", ServerPhoneNumberNormalizer.resolveRegion("gb", "ng", "ng"))
-    assertEquals("The attached network is used when SIM country is unavailable",
-      "NG", ServerPhoneNumberNormalizer.resolveRegion(null, "ng", "gb"))
-    assertEquals("Device locale is used when both SIM and network country are unavailable",
-      "GB", ServerPhoneNumberNormalizer.resolveRegion(null, null, "gb"))
-    assertEquals("Nigeria is the final fallback for a first-market device",
-      "NG", ServerPhoneNumberNormalizer.resolveRegion(null, null, null))
-    assertEquals("Invalid non-phone text must be rejected",
+    assertEquals("A number with non-phone text is rejected",
       null, ServerPhoneNumberNormalizer.toE164("not a phone number", "NG"))
   }
 

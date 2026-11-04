@@ -111,7 +111,7 @@ internal class ServerTelecomCallEngine(
         throw IllegalStateException("Microphone permission is missing. Reopen Server setup and allow microphone access.")
       }
       val target = normalizePhone(rawTarget)
-        ?: throw IllegalStateException("The saved contact number could not be recognised for this phone's SIM country.")
+        ?: throw IllegalStateException("The destination country could not be determined from this contact. Allow Contacts access or use a number with its international country code. No carrier call was placed.")
       if (BuildConfig.DEBUG) {
         prefs.edit()
           .putLong("debug_last_call_engine_entered_at", System.currentTimeMillis())
@@ -455,7 +455,7 @@ internal class ServerTelecomCallEngine(
     }
 
   private fun normalizePhone(raw: String): String? =
-    ServerPhoneNumberNormalizer.toE164(raw, ServerPhoneNumberNormalizer.deviceRegion(context))
+    ServerPhoneNumberNormalizer.toE164FromDevice(context, raw)
 
   private fun recordStage(stage: String) {
     if (!BuildConfig.DEBUG) return
