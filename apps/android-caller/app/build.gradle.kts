@@ -10,6 +10,16 @@ val serverSigningKeyPassword = providers.environmentVariable("SERVER_ANDROID_KEY
 val hasPersistentServerSigning = !serverSigningStorePath.isNullOrBlank() &&
   !serverSigningStorePassword.isNullOrBlank() && !serverSigningKeyAlias.isNullOrBlank() &&
   !serverSigningKeyPassword.isNullOrBlank()
+// CI runs Android instrumentation on x86_64 emulators. Keep the debug/test APK
+// small when that environment variable is set; local debug builds retain the
+// normal ABI set, and release APKs retain their arm64/ARMv7 phone targets.
+val serverDebugAbiFilters = providers.environmentVariable("SERVER_DEBUG_ABI_FILTERS")
+  .orElse(providers.gradleProperty("SERVER_DEBUG_ABI_FILTERS"))
+  .orNull
+  ?.split(",")
+  ?.map { it.trim() }
+  ?.filter { it.isNotEmpty() }
+  .orEmpty()
 
 android {
   namespace = "com.server.caller"
@@ -60,7 +70,12 @@ android {
     }
   }
   buildTypes {
-    debug { applicationIdSuffix = ".debug" }
+    debug {
+      applicationIdSuffix = ".debug"
+      if (serverDebugAbiFilters.isNotEmpty()) {
+        ndk { abiFilters.addAll(serverDebugAbiFilters) }
+      }
+    }
     release {
       isMinifyEnabled = true
       isShrinkResources = true
