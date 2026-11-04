@@ -331,8 +331,8 @@ assert.match(androidPhoneNormalizer,/PhoneNumberUtil\.getInstance\(\)/,
   "all supported Android releases use the same bundled international numbering metadata");
 assert.match(androidPhoneNormalizer,/phoneUtil\.parse\(value, defaultRegion\)/,
   "national-format contacts are interpreted using the caller's country region");
-assert.match(androidPhoneNormalizer,/value.startsWith\("\+"/,
-  "explicit international contacts retain their destination country code");
+assert.match(androidPhoneNormalizer,/phoneUtil\.format\(parsed, PhoneNumberUtil\.PhoneNumberFormat\.E164\)/,
+  "explicit international contacts retain their destination country code in E.164 form");
 assert.match(androidPhoneNormalizer,/simCountryIso/);
 assert.match(androidPhoneNormalizer,/networkCountryIso/);
 assert.match(androidPhoneNormalizer,/Locale\.getDefault\(\)\.country/,
