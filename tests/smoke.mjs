@@ -228,7 +228,7 @@ assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected
 assert.ok(androidVersionMatrix.includes('if [ "${{ matrix.api-level }}" = "37" ]; then sh scripts/android17-16kb-acceptance.sh; fi'), "Android 17 validation is invoked as one POSIX shell command inside the emulator runner");
 assert.match(android17Acceptance,/getconf PAGE_SIZE/);
 assert.match(android17Acceptance,/16384/);
-assert.match(android17Acceptance,/zipalign -c -P 16/);
+assert.match(android17Acceptance,/zipalign" -c -P 16/);
 assert.match(android17Acceptance,/adb install -r/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
