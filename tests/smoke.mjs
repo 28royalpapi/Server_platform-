@@ -391,7 +391,7 @@ assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL\)/,
   "outgoing-call acceptance opens Android's real Phone dialer");
 assert.match(androidTests,/By\.res\(resolvedDialerPackage, "digits"\)/,
   "the test locates the Phone dialer's destination EditText");
-assert.match(androidTests,/digitsField!!\\.setText\\("\\+2348012345678"\\)/,
+assert.match(androidTests,/digitsField!!\.setText\("\+2348012345678"\)/,
   "the test enters an explicit E.164 destination into the real dialer EditText without keycode assumptions");
 assert.match(androidTests,/displayedDestinationDigits/,
   "dialer acceptance tolerates visual grouping while checking every E.164 digit");
