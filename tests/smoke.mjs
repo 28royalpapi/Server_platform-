@@ -330,7 +330,9 @@ assert.match(androidManifest,/android:name="com\.server\.caller\.ServerGuestInvi
 assert.match(androidPhoneNormalizer,/PhoneNumberUtils\.formatNumberToE164/,
   "national-format saved contacts are normalised internally with Android's phone-number library");
 assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164\(raw, simCountryIso\(\)\)/,
-  "the user's SIM country controls national number interpretation without editing contacts");
+  "the user's SIM country controls Telecom number interpretation without editing contacts");
+assert.match(androidMain,/ServerPhoneNumberNormalizer\.toE164\(raw, region\)/,
+  "the legacy Android route uses the same SIM-aware number normaliser");
 assert.match(androidTests,/savedContactNumbersNormalizeWithoutAnInternationalPlus/,
   "national-format contacts have a dedicated Android normalisation test");
 assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
@@ -348,8 +350,14 @@ assert.match(androidTests,/By\.res\(resolvedDialerPackage, "digits"\)/,
   "the test locates the Phone dialer's destination EditText");
 assert.match(androidTests,/digitsField!!\.setText\("08012345678"\)/,
   "the test enters the Nigerian number into the real destination EditText without keyboard keycode assumptions");
-assert.match(androidTests,/Hide keyboard/,
-  "the phone picker test dismisses the IME before verifying the visible dial action");
+assert.doesNotMatch(androidTests,/Hiding the keyboard must leave the entered destination in the dialpad|device\.pressBack\(\).*dialpad/,
+  "the Phone picker must not press Back and accidentally close Android's dialpad");
+assert.match(androidTests,/input_method_nav_back/,
+  "the Phone picker uses the system IME navigation control rather than Android Phone Back");
+assert.match(androidTests,/guestCallInvitationNotificationOffersExplicitShareAndSmsActions/,
+  "the no-install guest route has an executable native notification and SMS/share chooser test");
+assert.match(androidTests,/createShareChooserIntent/,
+  "the guest share chooser is unit-testable without sending a text");
 assert.match(androidTests,/enablePhoneAccountWithTestShell\(context, serverHandle\)/,
   "Telecom test setup enables the account without depending on OEM-specific Settings layouts");
 assert.match(androidTests,/telecom\.defaultDialerPackage/,

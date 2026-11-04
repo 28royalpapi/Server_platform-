@@ -43,6 +43,51 @@ class CallerSmokeTest {
       null, ServerPhoneNumberNormalizer.toE164("not a phone number", "NG"))
   }
 
+  @Test fun guestCallInvitationNotificationOffersExplicitShareAndSmsActions() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    if (android.os.Build.VERSION.SDK_INT >= 33 &&
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+      instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+    val callId = "guest-share-" + UUID.randomUUID().toString()
+    val phone = "+2348012345678"
+    val invitation = "SVR-ABCDEF1234 is calling you. Open https://server-onboarding-ochre.vercel.app/guest.html#token=" +
+      "a".repeat(64) + " and tap Answer."
+    try {
+      assertTrue("A guest invitation must be shareable through a native reminder notification",
+        ServerGuestInviteNotifications.show(context, callId, phone, invitation))
+      val notificationId = ServerGuestInviteNotifications.notificationId(callId)
+      val deadline = System.currentTimeMillis() + 5_000
+      var posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      while (posted == null && System.currentTimeMillis() < deadline) {
+        Thread.sleep(100)
+        posted = manager.activeNotifications.firstOrNull { it.id == notificationId }
+      }
+      assertNotNull("The secure guest invitation notification was not posted", posted)
+      assertTrue("The notification must offer an explicit Share invitation action",
+        posted!!.notification.actions.any { it.title.toString() == "Share invitation" })
+      assertNotNull("Tapping the notification must open the native share activity", posted.notification.contentIntent)
+
+      val chooser = ServerGuestInviteShareActivity.createShareChooserIntent(phone, invitation)
+      assertEquals("The activity must open Android's native chooser", Intent.ACTION_CHOOSER, chooser.action)
+      val shareIntent = chooser.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
+      assertEquals("The general share target must use ACTION_SEND", Intent.ACTION_SEND, shareIntent?.action)
+      assertEquals("The invitation must be plain text", "text/plain", shareIntent?.type)
+      assertEquals("The secure browser invite must be included unchanged", invitation, shareIntent?.getStringExtra(Intent.EXTRA_TEXT))
+      val initialIntents = chooser.getParcelableArrayExtra(Intent.EXTRA_INITIAL_INTENTS)
+        ?.filterIsInstance<Intent>().orEmpty()
+      val smsIntent = initialIntents.firstOrNull { it.action == Intent.ACTION_SENDTO }
+      assertNotNull("The chooser must offer an optional addressed SMS composer", smsIntent)
+      assertEquals("The SMS composer must target the original saved-contact number", phone, smsIntent!!.data?.schemeSpecificPart)
+      assertEquals("The SMS body must contain the secure guest invitation", invitation, smsIntent.getStringExtra("sms_body"))
+    } finally {
+      ServerGuestInviteNotifications.cancel(context, callId)
+    }
+  }
+
   @Test fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -637,20 +682,34 @@ class CallerSmokeTest {
       }
       assertNotNull("Android Phone must retain the saved-contact-style number 08012345678", enteredDigits)
 
-      // Dismiss the IME through its own accessibility control where possible.
-      // On Android 15/16 the call FAB is laid out behind the keyboard and is
-      // correctly marked invisible until the IME closes.
-      val hideIme = device.findObject(By.descContains("Hide keyboard"))
+      // Close only Gboard's navigation-bar IME button. Android Phone's own
+      // Back action hides the dialpad itself, so never fall back to pressBack().
+      val hideIme = device.wait(
+        Until.findObject(By.res("android", "input_method_nav_back")), 1_500
+      ) ?: device.findObject(By.res("com.google.android.inputmethod.latin", "input_method_nav_back"))
+        ?: device.findObject(By.desc("Hide keyboard"))
         ?: device.findObject(By.res("com.android.systemui", "ime_nav_btn"))
-      if (hideIme != null) hideIme.click() else device.pressBack()
-      Thread.sleep(500)
+        ?: device.findObject(By.desc("Back"))
+      if (hideIme != null) {
+        hideIme.click()
+        Thread.sleep(350)
+      } else {
+        try {
+          val hierarchy = File(context.cacheDir, "server-phone-ime-navigation-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.w("ServerUITest", "No standalone IME navigation button was exposed; keeping the Phone dialpad open.\\n" +
+            hierarchy.readText())
+        } catch (error: Exception) {
+          Log.w("ServerUITest", "Could not capture IME navigation hierarchy: " + error.javaClass.simpleName)
+        }
+      }
       val numberStillVisible = device.wait(
         Until.findObject(By.res(resolvedDialerPackage, "digits").textContains("0801")), 3_000
       )
-      assertNotNull("Hiding the keyboard must leave the entered destination in the dialpad", numberStillVisible)
+      assertNotNull("The saved-contact destination must remain in the Phone dialpad", numberStillVisible)
 
       // Google Phone exposes the green dial action under this resource ID on
-      // AOSP images. The IME is closed before searching for the visible control.
+      // AOSP images. Do not collapse the Phone dialpad to dismiss Gboard.
       val callButton = device.wait(
         Until.findObject(By.res(resolvedDialerPackage, "dialpad_floating_action_button")), 6_000
       ) ?: device.wait(Until.findObject(By.descContains("dial")), 2_000)

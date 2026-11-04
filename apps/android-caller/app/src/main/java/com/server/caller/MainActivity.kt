@@ -17,6 +17,7 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.Build
+import android.telephony.TelephonyManager
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -497,18 +498,15 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).apply()
   }
 
+  @Suppress("DEPRECATION")
   private fun normalizePhoneForServer(raw: String): String? {
-    val value = raw.trim()
-    val digits = value.filter { it.isDigit() }
-    val candidate = when {
-      value.startsWith("+") -> "+$digits"
-      value.startsWith("00") -> "+" + digits.drop(2)
-      digits.startsWith("234") && digits.length == 13 -> "+$digits"
-      digits.length == 11 && digits.startsWith("0") -> "+234" + digits.drop(1)
-      digits.length == 10 && digits.firstOrNull() in '7'..'9' -> "+234$digits"
-      else -> return null
+    val region = try {
+      val iso = (getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager).simCountryIso.trim()
+      iso.takeIf { Regex("^[A-Za-z]{2}$").matches(it) }?.uppercase(java.util.Locale.ROOT) ?: "NG"
+    } catch (_: Exception) {
+      "NG"
     }
-    return candidate.takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
+    return ServerPhoneNumberNormalizer.toE164(raw, region)
   }
 
   /**
