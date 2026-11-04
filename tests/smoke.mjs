@@ -334,7 +334,13 @@ assert.match(androidPhoneNormalizer,/phoneUtil\.parse\(value, defaultRegion\)/,
 assert.match(androidPhoneNormalizer,/PhoneLookup\.CONTENT_FILTER_URI/,
   "Android looks up only the selected saved-contact number before interpreting a national number");
 assert.match(androidPhoneNormalizer,/PhoneLookup\.NORMALIZED_NUMBER/,
-  "Android prefers the contact provider's E.164-normalized destination number");
+  "Android inspects the contact provider's number but does not blindly trust provider inference");
+assert.match(androidPhoneNormalizer,/savedNumber\.trim\(\)\.startsWith\("\+"\)/,
+  "only an explicitly + prefixed saved contact number is independently trusted");
+assert.match(androidPhoneNormalizer,/normalizedRegion == contactRegion/,
+  "provider-inferred E.164 must agree with the contact country before it is trusted");
+assert.match(androidPhoneNormalizer,/ContactHints\(ambiguous = true\)/,
+  "national-format numbers fail closed when contact lookup is unavailable");
 assert.match(androidPhoneNormalizer,/StructuredPostal\.COUNTRY/,
   "contact postal country is used only when the normalized E.164 number is unavailable");
 assert.match(androidPhoneNormalizer,/toE164WithContactMetadata/,

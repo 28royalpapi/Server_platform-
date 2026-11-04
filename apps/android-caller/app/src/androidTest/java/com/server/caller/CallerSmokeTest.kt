@@ -56,8 +56,14 @@ class CallerSmokeTest {
     val ukNational = phoneUtil.format(ukExample, PhoneNumberUtil.PhoneNumberFormat.NATIONAL)
     val ukE164 = phoneUtil.format(ukExample, PhoneNumberUtil.PhoneNumberFormat.E164)
 
-    assertEquals("Saved contact NORMALIZED_NUMBER wins over a Nigerian caller SIM",
-      ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", ukE164, null))
+    assertEquals("An Android-inferred NORMALIZED_NUMBER without independent contact country is rejected",
+      null, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", ukE164, null))
+    assertEquals("A literal + prefixed saved contact number is trusted without postal country metadata",
+      ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", ukE164, null, normalizedNumberIsExplicitInternational = true))
+    assertEquals("A provider-normalized number conflicting with the contact country is rejected",
+      null, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", "+2348012345678", "United Kingdom"))
+    assertEquals("A country on the contact supplies the destination region when provider normalization is absent",
+      ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", null, "United Kingdom"))
     assertEquals("Saved contact postal country wins when NORMALIZED_NUMBER is absent",
       ukE164, ServerPhoneNumberNormalizer.toE164WithContactMetadata(ukNational, "NG", null, "United Kingdom"))
     assertEquals("The contact country can also be supplied as an ISO region code",
@@ -87,6 +93,10 @@ class CallerSmokeTest {
       "+447911123456", ServerPhoneNumberNormalizer.toE164("0044 7911 123456", "NG"))
     assertEquals("UK national format remains supported when the caller/default region is GB",
       "+447911123456", ServerPhoneNumberNormalizer.toE164("07911 123456", "GB"))
+    assertEquals("A matched national-format contact without independent country metadata is rejected",
+      null, ServerPhoneNumberNormalizer.toE164WithContactMetadata("07911123456", "NG", "+2347911123456", null, contactMatched = true))
+    assertEquals("A manual number with no matching saved contact may use the caller's region",
+      "+2348012345678", ServerPhoneNumberNormalizer.toE164WithContactMetadata("08012345678", "NG", null, null, contactMatched = false))
     assertEquals("A number with non-phone text is rejected",
       null, ServerPhoneNumberNormalizer.toE164("not a phone number", "NG"))
   }

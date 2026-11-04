@@ -134,7 +134,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
         showPhoneLinkStatus(persistedNumberConsent ? "This verified number is linked and permitted to receive Server internet calls." : "This verified number is linked, but Server calls by number are currently off.");
       }
     } catch { /* First-time number linking remains available. */ }
-    const contactCountryNote = destinationCountryContactsGranted ? "" : " Contacts access was not granted; Server can still use international country codes and your phone’s default region, but some foreign national-format contacts may be ambiguous.";
+    const contactCountryNote = destinationCountryContactsGranted ? "" : " Contacts access was not granted. For safety, use an international number beginning with +; Server will not guess a country for a national-format number.";
     showStatus("Server identity created. Phone-number linking is optional; enable Server under Android Calling accounts to finish setup." + contactCountryNote, true);
   };
 
