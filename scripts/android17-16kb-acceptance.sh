@@ -31,7 +31,7 @@ while [ "$attempt" -le 3 ]; do
   echo "ANDROID17_INSTALL_ATTEMPT=$attempt"
   sh scripts/wait-for-android-package-manager.sh
   sleep 3
-  if adb install --no-streaming -r "$apk" &&
+  if adb install -r --no-streaming "$apk" &&
      adb shell pm path com.server.caller.debug | grep -q '^package:'; then
     installed=1
     break
