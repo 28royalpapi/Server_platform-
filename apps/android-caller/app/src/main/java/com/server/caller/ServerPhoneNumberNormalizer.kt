@@ -27,6 +27,8 @@ internal object ServerPhoneNumberNormalizer {
     val normalizedNumber: String? = null,
     val countryRegion: String? = null,
     val contactMatched: Boolean = false,
+    val normalizedNumberIsExplicitInternational: Boolean = false,
+    val contactMatched: Boolean = false,
     val ambiguous: Boolean = false
   )
 
@@ -88,52 +90,86 @@ internal object ServerPhoneNumberNormalizer {
     if (value.isEmpty()) return null
     if (value.startsWith("+")) return toE164(value, "ZZ")
 
-    val hints = lookupContactHints(context, value)
-    if (hints?.ambiguous == true) return null
-    if (hints?.contactMatched == true &&
-      hints.normalizedNumber.isNullOrBlank() &&
-      hints.countryRegion.isNullOrBlank()
-    ) return null
+    // A national-format number cannot be assigned a destination country from its
+    // digits alone. If Contacts access is unavailable, fail closed rather than
+    // guessing that a foreign contact belongs to the caller's SIM country.
+    val hints = lookupContactHints(context, value) ?: return null
+    if (hints.ambiguous) return null
 
-    return toE164WithContactMetadata(
-      value,
-      fallbackRegion,
-      hints?.normalizedNumber,
-      hints?.countryRegion
-    )
+    if (!hints.contactMatched) return toE164(value, fallbackRegion)
+
+    val contactRegion = hints.countryRegion
+    val normalized = hints.normalizedNumber
+    if (contactRegion == null && !hints.normalizedNumberIsExplicitInternational) return null
+
+    if (!normalized.isNullOrBlank() && E164.matches(normalized)) {
+      val normalizedRegion = regionForE164(normalized)
+      if (hints.normalizedNumberIsExplicitInternational) {
+        if (contactRegion != null && normalizedRegion != null && normalizedRegion != contactRegion) return null
+        return toE164(normalized, "ZZ")
+      }
+      // Android may auto-fill NORMALIZED_NUMBER using the device's current
+      // country. Trust it only when the contact's own country independently agrees.
+      if (contactRegion != null && normalizedRegion == contactRegion) return toE164(normalized, "ZZ")
+      if (normalizedRegion != null && contactRegion != null && normalizedRegion != contactRegion) return null
+    }
+
+    return contactRegion?.let { toE164(value, it) }
   }
 
   /**
-   * Pure resolver used by tests and by the provider lookup path. A contact's
-   * normalized E.164 number outranks its postal country; postal country outranks
-   * the caller's SIM region.
+   * Pure resolver used by tests. A provider-generated NORMALIZED_NUMBER is accepted
+   * only when its region agrees with contact-country metadata. An explicitly
+   * + prefixed saved number is independently trustworthy.
    */
   fun toE164WithContactMetadata(
     raw: String,
     fallbackRegion: String,
     normalizedNumber: String?,
-    contactCountry: String?
+    contactCountry: String?,
+    normalizedNumberIsExplicitInternational: Boolean = false,
+    contactMatched: Boolean = true
   ): String? {
     val value = raw.trim()
     if (value.isEmpty()) return null
     if (value.startsWith("+")) return toE164(value, "ZZ")
 
-    val normalized = normalizedNumber?.trim()
-    if (!normalized.isNullOrBlank() && E164.matches(normalized)) {
+    val contactRegion = regionForCountry(contactCountry)
+    val normalized = normalizedNumber?.trim()?.takeIf(E164::matches)
+    if (!contactMatched) return toE164(value, fallbackRegion)
+
+    if (normalizedNumberIsExplicitInternational && normalized != null) {
+      val parsedRegion = regionForE164(normalized)
+      if (contactRegion != null && parsedRegion != null && contactRegion != parsedRegion) return null
       return toE164(normalized, "ZZ")
     }
 
-    val region = regionForCountry(contactCountry) ?: fallbackRegion
-    return toE164(value, region)
+    if (normalized != null && contactRegion != null) {
+      val parsedRegion = regionForE164(normalized)
+      if (parsedRegion == contactRegion) return toE164(normalized, "ZZ")
+      if (parsedRegion != null && parsedRegion != contactRegion) return null
+    }
+
+    if (contactRegion != null) return toE164(value, contactRegion)
+    return null
+  }
+
+  private fun regionForE164(number: String): String? {
+    return try {
+      val parsed = phoneUtil.parse(number, "ZZ")
+      phoneUtil.getRegionCodeForNumber(parsed)?.takeIf { REGION.matches(it) && it != "001" }
+    } catch (_: Exception) {
+      null
+    }
   }
 
   private fun lookupContactHints(context: Context, raw: String): ContactHints? {
     if (context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) !=
       PackageManager.PERMISSION_GRANTED
-    ) return null
+    ) return ContactHints(ambiguous = true)
 
     val inputDigits = PhoneNumberUtils.normalizeNumber(raw)
-    if (inputDigits.isBlank()) return null
+    if (inputDigits.isBlank()) return ContactHints(ambiguous = true)
 
     return try {
       val lookupUri = Uri.withAppendedPath(
@@ -146,6 +182,7 @@ internal object ServerPhoneNumberNormalizer {
         ContactsContract.PhoneLookup.CONTACT_ID
       )
       val normalizedNumbers = linkedSetOf<String>()
+      val explicitNormalizedNumbers = linkedSetOf<String>()
       val contactIds = linkedSetOf<Long>()
 
       context.contentResolver.query(lookupUri, projection, null, null, null)?.use { cursor ->
@@ -157,26 +194,28 @@ internal object ServerPhoneNumberNormalizer {
           if (PhoneNumberUtils.normalizeNumber(savedNumber) != inputDigits) continue
 
           if (normalizedIndex >= 0) {
-            cursor.getString(normalizedIndex)?.trim()?.takeIf(E164::matches)?.let(normalizedNumbers::add)
+            val normalized = cursor.getString(normalizedIndex)?.trim()?.takeIf(E164::matches)
+            if (normalized != null) {
+              normalizedNumbers.add(normalized)
+              // A literal + in the original saved number is explicit international
+              // evidence. A provider-generated national NORMALIZED_NUMBER is not.
+              if (savedNumber.trim().startsWith("+")) explicitNormalizedNumbers.add(normalized)
+            }
           }
           if (contactIdIndex >= 0) {
             val id = cursor.getLong(contactIdIndex)
             if (id > 0L) contactIds.add(id)
           }
         }
-      }
+      } ?: return ContactHints(ambiguous = true)
 
-      if (normalizedNumbers.size > 1) {
+      if (normalizedNumbers.size > 1 || explicitNormalizedNumbers.size > 1) {
         return ContactHints(contactMatched = true, ambiguous = true)
       }
-      if (normalizedNumbers.size == 1) {
-        return ContactHints(
-          normalizedNumber = normalizedNumbers.first(),
-          contactMatched = true
-        )
-      }
-      if (contactIds.isEmpty()) return null
+      if (contactIds.isEmpty()) return ContactHints()
 
+      // Always fetch postal-country metadata, even when NORMALIZED_NUMBER exists:
+      // Android can generate the latter using the phone's current country ISO.
       val contactRegions = linkedSetOf<String>()
       val countryProjection = arrayOf(ContactsContract.CommonDataKinds.StructuredPostal.COUNTRY)
       for (contactId in contactIds) {
@@ -195,15 +234,18 @@ internal object ServerPhoneNumberNormalizer {
         }
       }
 
-      when (contactRegions.size) {
-        0 -> ContactHints(contactMatched = true, ambiguous = true)
-        1 -> ContactHints(countryRegion = contactRegions.first(), contactMatched = true)
-        else -> ContactHints(contactMatched = true, ambiguous = true)
-      }
+      if (contactRegions.size > 1) return ContactHints(contactMatched = true, ambiguous = true)
+      ContactHints(
+        normalizedNumber = normalizedNumbers.singleOrNull(),
+        countryRegion = contactRegions.singleOrNull(),
+        normalizedNumberIsExplicitInternational = explicitNormalizedNumbers.size == 1,
+        contactMatched = true,
+        ambiguous = contactRegions.isEmpty() && explicitNormalizedNumbers.isEmpty()
+      )
     } catch (_: SecurityException) {
-      null
+      ContactHints(ambiguous = true)
     } catch (_: Exception) {
-      null
+      ContactHints(ambiguous = true)
     }
   }
 
