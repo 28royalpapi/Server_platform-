@@ -14,16 +14,18 @@ internal object ServerPhoneNumberNormalizer {
     val value = raw.trim()
     if (value.isEmpty()) return null
     val digits = PhoneNumberUtils.normalizeNumber(value).filter(Char::isDigit)
+    val country = region?.takeIf { REGION.matches(it) }?.uppercase(java.util.Locale.ROOT) ?: "NG"
     val candidate = when {
       value.startsWith("+") -> "+$digits"
       value.startsWith("00") && digits.length > 2 -> "+" + digits.drop(2)
-      // Keep a Nigerian number already written with the country code, even
-      // when the phone has no active SIM and therefore no SIM country ISO.
+      // A fully country-coded Nigerian number is already unambiguous.
       digits.startsWith("234") && digits.length == 13 -> "+$digits"
-      else -> {
-        val country = region?.takeIf { REGION.matches(it) }?.uppercase(java.util.Locale.ROOT) ?: "NG"
-        PhoneNumberUtils.formatNumberToE164(value, country)
-      }
+      // Android 8's libphonenumber metadata can return null for some Nigerian
+      // national numbers. Convert the common national forms deterministically
+      // before falling back to Android's country-aware E.164 formatter.
+      country == "NG" && digits.length == 11 && digits.startsWith("0") -> "+234" + digits.drop(1)
+      country == "NG" && digits.length == 10 && digits.firstOrNull() in '7'..'9' -> "+234$digits"
+      else -> PhoneNumberUtils.formatNumberToE164(value, country)
     }
     return candidate?.takeIf(E164::matches)
   }
