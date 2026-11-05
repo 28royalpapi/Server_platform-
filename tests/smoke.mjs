@@ -7,6 +7,7 @@ const migration=read("supabase/migrations/20261021114947_server_backend_schema.s
 const pushMigration=read("supabase/migrations/20261101175446_server_push_devices_and_call_expiry.sql");
 const schedulerMigration=read("supabase/migrations/20261021121000_server_maintenance_scheduler.sql");
 const callExpiryMigration=read("supabase/migrations/20261105102434_server_call_expiry_reconciliation.sql");
+const atomicCallMigration=read("supabase/migrations/20261105104000_server_atomic_call_creation.sql");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
@@ -80,6 +81,18 @@ assert.match(calls,/server_rate_limit_allow/,
   "call creation must be protected by a per-caller abuse limit");
 assert.match(calls,/CALL_START_RATE_LIMITED/,
   "call creation returns an explicit rate-limit response instead of creating unlimited invitations");
+assert.match(calls,/db\.rpc\("server_create_call_atomic"/,
+  "call creation must commit the call, participants and guest invite through one database transaction");
+assert.doesNotMatch(calls,/from\("server_call_members"\)\.upsert|from\("server_guest_invites"\)\.insert/,
+  "call creation must not split participant or guest-invite writes across separate requests");
+assert.match(atomicCallMigration,/create or replace function public\.server_create_call_atomic/,
+  "the atomic database call-creation function exists in the migration");
+assert.match(atomicCallMigration,/insert into public\.server_call_members/,
+  "the atomic transaction creates its participant rows");
+assert.match(atomicCallMigration,/insert into public\.server_guest_invites/,
+  "the same atomic transaction creates guest invitation hashes");
+assert.match(atomicCallMigration,/grant execute on function public\.server_create_call_atomic[\s\S]*?to service_role/,
+  "only the service role may execute the internal atomic call-creation RPC");
 assert.match(calls,/CALL_MEMBERS_CREATE_FAILED/,
   "call creation must fail closed instead of leaving a call without its required membership rows");
 assert.match(schedulerMigration,/cron\.schedule\('server-maintenance-every-5-minutes'/,
