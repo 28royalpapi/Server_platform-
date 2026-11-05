@@ -493,7 +493,7 @@ assert.match(androidTests,/webRtcPeersExchangeAudioTracksAndConnectOnAndroidDevi
   "Android instrumentation negotiates two WebRTC peers, exchanges audio tracks and reaches ICE CONNECTED");
 assert.match(androidMain,/if \(pendingSystemDialerReturn\) payload\.put\("source", "android_telecom"\)/,
   "the legacy Android Phone intent bridge must use the same backend no-guest route guard");
-assert.match(androidEngine,/ServerGuestInviteNotifications\.show\(context, callId\.orEmpty\(\), target, invitation\)/,
+assert.match(androidEngine,/ServerGuestInviteNotifications\.show\(context, callId\.orEmpty\(\), target\.phoneNumber\.orEmpty\(\), invitation\)/,
   "a non-Server contact receives an explicit notification to share the expiring browser invitation");
 assert.match(androidGuestNotifications,/NotificationCompat\.Action|addAction/,
   "the no-install route uses a native notification action rather than opening a caller webpage");
