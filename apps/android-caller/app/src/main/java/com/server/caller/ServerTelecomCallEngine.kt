@@ -169,9 +169,14 @@ internal class ServerTelecomCallEngine(
         return
       }
       if (route != "server") throw IllegalStateException("Server returned an unsupported call route.")
-      val acceptedPush = started.optJSONObject("push_delivery")?.optInt("sent", 0) ?: 0
-      if (acceptedPush == 0) {
-        Log.w(TAG, "No push provider accepted a wake alert; recipient must have the Server listener active.")
+      val availability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
+      val queuedWake = started.optJSONObject("push_delivery")?.optBoolean("queued", false) ?: false
+      if (availability == "online") {
+        Log.i(TAG, "Recipient presence is fresh; the active Server listener should receive the incoming call.")
+      } else if (availability == "background_reachable" && queuedWake) {
+        Log.i(TAG, "Recipient is not active; a background wake job is queued. Device delivery is not confirmed.")
+      } else {
+        Log.w(TAG, "Recipient reachability was not confirmed by Server.")
       }
       beginPolling()
     } catch (error: Exception) {
