@@ -569,18 +569,34 @@ jobs:
         with:
           name: server-android-debug-apks
           path: artifacts/server-android-debug-apks
-      - name: Publish the tested universal APK to the existing website download
+      - name: Publish the tested ARM64 and ARMv7 phone APKs to onboarding
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find artifacts/server-android-debug-apks -type f -name 'app-universal-release.apk' -print -quit)"
-          if [[ -z "$APK" || ! -s "$APK" ]]; then
-            echo "ERROR: tested universal Android release APK is missing." >&2
-            find artifacts/server-android-debug-apks -maxdepth 8 -type f -print >&2
+          ROOT='artifacts/server-android-debug-apks'
+          ARM64_APK="$(find "$ROOT" -type f -name 'app-arm64-v8a-release.apk' -print -quit)"
+          ARMV7_APK="$(find "$ROOT" -type f -name 'app-armeabi-v7a-release.apk' -print -quit)"
+          if [[ -z "$ARM64_APK" || ! -s "$ARM64_APK" || -z "$ARMV7_APK" || ! -s "$ARMV7_APK" ]]; then
+            echo "ERROR: both ARM64 and ARMv7 release APKs are required for phone onboarding." >&2
+            find "$ROOT" -maxdepth 8 -type f -print >&2
             exit 1
           fi
-          sha256sum "$APK"
-          gh release upload server-android-connector-preview "$APK" --repo "$GITHUB_REPOSITORY" --clobber
-          echo "ANDROID_PREVIEW_RELEASE_ASSET_PUBLISHED"
+          unzip -l "$ARM64_APK" | grep -F 'lib/arm64-v8a/libjingle_peerconnection_so.so' >/dev/null
+          unzip -l "$ARMV7_APK" | grep -F 'lib/armeabi-v7a/libjingle_peerconnection_so.so' >/dev/null
+          if unzip -l "$ARM64_APK" | grep -E 'lib/(armeabi-v7a|x86|x86_64)/' >/dev/null; then
+            echo "ERROR: ARM64 phone APK contains a non-ARM64 WebRTC ABI." >&2
+            exit 1
+          fi
+          if unzip -l "$ARMV7_APK" | grep -E 'lib/(arm64-v8a|x86|x86_64)/' >/dev/null; then
+            echo "ERROR: ARMv7 phone APK contains a non-ARMv7 WebRTC ABI." >&2
+            exit 1
+          fi
+          cp "$ARM64_APK" server-android-arm64.apk
+          cp "$ARMV7_APK" server-android-armv7.apk
+          sha256sum server-android-arm64.apk server-android-armv7.apk
+          gh release upload server-android-connector-preview server-android-arm64.apk server-android-armv7.apk --repo "$GITHUB_REPOSITORY" --clobber
+          gh release delete-asset server-android-connector-preview app-universal-release.apk --repo "$GITHUB_REPOSITORY" --yes || true
+          gh release delete-asset server-android-connector-preview Server-Android-Connector-preview.apk --repo "$GITHUB_REPOSITORY" --yes || true
+          echo "ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"

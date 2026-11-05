@@ -16,7 +16,11 @@ if (!isAndroid) {
   else if (iosInstallNote) iosInstallNote.textContent = "Open this website on an Android phone to install the Server calling connector. The iPhone app is a separate iOS release.";
 }
 androidDownload && androidDownload.addEventListener("click", () => {
-  showStatus("Opening the Server Android connector download. Keep this website tab open; return here after Android finishes installing Server.");
+  showStatus("Opening the 64-bit ARM Server connector download. Keep this website tab open; return here after Android finishes installing Server.");
+});
+const androidDownloadArmv7 = document.querySelector("#download-android-connector-armv7");
+androidDownloadArmv7 && androidDownloadArmv7.addEventListener("click", () => {
+  showStatus("Opening the 32-bit ARMv7 Server connector download. Keep this website tab open; return here after Android finishes installing Server.");
 });
 
 function showStatus(message, ok = false) {

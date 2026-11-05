@@ -449,6 +449,11 @@ assert.match(nativeWorkflow,/assembleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=
 assert.match(read("apps/android-caller/build.gradle.kts"),/version "8\.9\.1"/);
 assert.doesNotMatch(read("web/app.js"),/\?\./);
 assert.match(androidBuild,/androidx\.fragment:fragment-ktx:1\.9\.1/);
+assert.match(androidBuild,/versionCode = 2/);
+assert.match(androidBuild,/versionName = "0.2.0"/);
+assert.ok(nativeWorkflow.includes("app-arm64-v8a-release.apk"));
+assert.ok(nativeWorkflow.includes("app-armeabi-v7a-release.apk"));
+assert.ok(nativeWorkflow.includes("ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"));
 assert.match(androidProguard,/-keep class org\.webrtc/);
 assert.match(androidFirebase,/onMessageReceived/);
 assert.match(androidFirebase,/server_incoming_call/);
@@ -588,12 +593,14 @@ assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
   "public website provides a direct Android connector installation action");
-assert.match(html,/releases\/download\/server-android-connector-preview\/app-universal-release\.apk/,
-  "website installer points to the published Android preview asset");
+assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-arm64.apk"), "the primary onboarding download is the ARM64 phone build");
+assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-armv7.apk"), "onboarding offers the separate ARMv7 phone build");
+assert.match(html,/emulator-only x86 packages are not offered here/);
 assert.match(html,/I'?ve installed Server — continue setup/,
   "website offers the return-to-this-page hand-off after connector installation");
 assert.match(app,/androidDownload && androidDownload\.addEventListener/,
   "website explains that the user should return after the APK download");
+assert.match(app,/androidDownloadArmv7 && androidDownloadArmv7\\.addEventListener/);
 
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
