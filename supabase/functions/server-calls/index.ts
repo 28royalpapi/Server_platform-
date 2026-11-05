@@ -8,6 +8,8 @@ const allowed=new Set(["offer","answer","ice","hangup","state"]);
 
 const SERVER_CALL_TTL_SECONDS = 180;
 const GUEST_CALL_TTL_SECONDS = 20 * 60;
+const CALL_START_RATE_WINDOW_SECONDS = 60;
+const CALL_START_RATE_MAX = 20;
 const BASE_ICE_SERVERS = [
  {urls:"stun:stun.cloudflare.com:3478"},
  {urls:"stun:stun.l.google.com:19302"}
@@ -155,6 +157,12 @@ Deno.serve(async(req:Request)=>{
    if(error||!data)return out({error:"PREFERENCES_SAVE_FAILED"},503); return out({ok:true,profile:data});
   }
   if(action==="start"){
+   const {data:startAllowed,error:rateError}=await db.rpc("server_rate_limit_allow",{
+    p_scope:"call_start",p_key_hash:await sha(uid),
+    p_window_seconds:CALL_START_RATE_WINDOW_SECONDS,p_max_hits:CALL_START_RATE_MAX
+   });
+   if(rateError)return out({error:"CALL_START_RATE_LIMIT_UNAVAILABLE"},503);
+   if(startAllowed!==true)return out({error:"CALL_START_RATE_LIMITED",retry_after_seconds:CALL_START_RATE_WINDOW_SECONDS},429);
    const serverTarget=typeof b.to_server_id==="string"?b.to_server_id.trim().toUpperCase():"";
    const to=phone(b.to_phone);
    if(!serverTarget&&!to)return out({error:"RECIPIENT_REQUIRED"},400);
@@ -190,10 +198,14 @@ Deno.serve(async(req:Request)=>{
    }).select("id,state,route,created_at,updated_at,expires_at").single();
    if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
    const callIceServers=await iceServersForCall(call.id,callTtlSeconds);
-   await db.from("server_call_members").upsert([
+   const {error:memberError}=await db.from("server_call_members").upsert([
     {call_id:call.id,user_id:uid,member_role:"caller"},
     ...(callee?[{call_id:call.id,user_id:callee.user_id,member_role:"callee"}]:[])
    ],{onConflict:"call_id,user_id"});
+   if(memberError){
+    await db.from("server_calls").delete().eq("id",call.id);
+    return out({error:"CALL_MEMBERS_CREATE_FAILED"},503);
+   }
    let pushDelivery:any={sent:0,configured:false,reason:"NOT_A_SERVER_USER"};
    if(route==="server"&&callee?.user_id){pushDelivery=await sendRecipientPush(db,callee.user_id,call.id,profile.server_id||"A Server user");}
    if(route==="guest"){
