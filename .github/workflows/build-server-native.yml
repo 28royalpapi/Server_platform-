@@ -128,17 +128,35 @@ jobs:
           timeout 600s gradle -p apps/android-caller assembleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=true --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_RELEASE_APK_COMPLETE $(date -u +%FT%TZ)"
           ls -lh apps/android-caller/app/build/outputs/bundle/release/*.aab apps/android-caller/app/build/outputs/apk/release/*.apk
-      - name: Assemble Android instrumentation APK before booting emulator
-        timeout-minutes: 10
+      - name: Assemble x86_64 emulator and ARM64 physical-device instrumentation APK pairs
+        timeout-minutes: 18
         shell: bash
         run: |
           set -euo pipefail
-          echo "ASSEMBLE_ANDROID_TEST_APK_START $(date -u +%FT%TZ)"
-          timeout 480s gradle -p apps/android-caller assembleDebugAndroidTest --no-daemon --console=plain --stacktrace
+          APP_APK='apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk'
           TEST_APK='apps/android-caller/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
-          test -s "$TEST_APK"
-          ls -lh "$TEST_APK"
-          echo "ASSEMBLE_ANDROID_TEST_APK_COMPLETE $(date -u +%FT%TZ)"
+          mkdir -p artifacts/physical
+          echo "ASSEMBLE_X86_64_TEST_PAIR_START $(date -u +%FT%TZ)"
+          timeout 480s gradle -p apps/android-caller assembleDebugAndroidTest --no-daemon --console=plain --stacktrace
+          test -s "$APP_APK" && test -s "$TEST_APK"
+          cp "$APP_APK" artifacts/physical/server-android-x86_64-debug.apk
+          cp "$TEST_APK" artifacts/physical/server-android-x86_64-androidTest.apk
+          echo "ASSEMBLE_ARM64_TEST_PAIR_START $(date -u +%FT%TZ)"
+          SERVER_DEBUG_ABI_FILTERS=arm64-v8a timeout 600s gradle -p apps/android-caller assembleDebugAndroidTest --no-daemon --console=plain --stacktrace
+          test -s "$APP_APK" && test -s "$TEST_APK"
+          unzip -l "$APP_APK" | grep -q 'lib/arm64-v8a/libjingle_peerconnection_so.so'
+          if unzip -l "$APP_APK" | grep -q 'lib/x86_64/'; then
+            echo "ERROR: physical ARM64 debug APK still contains x86_64 native libraries." >&2
+            exit 1
+          fi
+          cp "$APP_APK" artifacts/physical/server-android-arm64-debug.apk
+          cp "$TEST_APK" artifacts/physical/server-android-arm64-androidTest.apk
+          # Restore the x86_64 pair so the following Pixel-AVD smoke test does not
+          # accidentally receive the ARM64-only package.
+          cp artifacts/physical/server-android-x86_64-debug.apk "$APP_APK"
+          cp artifacts/physical/server-android-x86_64-androidTest.apk "$TEST_APK"
+          ls -lh artifacts/physical/*.apk
+          echo "ASSEMBLE_ANDROID_TEST_PAIRS_COMPLETE $(date -u +%FT%TZ)"
       - name: Upload built Android APKs before emulator smoke test
         uses: actions/upload-artifact@v4
         if: always()
@@ -146,6 +164,7 @@ jobs:
           name: server-android-debug-apks
           path: |
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
+            artifacts/physical/*.apk
             apps/android-caller/app/build/outputs/apk/androidTest/debug/*.apk
             apps/android-caller/app/build/outputs/apk/release/*.apk
             apps/android-caller/app/build/outputs/bundle/release/*.aab
