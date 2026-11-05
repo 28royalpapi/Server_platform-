@@ -51,6 +51,32 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * an Activity. Telecom keeps the service bound for the life of its Connection.
  * This avoids Android's background-activity-start restriction entirely.
  */
+internal data class ServerCallTarget private constructor(
+  val serverId: String?,
+  val phoneNumber: String?
+) {
+  val isServerId: Boolean get() = serverId != null
+
+  fun toStartPayload(source: String): JSONObject {
+    val payload = JSONObject().put("source", source)
+    if (serverId != null) payload.put("to_server_id", serverId)
+    else payload.put("to_phone", phoneNumber.orEmpty())
+    return payload
+  }
+
+  companion object {
+    private val SERVER_ID = Regex("^SVR-[0-9A-F]{10}$")
+
+    /** A Server ID is an identity, not a phone number; never pass it through E.164 normalisation. */
+    fun parse(raw: String, normalizePhone: (String) -> String?): ServerCallTarget? {
+      val candidate = raw.trim().uppercase()
+      if (SERVER_ID.matches(candidate)) return ServerCallTarget(candidate, null)
+      val phone = normalizePhone(raw) ?: return null
+      return ServerCallTarget(null, phone)
+    }
+  }
+}
+
 internal class ServerTelecomCallEngine(
   private val owner: ServerConnectionService,
   private val connection: ServerTelecomConnection
@@ -113,17 +139,17 @@ internal class ServerTelecomCallEngine(
       if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
         throw IllegalStateException("Microphone permission is missing. Reopen Server setup and allow microphone access.")
       }
-      val target = normalizePhone(rawTarget)
-        ?: throw IllegalStateException("The destination country could not be determined from this contact. Allow Contacts access or use a number with its international country code. No carrier call was placed.")
+      val target = ServerCallTarget.parse(rawTarget) { value -> normalizePhone(value) }
+        ?: throw IllegalStateException("The destination could not be resolved. Use a valid Server ID or an international telephone number. No carrier call was placed.")
       if (BuildConfig.DEBUG) {
         prefs.edit()
           .putLong("debug_last_call_engine_entered_at", System.currentTimeMillis())
-          .putString("debug_last_call_target_kind", "phone")
+          .putString("debug_last_call_target_kind", if (target.isServerId) "server_id" else "phone")
           .putBoolean("debug_telecom_connection_engine_started", true)
           .apply()
       }
       recordStage("backend_start_requested")
-      val started = api("start", JSONObject().put("to_phone", target).put("source", "android_telecom"))
+      val started = api("start", target.toStartPayload("android_telecom"))
       callId = started.optString("call_id").takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("Server did not return a call ID.")
       ServerTelecomRegistry.setCurrentCallId(callId)
@@ -159,7 +185,7 @@ internal class ServerTelecomCallEngine(
           started.optString("sms_body")
         }
         if (invitation.isBlank()) throw IllegalStateException("Server did not return a secure guest invitation.")
-        if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target, invitation)) {
+        if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
           throw IllegalStateException(
             "Allow Server notifications to share a secure call invitation with someone who does not use Server."
           )

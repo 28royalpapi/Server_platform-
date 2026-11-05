@@ -317,6 +317,21 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun telecomCallTargetRoutesServerIdsWithoutPhoneNumberNormalization() {
+    var phoneNormalizationAttempted = false
+    val target = ServerCallTarget.parse(" svr-abcdef1234 ") {
+      phoneNormalizationAttempted = true
+      null
+    }
+    assertNotNull("A Server ID must be accepted as a first-class call identity", target)
+    assertEquals("SVR-ABCDEF1234", target!!.serverId)
+    assertEquals(null, target.phoneNumber)
+    val payload = target.toStartPayload("android_telecom")
+    assertEquals("SVR-ABCDEF1234", payload.optString("to_server_id"))
+    assertFalse("A Server-ID call must not be converted into a phone-number lookup", payload.has("to_phone"))
+    assertFalse("Server IDs must bypass E.164 phone normalisation", phoneNormalizationAttempted)
+  }
+
   @Test fun serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives() {
     assertFalse("No active network must block Server internet calling",
       isServerInternetUsable(false, false))
@@ -464,8 +479,13 @@ class CallerSmokeTest {
       // shared telephone number, while still showing the Server call provider UI.
       assertEquals("Telecom did not receive the caller's Server identity as the display name",
         callerIdentity, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      // The default Phone app may surface Telecom calls in the system
+      // notification shade rather than in the foreground activity hierarchy.
+      // Inspect that system call surface, not only the currently focused app.
+      device.openNotification()
       val serverCallUi = device.wait(Until.hasObject(By.textContains("Incoming call via Server")), 8_000)
-      assertTrue("Android did not expose the incoming call through its system Phone UI", serverCallUi)
+      assertTrue("Android's system Phone app did not expose the incoming Server call in its notification surface", serverCallUi)
+      device.pressBack()
     } finally {
       ServerTelecomRegistry.markEnded(callId)
       device.pressHome()
