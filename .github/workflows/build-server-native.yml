@@ -129,33 +129,57 @@ jobs:
           echo "BUILD_SERVER_RELEASE_APK_COMPLETE $(date -u +%FT%TZ)"
           ls -lh apps/android-caller/app/build/outputs/bundle/release/*.aab apps/android-caller/app/build/outputs/apk/release/*.apk
       - name: Assemble x86_64 emulator and ARM64 physical-device instrumentation APK pairs
-        timeout-minutes: 18
+        timeout-minutes: 25
         shell: bash
         run: |
           set -euo pipefail
           APP_APK='apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk'
           TEST_APK='apps/android-caller/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
-          mkdir -p artifacts/physical
-          echo "ASSEMBLE_X86_64_TEST_PAIR_START $(date -u +%FT%TZ)"
-          timeout 480s gradle -p apps/android-caller assembleDebugAndroidTest --no-daemon --console=plain --stacktrace
+          APP_RELEASE='apps/android-caller/app/build/outputs/apk/release'
+          BUNDLE_RELEASE='apps/android-caller/app/build/outputs/bundle/release'
+          GATEWAY_APK='apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk'
+          mkdir -p artifacts/physical artifacts/release
+
+          # Preserve release deliverables before cleaning the app build directory.
+          cp "$APP_RELEASE"/*.apk artifacts/release/
+          cp "$BUNDLE_RELEASE"/*.aab artifacts/release/
+          cp "$GATEWAY_APK" artifacts/release/server-sim-gateway-debug.apk
+
+          # The initial build step already produced the emulator x86_64 pair.
           test -s "$APP_APK" && test -s "$TEST_APK"
           cp "$APP_APK" artifacts/physical/server-android-x86_64-debug.apk
           cp "$TEST_APK" artifacts/physical/server-android-x86_64-androidTest.apk
-          echo "ASSEMBLE_ARM64_TEST_PAIR_START $(date -u +%FT%TZ)"
-          SERVER_DEBUG_ABI_FILTERS=arm64-v8a timeout 600s gradle -p apps/android-caller assembleDebugAndroidTest --no-daemon --console=plain --stacktrace
+
+          echo "CLEAN_AND_ASSEMBLE_ARM64_TEST_PAIR_START $(date -u +%FT%TZ)"
+          timeout 720s gradle -p apps/android-caller clean assembleDebugAndroidTest -PSERVER_DEBUG_ABI_FILTERS=arm64-v8a --no-daemon --console=plain --stacktrace
           test -s "$APP_APK" && test -s "$TEST_APK"
-          unzip -l "$APP_APK" | grep -q 'lib/arm64-v8a/libjingle_peerconnection_so.so'
-          if unzip -l "$APP_APK" | grep -q 'lib/x86_64/'; then
+          if ! unzip -l "$APP_APK" | grep 'lib/arm64-v8a/libjingle_peerconnection_so.so' >/dev/null; then
+            echo "ERROR: ARM64 debug APK does not contain the ARM64 WebRTC native library." >&2
+            exit 1
+          fi
+          if unzip -l "$APP_APK" | grep 'lib/x86_64/' >/dev/null; then
             echo "ERROR: physical ARM64 debug APK still contains x86_64 native libraries." >&2
             exit 1
           fi
           cp "$APP_APK" artifacts/physical/server-android-arm64-debug.apk
           cp "$TEST_APK" artifacts/physical/server-android-arm64-androidTest.apk
-          # Restore the x86_64 pair so the following Pixel-AVD smoke test does not
-          # accidentally receive the ARM64-only package.
-          cp artifacts/physical/server-android-x86_64-debug.apk "$APP_APK"
-          cp artifacts/physical/server-android-x86_64-androidTest.apk "$TEST_APK"
-          ls -lh artifacts/physical/*.apk
+
+          echo "CLEAN_AND_REBUILD_X86_64_DEBUG_PAIR_START $(date -u +%FT%TZ)"
+          timeout 720s gradle -p apps/android-caller clean assembleDebugAndroidTest -PSERVER_DEBUG_ABI_FILTERS=x86_64 --no-daemon --console=plain --stacktrace
+          test -s "$APP_APK" && test -s "$TEST_APK"
+          if ! unzip -l "$APP_APK" | grep 'lib/x86_64/libjingle_peerconnection_so.so' >/dev/null; then
+            echo "ERROR: x86_64 emulator debug APK does not contain its WebRTC native library." >&2
+            exit 1
+          fi
+          cp "$APP_APK" artifacts/physical/server-android-x86_64-debug.apk
+          cp "$TEST_APK" artifacts/physical/server-android-x86_64-androidTest.apk
+
+          # Restore release and gateway APKs for the preview publishing job.
+          mkdir -p "$APP_RELEASE" "$BUNDLE_RELEASE" "$(dirname "$GATEWAY_APK")"
+          cp artifacts/release/*.apk "$APP_RELEASE"/
+          cp artifacts/release/*.aab "$BUNDLE_RELEASE"/
+          cp artifacts/release/server-sim-gateway-debug.apk "$GATEWAY_APK"
+          ls -lh artifacts/physical/*.apk artifacts/release/*
           echo "ASSEMBLE_ANDROID_TEST_PAIRS_COMPLETE $(date -u +%FT%TZ)"
       - name: Upload built Android APKs before emulator smoke test
         uses: actions/upload-artifact@v4
@@ -165,6 +189,7 @@ jobs:
           path: |
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
             artifacts/physical/*.apk
+            artifacts/release/*
             apps/android-caller/app/build/outputs/apk/androidTest/debug/*.apk
             apps/android-caller/app/build/outputs/apk/release/*.apk
             apps/android-caller/app/build/outputs/bundle/release/*.aab
