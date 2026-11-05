@@ -213,8 +213,11 @@ Deno.serve(async(req:Request)=>{
    if(ce||!created?.call)return out({error:"CALL_CREATE_FAILED"},503);
    const call=created.call;
    const callIceServers=await iceServersForCall(call.id,callTtlSeconds);
-   let pushDelivery:any={sent:0,configured:false,reason:"NOT_A_SERVER_USER"};
-   if(route==="server"&&callee?.user_id){pushDelivery=await sendRecipientPush(db,callee.user_id,call.id,profile.server_id||"A Server user");}
+   // Call creation has already committed a durable PGMQ delivery job with
+   // the call and membership rows. Never block this request on FCM/APNs.
+   const pushDelivery:any=route==="server"
+    ?{queued:created.delivery_queued===true,accepted_by_provider:false,reason:"BACKGROUND_DELIVERY_PENDING"}
+    :{queued:false,configured:false,reason:"NOT_A_SERVER_USER"};
    if(route==="guest"){
     const token=guestToken as string;
     const expires=guestInviteExpiresAt as string;
