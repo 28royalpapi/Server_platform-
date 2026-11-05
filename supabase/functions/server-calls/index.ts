@@ -192,6 +192,7 @@ Deno.serve(async(req:Request)=>{
    let callee:any=null;
    let route:"server"|"guest"="guest";
    let recipientPhone:string|null=to;
+   let carrierFallbackPhone:string|null=to;
    if(serverTarget){
     if(!/^SVR-[0-9A-F]{10}$/.test(serverTarget))return out({error:"INVALID_SERVER_ID"},400);
     const {data:found,error:lookupError}=await db.from("server_profiles")
@@ -200,6 +201,7 @@ Deno.serve(async(req:Request)=>{
     if(!found)return out({error:"SERVER_ID_NOT_FOUND"},404);
     if(found.user_id===uid)return out({error:"CANNOT_CALL_SELF"},400);
     callee=found;route="server";recipientPhone=phone(found.phone_e164);
+    carrierFallbackPhone=found.phone_verified_at&&found.allow_number_based_server_calls===true?phone(found.phone_e164):null;
    }else{
     if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
     if(profile.phone_verified_at&&phone(profile.phone_e164)===to)return out({error:"CANNOT_CALL_SELF"},400);
@@ -211,10 +213,6 @@ Deno.serve(async(req:Request)=>{
     // Otherwise keep the caller on the existing guest invitation route.
     callee=found&&found.phone_verified_at&&found.allow_number_based_server_calls===true?found:null;
     route=callee?"server":"guest";
-   }
-   let carrierFallbackPhone:string|null=to;
-   if(serverTarget){
-    carrierFallbackPhone=found?.phone_verified_at&&found?.allow_number_based_server_calls===true?phone(found.phone_e164):null;
    }
    let recipientAvailability:any={status:"unknown_guest",background_wake_possible:false,last_seen_at:null};
    if(route==="server"){
