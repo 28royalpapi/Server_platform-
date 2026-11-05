@@ -31,6 +31,16 @@ gradle -p apps/android-caller assembleDebug assembleDebugAndroidTest --no-daemon
 test -s "$APP_APK"
 test -s "$TEST_APK"
 
+# Fail before consuming a physical-device run if any requested model has left
+# the current Firebase Test Lab catalog. Device/version availability can change.
+if [[ "$BATCH" == "1" ]]; then
+  for model in TECNO-BF7 TECNO-BG6 a10 SC-51C bluejay; do
+    gcloud firebase test android models describe "$model" --format=json >/dev/null
+  done
+else
+  gcloud firebase test android models describe shiba --format=json >/dev/null
+fi
+
 COMMON_ARGS=(
   firebase test android run
   --project="$PROJECT_ID"
@@ -42,11 +52,11 @@ COMMON_ARGS=(
 
 if [[ "$BATCH" == "1" ]]; then
   echo "REAL_DEVICE_BATCH=1 (five physical handsets)"
-  echo "TECNO A: POP 7 / Android 12; TECNO B: SPARK Go 2024 / Android 13"
+  echo "TECNO A: BF7 / Android 12; TECNO B: SPARK Go 2024 / Android 13"
   echo "Samsung A: Galaxy A10 / Android 10; Samsung B: Galaxy S22 / Android 16"
   echo "Google A: Pixel 6a / Android 12L"
   gcloud "${COMMON_ARGS[@]}" \
-    --device model=TECNO-BF6,version=31,locale=en,orientation=portrait \
+    --device model=TECNO-BF7,version=31,locale=en,orientation=portrait \
     --device model=TECNO-BG6,version=33,locale=en,orientation=portrait \
     --device model=a10,version=29,locale=en,orientation=portrait \
     --device model=SC-51C,version=36,locale=en,orientation=portrait \
