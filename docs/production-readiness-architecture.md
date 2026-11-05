@@ -80,12 +80,16 @@ The previous guest page polled the Edge Function every 650 ms. At 10,000 simulta
 
 The Android foreground listener previously polled incoming calls every 2.2 seconds. That remains a fallback in the present native implementation; it is not an acceptable primary delivery mechanism for a large background fleet.
 
-The current Edge Function also sent push requests synchronously during call creation and stored call signaling in Postgres. Those are pilot paths, not the target high-concurrency design. Replace them with:
-1. A durable outbox/queue and horizontally scaled notification workers.
-2. WebSocket signaling/presence with Redis or NATS fan-out.
-3. Postgres writes only for durable state changes and audit events.
-4. A separate WebRTC/TURN media fleet with capacity and bandwidth monitoring.
-5. Regional routing and graceful degradation when a push provider, signaling node, or TURN region fails.
+The Server-to-Server call-wake path has now been moved off the caller's request. Call creation commits a PGMQ message in the same Postgres transaction as the call and participants. A separate Edge Function worker claims bounded batches of 50 with a 60-second visibility lease, and acknowledges completed, expired, or exhausted jobs. A Vault-authenticated pg_net dispatcher coalesces immediate worker kicks to at most one per 150 ms, while pg_cron provides one-minute recovery kicks after interruptions.
+
+This is a durable pilot delivery pipeline, not yet a demonstrated high-volume service. The live worker has passed an HTTP 200 queue-dispatch test and consumed a real transaction-created Server-call job. The project currently has zero registered push endpoints, so those tests correctly report skipped/no-device delivery; no physical handset has yet been shown to ring from this worker. Provider acceptance still does not prove device display or answer.
+
+The following remain target architecture work:
+1. WebSocket signaling/presence with Redis or NATS fan-out; call signaling still uses Postgres polling today.
+2. Postgres writes only for durable state changes and audit events; guest signaling polling must be removed.
+3. A separate WebRTC/TURN media fleet with capacity and bandwidth monitoring.
+4. Regional routing and graceful degradation when a push provider, signaling node, or TURN region fails.
+5. A repeatable queue/worker load test with queue depth, throughput, retry, and p95/p99 delivery measurements.
 
 Supabase Realtime is a possible interim WebSocket service, but its per-plan limits must be checked before adopting it as the 10k/100k connection layer. As documented on 29 October 2026, its listed limits are 200 concurrent connections/100 messages per second on Free, 500/500 on Pro, and 10,000/2,500 on Pro without a spend cap or Team; Enterprise is configurable. Those figures are project plan limits, not a guarantee for the current Server project. A separate signaling gateway gives Server more control over connection fan-out and scaling.
 
@@ -139,6 +143,10 @@ The service is **not production-ready** until each gate passes:
 - Reused the ordered signaling response to advance the poll cursor, removing a duplicate database read per call poll.
 - Added a per-caller call-start limiter (20 starts per 60-second window) and fail-closed handling if required participant rows cannot be created.
 - Updated incoming-call lookup to exclude expired ringing calls even before the scheduled cleanup executes.
-- Applied a database migration that added an index for unanswered-call expiry, aligned cleanup to each call's expiry, and moved the maintenance schedule from every five minutes to every minute.
+- Applied an indexed one-minute background expiry worker and removed global expiry sweeps/session heartbeat writes from the hot call API.
+- Made Server and guest call creation atomic: the call, participant memberships, guest invite hash, and (for Server calls) queue message commit together.
+- Enabled the durable PGMQ delivery queue, Vault-backed worker authentication, pg_net asynchronous dispatch, a 150 ms dispatch coalescing gate, and a one-minute pg_cron recovery kick.
+- Deployed `server-call-delivery-worker` v2 and `server-calls` v44; the worker reads batches of 50 with a 60-second visibility lease, retries transient/missing-endpoint delivery until expiry, and acknowledges completed jobs.
+- Updated Android call setup to distinguish a durably queued wake job from provider acceptance and actual device delivery.
 
-These are risk-reduction changes, not proof of 10,000 concurrent calls. The live project still needs push endpoints, a scalable signaling/presence layer, TURN, real endpoint tests, and load-test evidence before production release.
+These changes establish a stronger asynchronous call-control and wake-delivery foundation. They do **not** prove 10,000 concurrent calls or production readiness. The live project still has zero registered push endpoints; the worker has not yet rung a physical handset. Guest invites still use manual sharing, guest and authenticated signaling still poll Postgres, TURN is not proven live, and there is no measured load test or real two-party audio evidence.
