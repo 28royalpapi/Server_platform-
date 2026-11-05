@@ -75,6 +75,12 @@ assert.doesNotMatch(calls,/allSignals/,
   "call polling must calculate its cursor from the same signal query, not issue a duplicate database read");
 assert.match(calls,/nextAfterSeq/,
   "call polling advances its signal cursor from the single ordered signal result");
+assert.match(calls,/server_rate_limit_allow/,
+  "call creation must be protected by a per-caller abuse limit");
+assert.match(calls,/CALL_START_RATE_LIMITED/,
+  "call creation returns an explicit rate-limit response instead of creating unlimited invitations");
+assert.match(calls,/CALL_MEMBERS_CREATE_FAILED/,
+  "call creation must fail closed instead of leaving a call without its required membership rows");
 assert.match(schedulerMigration,/cron\.schedule\('server-maintenance-every-5-minutes'/,
   "expiry and maintenance work must be handled by the scheduled maintenance worker");
 assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.single\(\)/,
