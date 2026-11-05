@@ -1,3 +1,4 @@
+// Server's guest receipt cache uses RxDB locally; Supabase remains authoritative.
 import { createRxDatabase } from "https://esm.sh/rxdb@17.6.0/plugins/core";
 import { getRxStorageDexie } from "https://esm.sh/rxdb@17.6.0/plugins/storage-dexie";
 import { replicateRxCollection } from "https://esm.sh/rxdb@17.6.0/plugins/replication";
