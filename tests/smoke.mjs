@@ -479,8 +479,10 @@ assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"
 
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
-assert.doesNotMatch(calls,/server_rate_limit_allow|GUEST_INVITE_RATE_LIMITED/,
-  "the pilot does not impose invitation quotas on callers or recipients");
+assert.match(calls,/server_rate_limit_allow/,
+  "call starts have a bounded per-caller abuse limit");
+assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
+  "guest invites do not impose a separate recipient quota beyond the caller-wide safety limit");
 assert.match(calls,/token_hash:tokenHash/,"guest invite links remain stored as token hashes");
 assert.match(calls,/expires_at:expires/,"guest invite links remain time-limited for basic abuse protection");
 assert.match(calls,/delivery_mode:"manual_share"/);
