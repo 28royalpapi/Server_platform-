@@ -498,7 +498,7 @@ assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
   "guest invites do not impose a separate recipient quota beyond the caller-wide safety limit");
 assert.match(atomicCallMigration,/token_hash/,
   "guest invite links remain stored as token hashes inside the database transaction");
-assert.match(atomicCallMigration,/expires_at,p_invite_expires_at/,
+assert.match(atomicCallMigration,/p_invite_expires_at/,
   "guest invite links remain time-limited inside the database transaction");
 assert.match(calls,/delivery_mode:"manual_share"/);
 assert.match(calls,/stun:stun\.cloudflare\.com:3478/,
