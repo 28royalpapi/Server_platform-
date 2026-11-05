@@ -116,8 +116,8 @@ assert.match(calls,/server_recipient_availability/,
   "the call start path checks recipient reachability before committing a Server call");
 assert.match(calls,/RECIPIENT_OFFLINE/,
   "an offline Server recipient is reported before a phantom ringing call is created");
-assert.match(calls,/call_created:false/,
-  "the offline response explicitly confirms that no Server call was created");
+assert.match(calls,/missed_call_saved:true/,
+  "the offline response confirms that a durable missed-call entry was saved without starting a live ring");
 assert.match(calls,/carrier_fallback:\{status:carrierFallbackPhone\?"user_confirmed_dialer":"unavailable"/,
   "offline Server recipients receive a caller-confirmed SIM dialler option only when a number may be shared");
 assert.match(calls,/method:"android_action_dial",requires_user_confirmation:true/,
