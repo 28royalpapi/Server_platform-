@@ -114,11 +114,11 @@ assert.match(calls,/RECIPIENT_OFFLINE/,
   "an offline Server recipient is reported before a phantom ringing call is created");
 assert.match(calls,/call_created:false/,
   "the offline response explicitly confirms that no Server call was created");
-assert.match(calls,/carrier_fallback:\\{status:carrierFallbackPhone\?"user_confirmed_dialer":"unavailable"/,
+assert.match(calls,/carrier_fallback:\{status:carrierFallbackPhone\?"user_confirmed_dialer":"unavailable"/,
   "offline Server recipients receive a caller-confirmed SIM dialler option only when a number may be shared");
 assert.match(calls,/method:"android_action_dial",requires_user_confirmation:true/,
   "the API describes a user-confirmed Android dialler handoff, not an automatic carrier call");
-assert.match(calls,/recipient_availability:\\{status:"unknown_guest",connected:false\\}/,
+assert.match(calls,/recipient_availability:\{status:"unknown_guest",connected:false\}/,
   "a non-Server recipient is not falsely labelled online or offline before a guest endpoint is present");
 assert.match(calls,/recipient_availability:recipientAvailability/,
   "successful Server call creation returns the reachability classification to Android");
