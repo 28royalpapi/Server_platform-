@@ -13,8 +13,10 @@ val hasPersistentServerSigning = !serverSigningStorePath.isNullOrBlank() &&
 // CI runs Android instrumentation on x86_64 emulators. Keep the debug/test APK
 // small when that environment variable is set; local debug builds retain the
 // normal ABI set, and release APKs retain their arm64/ARMv7 phone targets.
-val serverDebugAbiFilters = providers.environmentVariable("SERVER_DEBUG_ABI_FILTERS")
-  .orElse(providers.gradleProperty("SERVER_DEBUG_ABI_FILTERS"))
+// A Gradle -P override must win over the job-wide emulator ABI environment
+// when CI builds the ARM64 physical-device package in the same workspace.
+val serverDebugAbiFilters = providers.gradleProperty("SERVER_DEBUG_ABI_FILTERS")
+  .orElse(providers.environmentVariable("SERVER_DEBUG_ABI_FILTERS"))
   .orNull
   ?.split(",")
   ?.map { it.trim() }
