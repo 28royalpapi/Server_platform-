@@ -3,11 +3,14 @@ package com.server.caller
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
+import android.content.Intent
 import android.os.Build
 import android.telecom.Connection
 import android.util.Log
@@ -180,6 +183,18 @@ internal class ServerTelecomCallEngine(
       }
       beginPolling()
     } catch (error: Exception) {
+      val apiError = error as? ServerCallApiException
+      if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE" &&
+          !apiError.payload.optBoolean("call_created", true)) {
+        val dialNumber = apiError.carrierFallback?.optString("destination_e164")
+          ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
+        val message = apiError.payload.optString(
+          "message",
+          "This Server recipient is offline. No Server call was created."
+        )
+        failCall(message, dialNumber)
+        return
+      }
       val reason = error.message.orEmpty()
       val message = if (reason.contains("RECIPIENT_NOT_SERVER_ENABLED")) {
         "This number is not enabled for Server internet calls. Use your carrier SIM for a normal mobile call, or have the recipient enable Server number calling."
@@ -229,7 +244,7 @@ internal class ServerTelecomCallEngine(
     }
   }
 
-  private suspend fun failCall(message: String) {
+  private suspend fun failCall(message: String, carrierFallbackPhone: String? = null) {
     recordStage("call_setup_failed")
     if (BuildConfig.DEBUG) prefs.edit().putString("debug_last_call_failure", message.take(240)).apply()
     val id = callId
@@ -240,7 +255,7 @@ internal class ServerTelecomCallEngine(
     cleanupPeer()
     ServerCallNotifications.cancel(context, id.orEmpty())
     ServerGuestInviteNotifications.cancel(context, id.orEmpty())
-    ServerCallEngineStatusNotifications.showFailure(context, message)
+    ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
     release()
   }
 
@@ -546,7 +561,7 @@ internal class ServerTelecomCallEngine(
 
 internal object ServerCallEngineStatusNotifications {
   private const val CHANNEL = "server-call-status-v1"
-  fun showFailure(context: Context, message: String) {
+  fun showFailure(context: Context, message: String, carrierFallbackPhone: String? = null) {
     if (Build.VERSION.SDK_INT >= 33 &&
       context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -555,11 +570,22 @@ internal object ServerCallEngineStatusNotifications {
         CHANNEL, "Server call status", NotificationManager.IMPORTANCE_DEFAULT
       ))
     }
-    manager.notify(8601, NotificationCompat.Builder(context, CHANNEL)
+    val builder = NotificationCompat.Builder(context, CHANNEL)
       .setSmallIcon(android.R.drawable.sym_call_missed)
       .setContentTitle("Server could not start the internet call")
       .setContentText(message.take(180))
+      .setStyle(NotificationCompat.BigTextStyle().bigText(message))
       .setAutoCancel(true)
-      .build())
+    val dialIntent = carrierFallbackPhone?.let(ServerCarrierDialer::createIntent)
+    if (dialIntent != null) {
+      val pending = PendingIntent.getActivity(
+        context,
+        8602 + (carrierFallbackPhone.hashCode() and 0x7FFF),
+        dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+      )
+      builder.addAction(android.R.drawable.sym_action_call, "Use phone SIM", pending)
+    }
+    manager.notify(8601, builder.build())
   }
 }
