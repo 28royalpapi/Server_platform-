@@ -13,6 +13,7 @@ const callDeliveryMigration=read("supabase/migrations/20261105105649_server_call
 const workerChainingMigration=read("supabase/migrations/20261105111000_server_call_delivery_worker_chaining.sql");
 const dispatchTimeoutMigration=read("supabase/migrations/20261105113000_server_dispatch_timeout_and_noncollapse_push.sql");
 const workerSlotsMigration=read("supabase/migrations/20261105115000_server_call_delivery_worker_slots.sql");
+const workerAuditMigration=read("supabase/migrations/20261105120000_server_call_delivery_worker_audit.sql");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
@@ -135,6 +136,12 @@ assert.match(callDeliveryWorker,/server_call_delivery_release_worker_slot/,
   "each worker releases its slot in a finally block after batch completion");
 assert.match(callDeliveryWorker,/WORKER_SLOT_LEASE_INVALID/,
   "requests without a valid worker lease cannot read the delivery queue");
+assert.match(workerAuditMigration,/server_call_delivery_worker_runs/,
+  "worker execution metrics are persisted in a server-only database table");
+assert.match(callDeliveryWorker,/server_call_delivery_worker_runs/,
+  "the worker creates and completes a durable execution record");
+assert.match(callDeliveryWorker,/Number\(ackedResult\.data\) \|\| 0/,
+  "worker acknowledgement metrics use the count confirmed by Postgres, not the intended batch size");
 assert.match(workerChainingMigration,/server_call_delivery_kick_continuation/,
   "worker continuation endpoint is a server-only database function");
 assert.match(callDeliveryWorker,/job\.read_ct >= MAX_READ_ATTEMPTS/,
