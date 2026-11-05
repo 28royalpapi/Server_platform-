@@ -324,6 +324,7 @@ jobs:
             # The emulator runner executes /bin/sh commands; keep this block POSIX and line-oriented.
             set -eu
             sh scripts/wait-for-android-package-manager.sh
+            sh scripts/unlock-android-emulator.sh
             if [ "${{ matrix.api-level }}" = "37" ]; then sh scripts/android17-16kb-acceptance.sh; fi
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
