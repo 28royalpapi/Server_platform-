@@ -14,6 +14,7 @@ const workerChainingMigration=read("supabase/migrations/20261105111000_server_ca
 const dispatchTimeoutMigration=read("supabase/migrations/20261105113000_server_dispatch_timeout_and_noncollapse_push.sql");
 const workerSlotsMigration=read("supabase/migrations/20261105115000_server_call_delivery_worker_slots.sql");
 const workerAuditMigration=read("supabase/migrations/20261105120000_server_call_delivery_worker_audit.sql");
+const presenceMigration=read("supabase/migrations/20261105124000_server_recipient_presence_and_reachability.sql");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
@@ -90,6 +91,30 @@ assert.match(calls,/CALL_START_RATE_LIMITED/,
   "call creation returns an explicit rate-limit response instead of creating unlimited invitations");
 assert.match(calls,/db\.rpc\("server_create_call_atomic"/,
   "call creation must commit the call, participants and guest invite through one database transaction");
+assert.match(presenceMigration,/server_recipient_availability/,
+  "recipient reachability is determined by a private database function");
+assert.match(presenceMigration,/last_seen_at/,
+  "recipient online status is based on a fresh session heartbeat rather than session expiry");
+assert.match(calls,/PRESENCE_WRITE_INTERVAL_MS = 12000/,
+  "authenticated session presence writes are throttled to avoid a database write on every poll");
+assert.match(calls,/touchSessionPresence\(db,session\)/,
+  "the incoming-call listener refreshes its session presence while it is active");
+assert.match(calls,/if\(action==="presence"\)/,
+  "clients can explicitly refresh their own presence session");
+assert.match(calls,/server_recipient_availability/,
+  "the call start path checks recipient reachability before committing a Server call");
+assert.match(calls,/RECIPIENT_OFFLINE/,
+  "an offline Server recipient is reported before a phantom ringing call is created");
+assert.match(calls,/call_created:false/,
+  "the offline response explicitly confirms that no Server call was created");
+assert.match(calls,/carrier_fallback:\{status:"not_configured",available:false/,
+  "the API must not claim an operator flash-call fallback before a carrier route is integrated");
+assert.match(calls,/recipient_availability:recipientAvailability/,
+  "successful Server call creation returns the reachability classification to Android");
+assert.match(calls,/return out\(\{[\s\S]*?ok:true,call_id:call\.id,route,call,ice_servers:callIceServers/,
+  "the Server route returns the created call, ICE servers and call ID to the native caller");
+assert.match(androidMain,/optString\("status"\)/,
+  "Android distinguishes online recipients from background-reachable recipients");
 assert.doesNotMatch(calls,/from\("server_call_members"\)\.upsert|from\("server_guest_invites"\)\.insert/,
   "call creation must not split participant or guest-invite writes across separate requests");
 assert.match(atomicCallMigration,/create or replace function public\.server_create_call_atomic/,
