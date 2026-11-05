@@ -214,16 +214,44 @@ Deno.serve(async (req: Request) => {
   });
   if (slotError || slotValid !== true) return Response.json({ error: "WORKER_SLOT_LEASE_INVALID" }, { status: 409 });
 
+  let workerRunId: string | null = null;
+  let runStatus: "running" | "completed" | "failed" = "failed";
+  let runFailureCode: string | null = "WORKER_FAILED";
+  const runMetrics = {
+    messages_read: 0,
+    messages_acked: 0,
+    messages_archived: 0,
+    messages_retried: 0,
+    notifications_accepted: 0,
+    notifications_skipped: 0
+  };
+
   try {
+  const { data: runRow, error: runInsertError } = await db.from("server_call_delivery_worker_runs")
+    .insert({ slot_id: workerSlot, lease_id: workerLeaseId, status: "running" })
+    .select("id")
+    .single();
+  if (runInsertError || !runRow?.id) {
+    runFailureCode = "WORKER_AUDIT_START_FAILED";
+    return Response.json({ error: "WORKER_AUDIT_START_FAILED" }, { status: 503 });
+  }
+  workerRunId = runRow.id;
+
   const { data: rawMessages, error: readError } = await db.rpc("server_call_delivery_read_batch", {
     p_quantity: MAX_BATCH,
     p_visibility_seconds: VISIBILITY_SECONDS
   });
-  if (readError) return Response.json({ error: "QUEUE_READ_FAILED" }, { status: 503 });
+  if (readError) {
+    runFailureCode = "QUEUE_READ_FAILED";
+    return Response.json({ error: "QUEUE_READ_FAILED" }, { status: 503 });
+  }
 
   const messages = (rawMessages || []) as QueueMessage[];
+  runMetrics.messages_read = messages.length;
   if (!messages.length) {
-    return Response.json({ ok: true, read: 0, accepted: 0, skipped: 0, retried: 0, archived: 0 });
+    runStatus = "completed";
+    runFailureCode = null;
+    return Response.json({ ok: true, worker_slot: workerSlot, read: 0, accepted: 0, skipped: 0, retried: 0, archived: 0, acked: 0 });
   }
 
   const callIds = [...new Set(messages.map(m => m.message?.call_id).filter((x): x is string => typeof x === "string"))];
@@ -238,6 +266,7 @@ Deno.serve(async (req: Request) => {
       : Promise.resolve({ data: [], error: null })
   ]);
   if (callsResult.error || devicesResult.error) {
+    runFailureCode = "QUEUE_CONTEXT_LOOKUP_FAILED";
     return Response.json({ error: "QUEUE_CONTEXT_LOOKUP_FAILED" }, { status: 503 });
   }
 
@@ -358,8 +387,17 @@ Deno.serve(async (req: Request) => {
     archive.length ? db.rpc("server_call_delivery_ack_batch", { p_message_ids: archive, p_archive: true }) : Promise.resolve({ data: 0, error: null })
   ]);
   if (ackedResult.error || archivedResult.error) {
+    runFailureCode = "QUEUE_ACK_FAILED";
     return Response.json({ error: "QUEUE_ACK_FAILED" }, { status: 503 });
   }
+
+  runMetrics.messages_acked = Number(ackedResult.data) || 0;
+  runMetrics.messages_archived = Number(archivedResult.data) || 0;
+  runMetrics.messages_retried = transientErrors;
+  runMetrics.notifications_accepted = accepted;
+  runMetrics.notifications_skipped = skipped;
+  runStatus = "completed";
+  runFailureCode = null;
 
   return Response.json({
     ok: true,
@@ -368,11 +406,21 @@ Deno.serve(async (req: Request) => {
     accepted,
     skipped,
     retried: transientErrors,
-    archived: archive.length,
+    archived: runMetrics.messages_archived,
     invalid_tokens_removed: invalidTokensRemoved,
-    acked: ack.length
+    acked: runMetrics.messages_acked
   });
   } finally {
+    if (workerRunId) {
+      try {
+        await db.from("server_call_delivery_worker_runs").update({
+          status: runStatus,
+          finished_at: new Date().toISOString(),
+          ...runMetrics,
+          failure_code: runFailureCode
+        }).eq("id", workerRunId);
+      } catch { /* run telemetry is best-effort; queue state remains authoritative */ }
+    }
     // A slot lease is the hard concurrency boundary. Release it before asking
     // the dispatcher to fill newly available slots; expired leases recover
     // workers that crash before reaching this finally block.
