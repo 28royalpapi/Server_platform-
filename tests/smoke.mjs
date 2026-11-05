@@ -600,7 +600,7 @@ assert.match(html,/I'?ve installed Server — continue setup/,
   "website offers the return-to-this-page hand-off after connector installation");
 assert.match(app,/androidDownload && androidDownload\.addEventListener/,
   "website explains that the user should return after the APK download");
-assert.match(app,/androidDownloadArmv7 && androidDownloadArmv7\\.addEventListener/);
+assert.ok(app.includes("androidDownloadArmv7 && androidDownloadArmv7.addEventListener"));
 
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
