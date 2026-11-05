@@ -8,6 +8,7 @@ const allowed=new Set(["offer","answer","ice","hangup","state"]);
 
 const SERVER_CALL_TTL_SECONDS = 180;
 const GUEST_CALL_TTL_SECONDS = 20 * 60;
+const GUEST_INVITE_TTL_SECONDS = 24 * 60 * 60;
 const CALL_START_RATE_WINDOW_SECONDS = 60;
 const CALL_START_RATE_MAX = 20;
 const PRESENCE_FRESH_SECONDS = 35;
@@ -222,11 +223,22 @@ Deno.serve(async(req:Request)=>{
     if(availabilityError||!availability)return out({error:"RECIPIENT_AVAILABILITY_UNAVAILABLE"},503);
     recipientAvailability=availability;
     if(availability.status==="offline"){
+     // Offline on Server is an application-presence state, not proof that the
+     // handset is unreachable on the carrier network. Persist a missed-call
+     // event without enqueueing a push or pretending live ringing began.
+     const {data:missed,error:missedError}=await db.rpc("server_create_missed_call_atomic",{
+      p_caller_user_id:uid,
+      p_callee_user_id:callee.user_id
+     });
+     if(missedError||!missed?.call)return out({error:"OFFLINE_MISSED_CALL_SAVE_FAILED"},503);
      return out({
       error:"RECIPIENT_NOT_REACHABLE",
       code:"RECIPIENT_OFFLINE",
-      message:"This Server recipient is offline and no internet call was created. You can use your normal phone SIM to try a carrier call or flash/missed-call request where your operator supports it. The recipient may only see a missed-call alert when their phone reconnects; this is not a live Server call.",
-      call_created:false,
+      message:"This Server user is offline on Server. A missed-call entry has been saved to their Server inbox and will appear when they reconnect. You can also try their verified number through your normal phone SIM.",
+      call_created:true,
+      missed_call_saved:true,
+      call_id:missed.call.id,
+      call:missed.call,
       recipient_availability:availability,
       carrier_fallback:{status:carrierFallbackPhone?"user_confirmed_dialer":"unavailable",available:!!carrierFallbackPhone,destination_e164:carrierFallbackPhone,method:"android_action_dial",requires_user_confirmation:true}
      },409);
@@ -242,7 +254,7 @@ Deno.serve(async(req:Request)=>{
     :null;
    if(route==="guest"&&!to)return out({error:"RECIPIENT_PHONE_REQUIRED"},400);
    const guestTokenHash=guestToken?await sha(guestToken):null;
-   const guestInviteExpiresAt=guestToken?expiresAt:null;
+   const guestInviteExpiresAt=guestToken?new Date(Date.now()+GUEST_INVITE_TTL_SECONDS*1000).toISOString():null;
    const {data:created,error:ce}=await db.rpc("server_create_call_atomic",{
     p_caller_user_id:uid,
     p_callee_user_id:callee?.user_id||null,
@@ -266,7 +278,7 @@ Deno.serve(async(req:Request)=>{
     const expires=guestInviteExpiresAt as string;
     const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
     const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
-    const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Accept to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
+    const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Answer to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (invitation valid for 24 hours; the live call window is 20 minutes, after which the page shows a missed call).";
     const manualDelivery=(reason:string)=>out({
       ok:true,call_id:call.id,route,ice_servers:callIceServers,call,
       invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",

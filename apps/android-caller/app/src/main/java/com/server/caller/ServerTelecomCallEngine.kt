@@ -185,7 +185,7 @@ internal class ServerTelecomCallEngine(
     } catch (error: Exception) {
       val apiError = error as? ServerCallApiException
       if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE" &&
-          !apiError.payload.optBoolean("call_created", true)) {
+          (!apiError.payload.optBoolean("call_created", true) || apiError.payload.optBoolean("missed_call_saved", false))) {
         val dialNumber = apiError.carrierFallback?.optString("destination_e164")
           ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
         val message = apiError.payload.optString(

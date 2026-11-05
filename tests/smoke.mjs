@@ -16,6 +16,10 @@ const workerSlotsMigration=read("supabase/migrations/20261105115000_server_call_
 const workerAuditMigration=read("supabase/migrations/20261105120000_server_call_delivery_worker_audit.sql");
 const presenceMigration=read("supabase/migrations/20261105124000_server_recipient_presence_and_reachability.sql");
 const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push_devices_custom_identity_fk.sql");
+const offlineMissedCallMigration=read("supabase/migrations/20261105131000_server_offline_missed_call_inbox.sql");
+const offlineInbox=read("web/offline-inbox.js");
+const guestServiceWorker=read("web/server-guest-sw.js");
+const offlineArchitecture=read("docs/offline-delivery.md");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
@@ -744,6 +748,22 @@ assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --
   "the main API 34 emulator must execute all 14 acceptance tests without skips or failures");
 
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
+assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
+assert.match(calls,/server_create_missed_call_atomic/);
+assert.match(calls,/missed_call_saved:true/);
+assert.match(calls,/GUEST_INVITE_TTL_SECONDS = 24 \* 60 \* 60/);
+assert.match(offlineInbox,/replicateRxCollection/);
+assert.match(offlineInbox,/getRxStorageDexie/);
+assert.match(offlineInbox,/rxdb@17\.6\.0/);
+assert.match(guestWeb,/syncGuestInvite/);
+assert.match(guestWeb,/server\.guest\.inbox\.v1/);
+assert.match(guestServiceWorker,/server-guest-shell-v1/);
+assert.match(guestWeb,/state==="missed"/);
+assert.match(androidMain,/call\.optString\("state"\) == "missed"/);
+assert.match(androidMain,/missed_call_saved/);
+assert.match(androidEngine,/missed_call_saved/);
+assert.match(offlineArchitecture,/private inbox per Server identity/i);
+assert.match(offlineArchitecture,/contact-wide room/i);
 console.log("Server backend/web contract checks: PASS");
 console.log("Checks include SIM-independent identity, OS permissions, consent-based number linking, Server-ID routing, legacy OTP safeguards, guest WebRTC and public-key hygiene.");
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");

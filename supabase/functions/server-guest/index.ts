@@ -68,7 +68,7 @@ if(action==="join"){
  const {call:updatedCall,error:ce}=await loadGuestCall();
  if(ce||!updatedCall)return out({error:"CALL_NOT_FOUND"},404);
  if(!["ringing","connecting"].includes(updatedCall.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
- return out({ok:true,invite_id:invite.id,call:updatedCall,ice_servers:await iceServersForCall(invite.id,Math.max(300,Math.ceil((Date.parse(invite.expires_at)-Date.now())/1000))),media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
+ return out({ok:true,invite_id:invite.id,call:updatedCall,ice_servers:await iceServersForCall(invite.id,Math.max(300,Math.ceil((Date.parse(updatedCall.expires_at)-Date.now())/1000))),media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
 }
 if(action==="poll"){
  const after=Math.max(0,Number.isSafeInteger(b.after_seq)?Number(b.after_seq):Number(b.after)||0);

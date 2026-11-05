@@ -690,9 +690,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       }
     } catch (e: Exception) {
       val apiError = e as? ServerCallApiException
-      if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE" &&
-          !apiError.payload.optBoolean("call_created", true)) {
-        recordTelecomDebugStage("recipient_offline_no_call_created")
+      if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE") {
+        val missedSaved = apiError.payload.optBoolean("missed_call_saved", false)
+        recordTelecomDebugStage(if (missedSaved) "recipient_offline_missed_call_saved" else "recipient_offline_no_call_created")
         val fallback = apiError.carrierFallback
         carrierFallbackNumber = fallback?.optString("destination_e164")
           ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
@@ -700,20 +700,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         cleanPeer()
         callId = null
         activeStateSyncedFor = null
-        setStatus(
-          apiError.payload.optString("message", "This recipient is offline. No Server call was created."),
-          true
-        )
+        val message = apiError.payload.optString("message",
+          if (missedSaved) "Recipient is offline on Server. A missed-call entry was saved for delivery when they reconnect."
+          else "This recipient is offline on Server.")
+        setStatus(message, true)
         carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
         if (pendingSystemDialerReturn) {
-          carrierFallbackNumber?.let {
-            ServerCallEngineStatusNotifications.showFailure(
-              this@MainActivity,
-              "Recipient is offline. No Server call was created.",
-              it
-            )
-          }
-          Toast.makeText(this@MainActivity, "Recipient is offline. Check the Server message or choose a phone SIM from the notification.", Toast.LENGTH_LONG).show()
+          carrierFallbackNumber?.let { ServerCallEngineStatusNotifications.showFailure(this@MainActivity, message, it) }
+          Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
           returnToSystemPhoneUi()
         }
         return@launch
@@ -747,6 +741,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
             val caller = sharedPhone
               ?: call.optString("caller_server_id").takeIf { it.isNotBlank() }
               ?: "Server caller"
+            if (call.optString("state") == "missed") {
+              if (!ServerCallNotifications.showMissed(this@MainActivity, id, caller)) shownIncoming.remove(id)
+              continue
+            }
             if (ServerTelecomRegistry.isEnabled(this)) {
               try { ServerTelecomRegistry.reportIncoming(this, id, caller) }
               catch (_: Exception) { runOnUiThread { showIncomingDialog(id, caller) } }
