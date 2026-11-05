@@ -420,6 +420,10 @@ assert.match(androidBuild,/compileSdk = 36/);
 assert.match(androidBuild,/targetSdk = 36/);
 assert.match(androidBuild,/isEnable = releaseAbiSplits/);
 assert.match(androidBuild,/SERVER_ENABLE_RELEASE_ABI_SPLITS/);
+assert.match(androidBuild,/defaultConfig\s*\{[\s\S]*?ndk\s*\{\s*abiFilters\.clear\(\)\s*abiFilters\.addAll\(serverDebugAbiFilters\)/,
+  "the selected debug ABI is applied at defaultConfig so prebuilt WebRTC AAR native libraries are packaged");
+assert.match(androidBuild,/release\s*\{[\s\S]*?abiFilters\.clear\(\)\s*abiFilters\.addAll\(listOf\("armeabi-v7a", "arm64-v8a"\)\)/,
+  "release APKs retain ARM64 and ARMv7 phone ABIs even when the CI debug build targets x86_64");
 assert.match(androidBuild,/isUniversalApk = true/);
 assert.match(nativeWorkflow,/bundleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=false/);
 assert.match(nativeWorkflow,/assembleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=true/);
