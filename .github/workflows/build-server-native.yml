@@ -385,16 +385,10 @@ jobs:
             set -eu
             sh scripts/wait-for-android-package-manager.sh
             sh scripts/unlock-android-emulator.sh
-            if [ "${{ matrix.api-level }}" = "37" ]; then
-              sh scripts/android17-16kb-acceptance.sh
-              # The Android 17 16 KB preview image has occasionally lost
-              # system_server after installing the main APK. Recover once and
-              # verify system services before instrumentation APK installation.
-              sh scripts/recover-android17-system-server.sh
-            fi
+            if [ "${{ matrix.api-level }}" = "37" ]; then sh scripts/android17-16kb-acceptance.sh && sh scripts/recover-android17-system-server.sh; fi
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
-            python3 scripts/assert-android-test-count.py --expected-tests 14
+            python3 scripts/assert-android-test-count.py --expected-tests 15
       - uses: actions/upload-artifact@v4
         if: always()
         with:

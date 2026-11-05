@@ -71,9 +71,9 @@ jobs:
             unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-gateway-dex-strings.txt
           done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
           for value in \
-            'com.server.gateway.MainActivity' \
-            'com.server.gateway.SmsGatewayService' \
-            'com.server.gateway.SmsStatusReceiver' \
+            'Lcom/server/gateway/MainActivity;' \
+            'Lcom/server/gateway/SmsGatewayService;' \
+            'Lcom/server/gateway/SmsStatusReceiver;' \
             'Pair this gateway'
           do
             grep -Fq "$value" artifacts/rea-gateway-dex-strings.txt || {
