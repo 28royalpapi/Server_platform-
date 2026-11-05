@@ -279,8 +279,14 @@ assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/
    "system hang-up events must carry their Telecom call ID through to the backend call teardown");
 assert.match(androidEmulatorSmoke,/CALLER_DEBUG_APK="apps\/android-caller\/app\/build\/outputs\/apk\/debug\/app-universal-debug\.apk"/,
   "Android smoke must use the actual ABI-split universal debug APK output");
-assert.match(nativeWorkflow,/apps\/android-caller\/app\/build\/outputs\/apk\/debug\/app-universal-debug\.apk/,
-  "the universal caller debug APK must be included in uploaded diagnostics");
+assert.match(nativeWorkflow,/apps\\/android-caller\\/app\\/build\\/outputs\\/apk\\/debug\\/\\*\\.apk/,
+  "all ABI-specific caller debug APKs must be included in uploaded diagnostics");
+assert.match(nativeWorkflow,/find_debug_apk_for_abi\\(\\)/,
+  "physical and emulator APKs are located by their WebRTC ABI instead of a fixed Gradle filename");
+assert.match(nativeWorkflow,/find_debug_apk_for_abi arm64-v8a/,
+  "the physical-device package selector explicitly requires the ARM64 WebRTC library");
+assert.match(nativeWorkflow,/find_debug_apk_for_abi x86_64/,
+  "the emulator package selector explicitly requires the x86_64 WebRTC library");
 assert.match(androidEmulatorSmoke,/cp "\$CALLER_DEBUG_APK" artifacts\/server-caller-debug-for-reinstall\.apk/,"caller APK is preserved outside Gradle build outputs before instrumentation");
 assert.match(androidEmulatorSmoke,/adb install -r artifacts\/server-caller-debug-for-reinstall\.apk/,"post-test UI smoke reinstalls the preserved caller APK");
 assert.ok(androidEmulatorSmoke.indexOf("CALLER_APK_BACKUP_READY") < androidEmulatorSmoke.indexOf("connectedDebugAndroidTest"),"caller APK backup must happen before instrumentation cleanup");
