@@ -31,6 +31,8 @@ import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpReceiver
+import org.webrtc.RTCStatsCollectorCallback
+import org.webrtc.RTCStatsReport
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import org.webrtc.audio.JavaAudioDeviceModule
@@ -1142,6 +1144,26 @@ class CallerSmokeTest {
       assertEquals("SDP application failed", null, failure.get())
     }
 
+    fun inboundAudioPackets(peer: PeerConnection): Long {
+      val statsReady = CountDownLatch(1)
+      val packets = AtomicReference(0L)
+      peer.getStats(object : RTCStatsCollectorCallback {
+        override fun onStatsDelivered(report: RTCStatsReport) {
+          val received = report.getStatsMap().values
+            .filter { it.type == "inbound-rtp" }
+            .filter {
+              (it.getMembers()["kind"] ?: it.getMembers()["mediaType"])?.toString() == "audio"
+            }
+            .mapNotNull { it.getMembers()["packetsReceived"]?.toString()?.toLongOrNull() }
+            .sum()
+          packets.set(received)
+          statsReady.countDown()
+        }
+      })
+      assertTrue("WebRTC inbound RTP statistics were not delivered", statsReady.await(8, TimeUnit.SECONDS))
+      return packets.get()
+    }
+
     try {
       PeerConnectionFactory.initialize(
         PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions()
@@ -1188,6 +1210,16 @@ class CallerSmokeTest {
       assertTrue("First peer never received the remote audio track", remoteAudioA.await(10, TimeUnit.SECONDS))
       assertTrue("Second peer never received the remote audio track", remoteAudioB.await(10, TimeUnit.SECONDS))
       assertTrue("Both sides must have local audio tracks enabled", trackA!!.enabled() && trackB!!.enabled())
+      var packetsAtA = 0L
+      var packetsAtB = 0L
+      val mediaDeadline = System.currentTimeMillis() + 12_000L
+      while (System.currentTimeMillis() < mediaDeadline && (packetsAtA < 1L || packetsAtB < 1L)) {
+        packetsAtA = inboundAudioPackets(peerA!!)
+        packetsAtB = inboundAudioPackets(peerB!!)
+        if (packetsAtA < 1L || packetsAtB < 1L) Thread.sleep(250)
+      }
+      assertTrue("Caller received no inbound audio RTP packets", packetsAtA > 0L)
+      assertTrue("Recipient received no inbound audio RTP packets", packetsAtB > 0L)
     } finally {
       try { peerA?.close() } catch (_: Exception) {}
       try { peerB?.close() } catch (_: Exception) {}

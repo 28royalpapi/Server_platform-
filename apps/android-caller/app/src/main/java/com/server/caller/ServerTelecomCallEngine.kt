@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import org.webrtc.AudioSource
@@ -34,6 +35,8 @@ import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
+import org.webrtc.RTCStatsCollectorCallback
+import org.webrtc.RTCStatsReport
 import org.webrtc.RtpReceiver
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
@@ -96,6 +99,8 @@ internal class ServerTelecomCallEngine(
   private var sentIceCandidates = 0
   private var receivedIceCandidates = 0
   private var rejectedIceCandidates = 0
+  private var inboundAudioRtpPacketsReceived = 0L
+  private var lastAudioStatsCheckAt = 0L
   private var peer: PeerConnection? = null
   private var peerFactory: PeerConnectionFactory? = null
   private var audioSource: AudioSource? = null
@@ -297,7 +302,7 @@ internal class ServerTelecomCallEngine(
       while (currentCoroutineContext().isActive && !disposed && !callId.isNullOrBlank()) {
         try {
           val id = callId ?: break
-          if (iceConnected && remoteAudioTrackReady) syncMediaConnected()
+          if (iceConnected && remoteAudioTrackReady) refreshInboundAudioStats()
           val response = api("poll", JSONObject().put("call_id", id).put("after_seq", lastSeq))
           val signals = response.optJSONArray("signals") ?: JSONArray()
           for (index in 0 until signals.length()) {
@@ -382,8 +387,45 @@ internal class ServerTelecomCallEngine(
     queued.forEach(::addRemoteIceCandidate)
   }
 
+  private suspend fun refreshInboundAudioStats() {
+    if (disposed || !iceConnected || !remoteAudioTrackReady || inboundAudioRtpPacketsReceived > 0L) return
+    val now = System.currentTimeMillis()
+    if (now - lastAudioStatsCheckAt < 1200L) return
+    lastAudioStatsCheckAt = now
+    val activePeer = peer ?: return
+    val packets = withTimeoutOrNull(2500L) {
+      suspendCancellableCoroutine<Long> { continuation ->
+        try {
+          activePeer.getStats(object : RTCStatsCollectorCallback {
+            override fun onStatsDelivered(report: RTCStatsReport) {
+              val received = report.getStatsMap().values
+                .asSequence()
+                .filter { it.type == "inbound-rtp" }
+                .filter {
+                  (it.getMembers()["kind"] ?: it.getMembers()["mediaType"])?.toString() == "audio"
+                }
+                .mapNotNull { it.getMembers()["packetsReceived"]?.toString()?.toLongOrNull() }
+                .sum()
+              if (continuation.isActive) continuation.resume(received)
+            }
+          })
+        } catch (error: Exception) {
+          if (continuation.isActive) continuation.resumeWithException(error)
+        }
+      }
+    } ?: 0L
+    if (packets > 0L) {
+      inboundAudioRtpPacketsReceived = packets
+      if (BuildConfig.DEBUG) {
+        prefs.edit().putLong("debug_last_inbound_audio_rtp_packets", packets).apply()
+      }
+      recordStage("inbound_audio_rtp_packets_received")
+      syncMediaConnected()
+    }
+  }
+
   private suspend fun syncMediaConnected() {
-    if (disposed || !iceConnected || !remoteAudioTrackReady) return
+    if (disposed || !iceConnected || !remoteAudioTrackReady || inboundAudioRtpPacketsReceived < 1L) return
     val id = callId ?: return
     connection.markConnected()
     if (activeStateSyncedFor == id) return
@@ -406,6 +448,8 @@ internal class ServerTelecomCallEngine(
     remoteAudioTrackReady = false
     lastMediaSyncAttemptAt = 0L
     activeStateSyncedFor = null
+    inboundAudioRtpPacketsReceived = 0L
+    lastAudioStatsCheckAt = 0L
     if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
       throw IllegalStateException("Microphone permission is required for Server calls.")
     }
@@ -572,6 +616,8 @@ internal class ServerTelecomCallEngine(
     iceConnected = false
     remoteAudioTrackReady = false
     lastMediaSyncAttemptAt = 0L
+    inboundAudioRtpPacketsReceived = 0L
+    lastAudioStatsCheckAt = 0L
     try { (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}
   }
 
@@ -592,7 +638,7 @@ internal class ServerTelecomCallEngine(
         PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
           iceConnected = true
           recordStage("ice_transport_connected")
-          syncMediaConnected()
+          refreshInboundAudioStats()
         }
         PeerConnection.IceConnectionState.DISCONNECTED -> {
           iceConnected = false
@@ -630,7 +676,7 @@ internal class ServerTelecomCallEngine(
       if (disposed) return@launch
       remoteAudioTrackReady = true
       recordStage("remote_audio_track_received")
-      syncMediaConnected()
+      refreshInboundAudioStats()
     }
   }
   override fun onSignalingChange(state: PeerConnection.SignalingState) {}
