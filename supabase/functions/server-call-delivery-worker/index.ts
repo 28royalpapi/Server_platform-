@@ -274,8 +274,13 @@ Deno.serve(async (req: Request) => {
 
     const devices = deviceMap.get(recipientId) || [];
     if (!devices.length) {
-      ack.push(job.msg_id);
-      skipped++;
+      // Keep the wake job until the call expires. A device may register its
+      // push endpoint shortly after call creation; retry instead of dropping
+      // the alert on the first empty lookup.
+      if (job.read_ct >= MAX_READ_ATTEMPTS) archive.push(job.msg_id);
+      else {
+        transientErrors++;
+      }
       return;
     }
 
