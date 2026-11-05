@@ -2,15 +2,36 @@
 
 ## Six-device handset matrix
 
-The requested A/B pairing is represented by six **physical Firebase Test Lab catalog devices**. These are not Android Studio AVD skins.
+The requested A/B pairing is represented by six **physical Firebase Test Lab catalog devices**. These are not Android Studio AVD skins. TECNO A deliberately uses the TECNO-BF7 model family (Android 12/API 31), matching the user's current TECNO BF7 class; TECNO B moves to the SPARK Go 2024 on Android 13/API 33.
 
 | Class | A device | A Android | B device | B Android |
 |---|---|---:|---|---:|
-| TECNO | TECNO POP 7 (TECNO-BF6) | 12 / API 31 | TECNO SPARK Go 2024 (TECNO-BG6) | 13 / API 33 |
+| TECNO | TECNO BF7 (TECNO-BF7) | 12 / API 31 | TECNO SPARK Go 2024 (TECNO-BG6) | 13 / API 33 |
 | Samsung | Galaxy A10 (a10) | 10 / API 29 | Galaxy S22 (SC-51C) | 16 / API 36 |
 | Google Pixel | Pixel 6a (bluejay) | 12L / API 32 | Pixel 8 (shiba) | 15 / API 35 |
 
 The Firebase device catalog is dynamic. Confirm the model IDs and OS versions are still available in the console before treating a run as scheduled.
+
+## Important: choose the no-billing device route
+
+Use **Firebase Test Lab on the Spark plan** for the six automated handset runs. The current no-cost quota is five physical-device test runs per project per day, so batch 1 uses five devices and batch 2 uses the sixth after the quota resets. Do not attach a billing account or upgrade this dedicated test project to Blaze.
+
+Firebase Test Lab is scheduled for shutdown on 30 September 2027, but it remains the appropriate no-billing route for this immediate validation. Plan a migration later rather than switching this test to the newer Developer Device Platform now: its public-preview physical Device Run pricing is usage-based and is not a no-cost replacement.
+
+Android Device Streaming's Spark allowance is 30 minutes per project per month. However, Google states that Partner Device Lab streaming generally follows standard pricing unless a device is specifically marked otherwise. Do not start a TECNO/Samsung partner streaming session unless the console clearly confirms it is free. For this six-device acceptance run, use Test Lab's Spark physical-test quota instead.
+
+Firebase is a web console/service, not an Android app that must be installed on the TECNO phone. The physical test devices are hosted in Google's lab; they install and run the supplied APKs during the test.
+
+## Run the tests from the Firebase console (no local Firebase app required)
+
+1. Create a separate Firebase project for Server device testing and keep it on the **Spark** plan. Do not add a billing account.
+2. Open **DevOps & Engagement → Test Lab → Run a test → Instrumentation**.
+3. Upload the Server **debug app APK** and its matching **androidTest APK** from the GitHub Actions artifact named `server-android-debug-apks`.
+4. On the device selection screen, choose the five physical models listed in batch 1 above, then start the test.
+5. On the next Spark quota day, repeat for the Pixel 8 (batch 2).
+6. Save the Firebase Test Lab matrix links and per-device test reports. A device passes only with the full 14/14 test count and zero failures, errors or skips.
+
+The console flow avoids installing Google Cloud CLI on the user's computer. The existing `scripts/firebase-real-device-matrix.sh` remains available for authenticated command-line runs.
 
 ## Run the six physical-device acceptance tests
 
