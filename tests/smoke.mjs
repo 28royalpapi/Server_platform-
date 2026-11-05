@@ -287,7 +287,6 @@ assert.ok(nativeWorkflow.includes("find_debug_apk_for_abi arm64-v8a"),
   "the physical-device package selector explicitly requires the ARM64 WebRTC library");
 assert.ok(nativeWorkflow.includes("find_debug_apk_for_abi x86_64"),
   "the emulator package selector explicitly requires the x86_64 WebRTC library");
-  "the emulator package selector explicitly requires the x86_64 WebRTC library");
 assert.match(androidEmulatorSmoke,/cp "\$CALLER_DEBUG_APK" artifacts\/server-caller-debug-for-reinstall\.apk/,"caller APK is preserved outside Gradle build outputs before instrumentation");
 assert.match(androidEmulatorSmoke,/adb install -r artifacts\/server-caller-debug-for-reinstall\.apk/,"post-test UI smoke reinstalls the preserved caller APK");
 assert.ok(androidEmulatorSmoke.indexOf("CALLER_APK_BACKUP_READY") < androidEmulatorSmoke.indexOf("connectedDebugAndroidTest"),"caller APK backup must happen before instrumentation cleanup");
