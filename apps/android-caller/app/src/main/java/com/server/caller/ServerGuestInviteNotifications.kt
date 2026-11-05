@@ -55,12 +55,25 @@ internal object ServerGuestInviteNotifications {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
     val masked = mask(recipientPhone)
+    val carrierDialIntent = Intent(context, ServerCarrierDialActivity::class.java).apply {
+      action = "com.server.caller.action.CARRIER_FALLBACK"
+      data = Uri.parse("server-carrier://dial/$callId")
+      putExtra(ServerCarrierDialActivity.EXTRA_CALL_ID, callId)
+      putExtra(ServerCarrierDialActivity.EXTRA_PHONE, recipientPhone)
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    }
+    val carrierPending = PendingIntent.getActivity(
+      context,
+      REQUEST_BASE + 1 + (callId.hashCode() and 0x0FFFFFFF),
+      carrierDialIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.sym_action_email)
       .setContentTitle("Server invitation ready")
-      .setContentText("This recipient doesn't have Server. Tap to share the secure call link.")
+      .setContentText("Share the internet invite or try a carrier flash call with your SIM.")
       .setStyle(NotificationCompat.BigTextStyle().bigText(
-        "Share the invitation with $masked using SMS or another app. They must open the link and tap Answer. Server will not send a text without your action."
+        "Share the secure link with $masked; they must open it and tap Answer. Or choose Try carrier flash call to open your phone dialler, select a SIM and confirm. Whether the operator leaves a missed call or sends a later alert depends on its service."
       ))
       .setCategory(NotificationCompat.CATEGORY_CALL)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -70,6 +83,7 @@ internal object ServerGuestInviteNotifications {
       .setTimeoutAfter(20 * 60 * 1000L)
       .setContentIntent(sharePending)
       .addAction(android.R.drawable.ic_menu_share, "Share invitation", sharePending)
+      .addAction(android.R.drawable.sym_action_call, "Try carrier flash call", carrierPending)
       .build()
     return try {
       NotificationManagerCompat.from(context).notify(notificationId(callId), notification)

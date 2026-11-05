@@ -58,6 +58,12 @@
       android:excludeFromRecents="true"
       android:noHistory="true"
       android:theme="@style/ServerCallRouterTheme" />
+    <activity
+      android:name="com.server.caller.ServerCarrierDialActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:theme="@style/ServerCallRouterTheme" />
     <service
       android:name="com.server.caller.ServerConnectionService"
       android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"

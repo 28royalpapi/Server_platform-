@@ -118,6 +118,14 @@ object ServerTelecomRegistry {
     connection?.markEnded()
   }
 
+  /** End an unanswered/guest Server attempt before handing the same number to Android's SIM dialler. */
+  fun fallbackToCarrier(callId: String) {
+    if (callId.isBlank()) return
+    val connection = incomingConnections.remove(callId)
+      ?: currentConnection.takeIf { currentConnectionCallId == callId }
+    connection?.fallbackToCarrier()
+  }
+
   /**
    * A backend call that was ringing but disappears from the authoritative incoming
    * list has ended or was answered elsewhere. Clear only still-ringing Telecom
@@ -273,6 +281,18 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
     setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
     ServerTelecomRegistry.detach(this)
     destroy()
+    callEngine?.hangup()
+  }
+
+  internal fun fallbackToCarrier() {
+    val id = extras?.getString("server_call_id").orEmpty()
+    setRingbackRequested(false)
+    ServerCallNotifications.cancel(app, id)
+    setDisconnected(DisconnectCause(DisconnectCause.LOCAL))
+    ServerTelecomRegistry.detach(this)
+    destroy()
+    // Ask the Server engine to end the pending internet call and release WebRTC
+    // before the carrier dialler is opened.
     callEngine?.hangup()
   }
 

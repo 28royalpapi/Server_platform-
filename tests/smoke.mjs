@@ -28,6 +28,8 @@ const androidEngine=read("apps/android-caller/app/src/main/java/com/server/calle
 const androidPhoneNormalizer=read("apps/android-caller/app/src/main/java/com/server/caller/ServerPhoneNumberNormalizer.kt");
 const androidGuestNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteNotifications.kt");
 const androidGuestShare=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteShareActivity.kt");
+const androidCarrierDialer=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCarrierDialer.kt");
+const androidCarrierActivity=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCarrierDialActivity.kt");
 const androidBuild=read("apps/android-caller/app/build.gradle.kts");
 const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallNotifications.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
@@ -112,8 +114,12 @@ assert.match(calls,/RECIPIENT_OFFLINE/,
   "an offline Server recipient is reported before a phantom ringing call is created");
 assert.match(calls,/call_created:false/,
   "the offline response explicitly confirms that no Server call was created");
-assert.match(calls,/carrier_fallback:\{status:"not_configured",available:false/,
-  "the API must not claim an operator flash-call fallback before a carrier route is integrated");
+assert.match(calls,/carrier_fallback:\\{status:carrierFallbackPhone\?"user_confirmed_dialer":"unavailable"/,
+  "offline Server recipients receive a caller-confirmed SIM dialler option only when a number may be shared");
+assert.match(calls,/method:"android_action_dial",requires_user_confirmation:true/,
+  "the API describes a user-confirmed Android dialler handoff, not an automatic carrier call");
+assert.match(calls,/recipient_availability:\\{status:"unknown_guest",connected:false\\}/,
+  "a non-Server recipient is not falsely labelled online or offline before a guest endpoint is present");
 assert.match(calls,/recipient_availability:recipientAvailability/,
   "successful Server call creation returns the reachability classification to Android");
 assert.match(calls,/return out\(\{[\s\S]*?ok:true,call_id:call\.id,route,call,ice_servers:callIceServers/,
@@ -636,6 +642,30 @@ assert.match(androidMain,/Recipient is currently online in Server/,"the caller s
 assert.match(androidMain,/background push endpoint is registered/,"the caller sees when only a background push endpoint is available");
 assert.match(androidMain,/not connected yet/,"a guest invitation is not misrepresented as an active ring before the guest joins");
 assert.match(androidEngine,/Recipient presence is fresh/,"Android Telecom logs the live-presence path");
+assert.match(androidEngine,/throw ServerCallApiException\(status, result, reason\)/,
+  "the Telecom HTTP client preserves structured recipient-offline responses for SIM fallback");
+assert.match(androidEngine,/apiError\.errorCode === "RECIPIENT_OFFLINE"/,
+  "the Telecom call engine recognises a Server-offline recipient before creating a call");
+assert.match(androidEngine,/failCall\(message, dialNumber\)/,
+  "the Telecom engine shows the user-confirmed carrier handoff after ending the failed Server attempt");
+assert.match(androidGuestNotifications,/ServerCarrierDialActivity/,
+  "the guest invitation notification exposes the same carrier handoff as the app UI");
+assert.match(androidGuestNotifications,/"Try carrier flash call"/,
+  "the guest invitation notification labels the carrier fallback explicitly");
+assert.match(androidCarrierActivity,/ServerTelecomRegistry\.fallbackToCarrier\(callId\)/,
+  "the notification SIM action ends the pending Server/guest call before opening the dialler");
+assert.match(androidCarrierActivity,/ServerCarrierDialer\.createIntent\(phone\)/,
+  "the notification SIM action opens the platform dialler with the recipient number");
+assert.match(androidCarrierDialer,/Intent\.ACTION_DIAL/,
+  "carrier fallback uses Android's user-confirmed dialler");
+assert.doesNotMatch(androidCarrierDialer,/Intent\.ACTION_CALL/,
+  "carrier fallback never silently places a chargeable cellular call");
+assert.match(androidTelecom,/fun fallbackToCarrier\(callId: String\)/,
+  "the system Telecom connection can be safely handed off to the carrier path");
+assert.match(androidManifest,/ServerCarrierDialActivity/,
+  "the explicit carrier handoff Activity is registered in the Android manifest");
+assert.match(androidMain,/button\("Try carrier flash call"\)/,
+  "the main app exposes the caller-confirmed carrier fallback after Server reports offline");
 assert.match(androidEngine,/background wake job is queued/,"Android Telecom logs background delivery without claiming that the phone rang");
 assert.match(androidMain,/SMS may incur your carrier's charge/,"Android discloses that a caller-selected SMS may be billable");
 assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");

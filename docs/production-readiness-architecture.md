@@ -74,6 +74,21 @@ A TURN relay is not optional for reliable global WebRTC reachability. STUN-only 
 
 Important distinction: "app closed/background" while the phone is still connected to the internet is different from the phone having no network. No internet-based service can ring an offline device in real time. For an offline non-Server number to ring as a normal cellular call, Server needs a licensed/contracted PSTN/SIP route. That route has per-minute/provider costs. Without it, Server can queue an invitation for later delivery, but must not claim an immediate call.
 
+### Server presence versus cellular reachability
+
+"Offline" in the Server call screen means **not currently reachable as a Server internet endpoint**. It does not mean the recipient's handset is switched off or has no cellular service. The caller's SIM may still be able to place a carrier call, and the recipient's mobile network can deliver the incoming call or a missed-call record.
+
+For an offline Server account, the API returns `RECIPIENT_OFFLINE` without creating a fake Server ringing call. When the recipient's number is verified and explicitly opted into number-based Server calling, the response may include a carrier destination. Android then offers **Try carrier flash call** and opens `ACTION_DIAL`; the caller selects a SIM and confirms the attempt. For a non-Server number, the caller-provided E.164 number can be used for the same handoff while the secure guest invitation remains an alternative. Server does not silently invoke `ACTION_CALL`, choose a SIM, or claim that the carrier attempt succeeded.
+
+This is an operator-mediated fallback, not an internet call to the recipient's handset. Its exact result depends on the caller's SIM, the recipient's carrier, number status, and operator eligibility:
+- Glo's official [Beep Call Service](https://www.gloworld.com/ng/beep-call-service) says an eligible Glo caller with low/zero airtime can leave a free flash/missed call to a Nigerian number on Glo or another network. That is a service on the **caller's Glo SIM**, not an API that lets Server originate calls through the recipient's SIM.
+- MTN's official [Missed Call Alert](https://www.mtn.ng/missed-call-alert/) can SMS a customer after reconnection, but the same-network restriction excludes alerts when the caller uses another network, and it also lists roaming, international, hidden-number, DND and barred-line limitations.
+- Glo's [Missed Call Alert / Notify About Me](https://www.gloworld.com/ng/missed-call-alert) can notify Glo callers when a Glo recipient returns to the network; its published service stores missed calls for up to four hours and has a Glo-only notification restriction.
+
+Therefore, the UI says "try" and asks the user to confirm. It must not promise a flash result for every SIM/network. A true Server-originated carrier flash call without the user's dialler requires a formal operator/aggregator integration and commercial/technical permission. For a handset that is actually powered off or out of coverage, any later SMS/missed-call alert is carrier-dependent and arrives only after the network sees the line reconnect.
+
+For non-Server recipients, Server cannot infer browser/app online presence from a phone number. Until the recipient opens a guest invitation or has an opted-in browser push endpoint, the state remains `unknown_guest` / not yet connected—not a fabricated offline/online status.
+
 ## 4. Scale design and why the current polling path cannot be the final design
 
 The previous guest page polled the Edge Function every 650 ms. At 10,000 simultaneously open guest pages, that is approximately **15,400 HTTP poll requests per second**, before counting database reads, call setup, Android polling, or media. The guest poll also queried both signals and call state. This is avoidable traffic, not a problem solved by buying a larger database.

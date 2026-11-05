@@ -209,7 +209,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-    carrierFallbackButton = button("Use phone SIM") {
+    carrierFallbackButton = button("Try carrier flash call") {
       handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
     }.apply { visibility = View.GONE }
     callPanel.addView(carrierFallbackButton, matchWrap())
@@ -547,7 +547,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           setStatus("The invitation is ready, but Android could not open a sharing app.", true)
         }
       }
-      .setNeutralButton("Use phone SIM") { _, _ ->
+      .setNeutralButton("Try carrier flash call") { _, _ ->
         handoffToCarrierDialer(recipientPhone, callId)
       }
       .setNegativeButton("Cancel") { _, _ ->

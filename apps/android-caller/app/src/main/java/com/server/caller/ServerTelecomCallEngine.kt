@@ -466,7 +466,7 @@ internal class ServerTelecomCallEngine(
         val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
         if (status !in 200..299) {
           val reason = result.optString("msg", result.optString("message", result.optString("error", "HTTP $status")))
-          throw IllegalStateException("$reason (HTTP $status)")
+          throw ServerCallApiException(status, result, reason)
         }
         result
       } finally {
