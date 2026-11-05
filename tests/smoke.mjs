@@ -11,6 +11,7 @@ const atomicCallMigration=read("supabase/migrations/20261105103540_server_atomic
 const queueExtensionMigration=read("supabase/migrations/20261105105014_server_durable_push_queue_extensions.sql");
 const callDeliveryMigration=read("supabase/migrations/20261105105649_server_call_delivery_queue.sql");
 const workerChainingMigration=read("supabase/migrations/20261105111000_server_call_delivery_worker_chaining.sql");
+const dispatchTimeoutMigration=read("supabase/migrations/20261105113000_server_dispatch_timeout_and_noncollapse_push.sql");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
@@ -125,6 +126,10 @@ assert.match(workerChainingMigration,/server_call_delivery_kick_continuation/,
   "worker continuation endpoint is a server-only database function");
 assert.match(callDeliveryWorker,/job\.read_ct >= MAX_READ_ATTEMPTS/,
   "missing endpoints and transient provider failures are retried with a finite attempt limit");
+assert.doesNotMatch(callDeliveryWorker,/collapse_key/,
+  "different call IDs must not collapse into one FCM wake notification");
+assert.match(dispatchTimeoutMigration,/timeout_milliseconds:=10000/,
+  "internal queue dispatch allows a cold worker up to ten seconds to respond");
 assert.match(callDeliveryWorker,/call\.state !== "ringing"/,
   "the worker does not alert for calls already answered or otherwise no longer ringing");
 assert.match(calls,/delivery_queued===true/,
