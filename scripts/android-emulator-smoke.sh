@@ -39,6 +39,7 @@ fi
 adb devices -l
 
 echo "Unlocking and foregrounding the Android emulator before instrumentation tests"
+sh scripts/unlock-android-emulator.sh
 adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 adb shell input keyevent 82 >/dev/null 2>&1 || true
 adb shell input keyevent 3 >/dev/null 2>&1 || true
