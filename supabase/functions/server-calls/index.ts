@@ -195,7 +195,7 @@ Deno.serve(async(req:Request)=>{
    if(serverTarget){
     if(!/^SVR-[0-9A-F]{10}$/.test(serverTarget))return out({error:"INVALID_SERVER_ID"},400);
     const {data:found,error:lookupError}=await db.from("server_profiles")
-      .select("user_id,server_id,phone_e164,phone_verified_at").eq("server_id",serverTarget).maybeSingle();
+      .select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("server_id",serverTarget).maybeSingle();
     if(lookupError)return out({error:"SERVER_LOOKUP_FAILED"},503);
     if(!found)return out({error:"SERVER_ID_NOT_FOUND"},404);
     if(found.user_id===uid)return out({error:"CANNOT_CALL_SELF"},400);
@@ -212,6 +212,10 @@ Deno.serve(async(req:Request)=>{
     callee=found&&found.phone_verified_at&&found.allow_number_based_server_calls===true?found:null;
     route=callee?"server":"guest";
    }
+   let carrierFallbackPhone:string|null=to;
+   if(serverTarget){
+    carrierFallbackPhone=found?.phone_verified_at&&found?.allow_number_based_server_calls===true?phone(found.phone_e164):null;
+   }
    let recipientAvailability:any={status:"unknown_guest",background_wake_possible:false,last_seen_at:null};
    if(route==="server"){
     const {data:availability,error:availabilityError}=await db.rpc("server_recipient_availability",{
@@ -223,10 +227,10 @@ Deno.serve(async(req:Request)=>{
      return out({
       error:"RECIPIENT_NOT_REACHABLE",
       code:"RECIPIENT_OFFLINE",
-      message:"This Server recipient is not currently online or reachable through a registered background endpoint. No internet call was created. Carrier flash-call or operator missed-call fallback is not connected yet.",
+      message:"This Server recipient is offline and no internet call was created. You can use your normal phone SIM to try a carrier call or flash/missed-call request where your operator supports it. The recipient may only see a missed-call alert when their phone reconnects; this is not a live Server call.",
       call_created:false,
       recipient_availability:availability,
-      carrier_fallback:{status:"not_configured",available:false,method:"operator_flash_or_missed_call"}
+      carrier_fallback:{status:carrierFallbackPhone?"user_confirmed_dialer":"unavailable",available:!!carrierFallbackPhone,destination_e164:carrierFallbackPhone,method:"android_action_dial",requires_user_confirmation:true}
      },409);
     }
    }
@@ -270,7 +274,7 @@ Deno.serve(async(req:Request)=>{
       invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
       guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason,
       recipient_availability:{status:"unknown_guest",connected:false},
-      carrier_fallback:{status:"not_configured",available:false,method:"operator_flash_or_missed_call"}
+      carrier_fallback:{status:"user_confirmed_dialer",available:!!to,destination_e164:to,method:"android_action_dial",requires_user_confirmation:true}
     });
     // Guest-call invitations must not silently consume a user's SMS balance.
     // The caller explicitly chooses an existing share/messaging app instead.
