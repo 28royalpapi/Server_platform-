@@ -8,6 +8,9 @@ const pushMigration=read("supabase/migrations/20261101175446_server_push_devices
 const schedulerMigration=read("supabase/migrations/20261021121000_server_maintenance_scheduler.sql");
 const callExpiryMigration=read("supabase/migrations/20261105102434_server_call_expiry_reconciliation.sql");
 const atomicCallMigration=read("supabase/migrations/20261105103540_server_atomic_call_creation.sql");
+const queueExtensionMigration=read("supabase/migrations/20261105105014_server_durable_push_queue_extensions.sql");
+const callDeliveryMigration=read("supabase/migrations/20261105105649_server_call_delivery_queue.sql");
+const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
@@ -93,6 +96,32 @@ assert.match(atomicCallMigration,/insert into public\.server_guest_invites/,
   "the same atomic transaction creates guest invitation hashes");
 assert.match(atomicCallMigration,/grant execute on function public\.server_create_call_atomic[\s\S]*?to service_role/,
   "only the service role may execute the internal atomic call-creation RPC");
+assert.match(queueExtensionMigration,/create extension if not exists pgmq/,
+  "durable Postgres-native message queue is enabled");
+assert.match(queueExtensionMigration,/create extension if not exists pg_net/,
+  "asynchronous internal HTTP dispatch is enabled");
+assert.match(callDeliveryMigration,/pgmq\.send\(/,
+  "Server call creation writes its wake-up event to the durable queue in the same transaction");
+assert.match(callDeliveryMigration,/net\.http_post\(/,
+  "the queue dispatcher wakes the private worker without blocking the caller");
+assert.match(callDeliveryMigration,/server-call-delivery-recovery-every-minute/,
+  "a scheduled recovery kick restarts processing after worker or deployment interruption");
+assert.match(callDeliveryMigration,/server_validate_call_dispatch_secret/,
+  "the internal notification worker is authenticated with a Vault-backed dispatch secret");
+assert.match(callDeliveryWorker,/server_call_delivery_read_batch/,
+  "the notification worker claims bounded queue batches");
+assert.match(callDeliveryWorker,/VISIBILITY_SECONDS/,
+  "queue messages are protected by a visibility lease while a worker processes them");
+assert.match(callDeliveryWorker,/server_call_delivery_ack_batch/,
+  "completed or expired notification jobs are acknowledged through the server-only queue API");
+assert.match(callDeliveryWorker,/call\.state !== "ringing"/,
+  "the worker does not alert for calls already answered or otherwise no longer ringing");
+assert.match(calls,/delivery_queued===true/,
+  "the call API reports durable queue acceptance without claiming delivery");
+assert.doesNotMatch(calls,/pushDelivery=await sendRecipientPush/,
+  "the call API does not block call creation while synchronously contacting push providers");
+assert.match(androidMain,/optBoolean\("queued", false\)/,
+  "Android distinguishes queued delivery from provider acceptance or device delivery");
 assert.match(calls,/CALL_CREATE_FAILED/,
   "call creation must fail closed when its atomic transaction cannot commit");
 assert.match(schedulerMigration,/cron\.schedule\('server-maintenance-every-5-minutes'/,
