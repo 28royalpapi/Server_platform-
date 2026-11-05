@@ -511,29 +511,94 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
    * Server does not silently send paid SMS or place a carrier voice call.
    */
   private fun shareGuestInvitation(body: String, recipientPhone: String) {
-    try {
-      val share = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, body)
+    val share = Intent(Intent.ACTION_SEND).apply {
+      type = "text/plain"
+      putExtra(Intent.EXTRA_TEXT, body)
+    }
+    val sms = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$recipientPhone")).apply {
+      putExtra("sms_body", body)
+    }
+    val chooser = Intent.createChooser(share, "Share Server invitation to " + mask(recipientPhone)).apply {
+      putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(sms))
+    }
+
+    if (pendingSystemDialerReturn) {
+      try {
+        guestShareLauncher.launch(chooser)
+        setStatus("This recipient isn't on Server yet. Share the secure invitation; they must open it with internet access and tap Answer.")
+      } catch (_: Exception) {
+        setStatus("The secure invitation is ready, but Android could not open a sharing app.", true)
       }
-      // Put an SMS composer with the dialled contact already filled in at the
-      // top of Android's chooser. The user still presses Send; Server never sends
-      // a carrier SMS silently or charges the user without consent.
-      val sms = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$recipientPhone")).apply {
-        putExtra("sms_body", body)
+      return
+    }
+
+    AlertDialog.Builder(this)
+      .setTitle("This recipient isn't on Server")
+      .setMessage(
+        "Share a secure internet-call invitation, or try the number through your normal phone SIM. " +
+          "A carrier attempt may show a missed-call or callback alert where your operator supports it. " +
+          "A powered-off phone may only receive a network alert after reconnecting. Standard call charges may apply."
+      )
+      .setPositiveButton("Share invitation") { _, _ ->
+        try {
+          startActivity(chooser)
+          setStatus("Invitation ready. The recipient must open the link and tap Answer. SMS may incur your carrier's charge.")
+        } catch (_: Exception) {
+          setStatus("The invitation is ready, but Android could not open a sharing app.", true)
+        }
       }
-      val chooser = Intent.createChooser(share, "Send Server invitation to ${mask(recipientPhone)}").apply {
-        putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(sms))
+      .setNeutralButton("Use phone SIM") { _, _ ->
+        handoffToCarrierDialer(recipientPhone, callId)
       }
-      if (pendingSystemDialerReturn) guestShareLauncher.launch(chooser) else startActivity(chooser)
-      setStatus("This person is not receiving a direct Server-to-Server call. Send the secure internet invitation to ${mask(recipientPhone)}; they must open it and tap Answer. SMS may incur your carrier's charge.")
-      if (pendingSystemDialerReturn) {
-        Toast.makeText(this, "Choose SMS or another messaging app, then send the Server call invitation.", Toast.LENGTH_LONG).show()
+      .setNegativeButton("Cancel") { _, _ ->
+        abandonPendingGuestCall(callId)
       }
-    } catch (_: Exception) {
-      val message = "The invitation is ready, but Android could not open a sharing app. Copy and send the link manually."
-      setStatus(message + " " + body, true)
-      if (pendingSystemDialerReturn) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+      .show()
+  }
+
+  private fun abandonPendingGuestCall(pendingCallId: String?) {
+    lifecycleScope.launch {
+      if (!pendingCallId.isNullOrBlank()) {
+        try { api("end", JSONObject().put("call_id", pendingCallId)) } catch (_: Exception) {}
+        ServerGuestInviteNotifications.cancel(this@MainActivity, pendingCallId)
+      }
+      cleanPeer()
+      callId = null
+      activeStateSyncedFor = null
+      currentRoute = ""
+      callButton.visibility = View.VISIBLE
+      hangupButton.visibility = View.GONE
+      setStatus("The guest invitation was cancelled. No carrier call was placed.")
+    }
+  }
+
+  private fun handoffToCarrierDialer(rawNumber: String, pendingCallId: String?) {
+    val number = rawNumber.trim()
+    if (!number.matches(Regex("^\\+[1-9][0-9]{7,14}$"))) {
+      setStatus("A verified or caller-provided phone number is required for a SIM handoff. No carrier call was placed.", true)
+      return
+    }
+    lifecycleScope.launch {
+      if (!pendingCallId.isNullOrBlank()) {
+        // End the outstanding Server/guest attempt before opening the carrier path.
+        try { api("end", JSONObject().put("call_id", pendingCallId)) } catch (_: Exception) {}
+        ServerGuestInviteNotifications.cancel(this@MainActivity, pendingCallId)
+      }
+      cleanPeer()
+      callId = null
+      activeStateSyncedFor = null
+      currentRoute = ""
+      carrierFallbackNumber = null
+      if (::carrierFallbackButton.isInitialized) carrierFallbackButton.visibility = View.GONE
+      callButton.visibility = View.VISIBLE
+      hangupButton.visibility = View.GONE
+      ServerTelecomRegistry.markEnded(pendingCallId)
+      val opened = ServerCarrierDialer.open(this@MainActivity, number)
+      if (opened) {
+        setStatus("Opened your normal phone dialler. Choose the SIM you want and press Call yourself. Carrier delivery and missed-call alerts depend on the operator; this is not a Server internet call.")
+      } else {
+        setStatus("Android could not open the phone dialler. No carrier call was placed.", true)
+      }
     }
   }
 
