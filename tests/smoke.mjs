@@ -10,6 +10,7 @@ const callExpiryMigration=read("supabase/migrations/20261105102434_server_call_e
 const atomicCallMigration=read("supabase/migrations/20261105103540_server_atomic_call_creation.sql");
 const queueExtensionMigration=read("supabase/migrations/20261105105014_server_durable_push_queue_extensions.sql");
 const callDeliveryMigration=read("supabase/migrations/20261105105649_server_call_delivery_queue.sql");
+const workerChainingMigration=read("supabase/migrations/20261105111000_server_call_delivery_worker_chaining.sql");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
@@ -114,6 +115,16 @@ assert.match(callDeliveryWorker,/VISIBILITY_SECONDS/,
   "queue messages are protected by a visibility lease while a worker processes them");
 assert.match(callDeliveryWorker,/server_call_delivery_ack_batch/,
   "completed or expired notification jobs are acknowledged through the server-only queue API");
+assert.match(callDeliveryWorker,/MAX_BATCH = 250/,
+  "notification worker reads bounded batches rather than one row per HTTP invocation");
+assert.match(callDeliveryWorker,/MAX_PARALLEL_SENDS = 40/,
+  "notification provider fan-out is bounded within each worker invocation");
+assert.match(callDeliveryWorker,/server_call_delivery_kick_continuation/,
+  "worker chains the next batch when additional queue messages are visible");
+assert.match(workerChainingMigration,/server_call_delivery_kick_continuation/,
+  "worker continuation endpoint is a server-only database function");
+assert.match(callDeliveryWorker,/job\.read_ct >= MAX_READ_ATTEMPTS/,
+  "missing endpoints and transient provider failures are retried with a finite attempt limit");
 assert.match(callDeliveryWorker,/call\.state !== "ringing"/,
   "the worker does not alert for calls already answered or otherwise no longer ringing");
 assert.match(calls,/delivery_queued===true/,
