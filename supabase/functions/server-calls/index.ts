@@ -111,12 +111,6 @@ async function sendRecipientPush(db:any,recipientUserId:string,callId:string,cal
  }
  return {sent,configured:true,failures};
 }
-async function expireStaleRingingCalls(db:any) {
- const now=new Date().toISOString();
- await db.from("server_calls").update({state:"missed",ended_at:now,updated_at:now})
-  .in("state",["ringing","connecting"]).not("expires_at","is",null).lt("expires_at",now);
-}
-
 Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS") return new Response("ok",{headers:cors});
  if(req.method!=="POST") return out({error:"METHOD_NOT_ALLOWED"},405);
@@ -131,10 +125,8 @@ Deno.serve(async(req:Request)=>{
  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
  const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",session.user_id).maybeSingle();
  if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
- await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
-  await expireStaleRingingCalls(db);
   if(action==="register_push_token"){
    const pushToken=typeof b.push_token==="string"?b.push_token.trim():"";
    const platform=typeof b.platform==="string"?b.platform:"";
@@ -255,14 +247,17 @@ Deno.serve(async(req:Request)=>{
    if(callId)q=q.eq("id",callId);
    const {data:calls,error}=await q;if(error)return out({error:"CALL_POLL_FAILED"},503);
    let signals:unknown[]=[];
+   const after=Number.isSafeInteger(b.after_seq)&&Number(b.after_seq)>=0?Number(b.after_seq):0;
+   let nextAfterSeq=after;
    if(callId){
-    const after=Number.isSafeInteger(b.after_seq)&&Number(b.after_seq)>=0?Number(b.after_seq):0;
     const {data:s,error:se}=await db.from("server_call_signals").select("seq,from_user_id,kind,payload,created_at").eq("call_id",callId).gt("seq",after).order("seq",{ascending:true}).limit(100);
-    if(se)return out({error:"SIGNAL_POLL_FAILED"},503);const rows=s||[];signals=rows.filter((x:any)=>x.from_user_id!==uid);
+    if(se)return out({error:"SIGNAL_POLL_FAILED"},503);
+    const rows=s||[];
+    signals=rows.filter((x:any)=>x.from_user_id!==uid);
+    if(rows.length)nextAfterSeq=Number(rows[rows.length-1].seq)||after;
    }
-   const rows=(signals as any[]);const call=callId?(calls||[]).find((x:any)=>x.id===callId)||null:null;
-   const {data:allSignals}=callId?await db.from("server_call_signals").select("seq").eq("call_id",callId).gt("seq",Number(b.after_seq)||0).order("seq",{ascending:true}).limit(100):{data:[]};
-   return out({calls:calls||[],call,signals,next_after_seq:allSignals?.length?allSignals[allSignals.length-1].seq:(Number(b.after_seq)||0)});
+   const call=callId?(calls||[]).find((x:any)=>x.id===callId)||null:null;
+   return out({calls:calls||[],call,signals,next_after_seq:nextAfterSeq});
   }
   if(action==="answer"||action==="accept"||action==="hangup"||action==="end"||action==="set_active"){
    const callId=typeof b.call_id==="string"?b.call_id:"";if(!callId)return out({error:"CALL_ID_REQUIRED"},400);
