@@ -634,7 +634,9 @@ assert.match(calls,/invitation_text:smsBody/,"the backend returns a secure share
 assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
 assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations use the system share sheet rather than forcing SMS");
-assert.doesNotMatch(androidMain,/private fun notifyCarrierFallback|Try a normal carrier call|charges may apply/,"Android must not offer a paid cellular fallback when Server calling fails");
+assert.match(androidMain,/Try carrier flash call/,"Android offers the caller a SIM-based carrier fallback when Server cannot reach the recipient");
+assert.match(androidMain,/Standard call charges may apply/,"Android warns that carrier attempts are operator-dependent and may be chargeable");
+assert.doesNotMatch(androidCarrierDialer,/Intent\\.ACTION_CALL/,"the carrier fallback never silently places the call");
 assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
 assert.match(androidMain,/no background wake job or accepted push was confirmed/,"the caller is told when no durable wake job or provider acceptance exists");
 assert.match(androidMain,/background wake job is queued/,"the caller is told when its wake job is queued but not delivered");
