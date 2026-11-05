@@ -599,11 +599,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         setStatus("The secure guest invitation is ready to share. The recipient needs internet and microphone access to answer.")
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
+        val queued = pushDelivery?.optBoolean("queued", false) ?: false
         val submitted = pushDelivery?.optInt("sent", 0) ?: 0
-        if (submitted > 0) {
+        if (queued) {
+          setStatus("Call created and its background wake job is durably queued. Delivery is not confirmed; the recipient still needs an internet connection and a registered push endpoint or an active Server listener.")
+        } else if (submitted > 0) {
           setStatus("The push provider accepted an incoming-call alert request. Delivery is not confirmed; waiting for the recipient to answer.")
         } else {
-          setStatus("Call created, but no push provider accepted a wake alert. An already-active Server listener may still receive it; otherwise the recipient must reconnect or open Server. Carrier offline wake-up is not enabled.", true)
+          setStatus("Call created, but no background wake job or accepted push was confirmed. An already-active Server listener may still receive it; otherwise the recipient must reconnect or open Server. Carrier offline wake-up is not enabled.", true)
         }
         returnToSystemPhoneUi()
       }
