@@ -374,7 +374,7 @@ assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backen
 assert.match(androidTests,/launcherShowsServerIdFirstOnboardingWithoutSimPermissions/);
 const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-17-platform-matrix:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
 assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every Android 10–17 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
-assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 15"), "every Android 10–17 API must execute all 15 acceptance tests without skipped or failed tests");
+assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 16"), "every Android 10–17 API must execute all 16 acceptance tests without skipped or failed tests");
 assert.ok(androidVersionMatrix.includes('if [ "${{ matrix.api-level }}" = "37" ]; then sh scripts/android17-16kb-acceptance.sh && sh scripts/recover-android17-system-server.sh; fi'), "Android 17 validation and one permitted system-server recovery run as a single POSIX shell command inside the emulator runner");
 assert.match(android17Acceptance,/getconf PAGE_SIZE/);
 assert.match(android17Acceptance,/16384/);
@@ -485,8 +485,12 @@ assert.match(androidSetup,/READ_PHONE_STATE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\)/,
   "Telecom ringback is requested only for a real Server recipient, never for a manual guest share");
-assert.match(androidEngine,/put\("source", "android_telecom"\)/,
-  "system Phone calls identify their origin so the backend can use the explicit native guest-share route");
+assert.match(androidEngine,/toStartPayload\("android_telecom"\)/,
+  "system Phone calls use the explicit native source payload when creating a backend call");
+assert.match(androidEngine,/two_way_audio_media_ready/);
+assert.match(androidEngine,/remote_audio_track_received/);
+assert.match(androidTests,/webRtcPeersExchangeAudioTracksAndConnectOnAndroidDevice/,
+  "Android instrumentation negotiates two WebRTC peers, exchanges audio tracks and reaches ICE CONNECTED");
 assert.match(androidMain,/if \(pendingSystemDialerReturn\) payload\.put\("source", "android_telecom"\)/,
   "the legacy Android Phone intent bridge must use the same backend no-guest route guard");
 assert.match(androidEngine,/ServerGuestInviteNotifications\.show\(context, callId\.orEmpty\(\), target, invitation\)/,
@@ -744,8 +748,8 @@ assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArgu
   "Android 12 and Android 16 run the complete shared instrumentation suite");
 assert.ok(androidTests.includes("fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings"));
 assert.ok(androidTests.includes("fun missedServerCallNotificationOffersQuietCallbackAction"));
-assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --expected-tests 15"),
-  "the main API 34 emulator must execute all 15 acceptance tests without skips or failures");
+assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --expected-tests 16"),
+  "the main API 34 emulator must execute all 16 acceptance tests without skips or failures");
 
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);

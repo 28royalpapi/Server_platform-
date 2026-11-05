@@ -90,6 +90,12 @@ internal class ServerTelecomCallEngine(
   private var route = "server"
   private var lastSeq = 0L
   private var activeStateSyncedFor: String? = null
+  private var iceConnected = false
+  private var remoteAudioTrackReady = false
+  private var lastMediaSyncAttemptAt = 0L
+  private var sentIceCandidates = 0
+  private var receivedIceCandidates = 0
+  private var rejectedIceCandidates = 0
   private var peer: PeerConnection? = null
   private var peerFactory: PeerConnectionFactory? = null
   private var audioSource: AudioSource? = null
@@ -291,6 +297,7 @@ internal class ServerTelecomCallEngine(
       while (currentCoroutineContext().isActive && !disposed && !callId.isNullOrBlank()) {
         try {
           val id = callId ?: break
+          if (iceConnected && remoteAudioTrackReady) syncMediaConnected()
           val response = api("poll", JSONObject().put("call_id", id).put("after_seq", lastSeq))
           val signals = response.optJSONArray("signals") ?: JSONArray()
           for (index in 0 until signals.length()) {
@@ -326,23 +333,21 @@ internal class ServerTelecomCallEngine(
       "offer" -> {
         if (peer == null) preparePeer(iceServers)
         setRemoteDescription(signal.optJSONObject("payload") ?: JSONObject())
-        pendingIce.toList().forEach { peer?.addIceCandidate(it) }
-        pendingIce.clear()
+        applyPendingIceCandidates()
         val answer = createLocalDescription(offer = false)
         val id = callId ?: return
         api("signal", JSONObject().put("call_id", id).put("kind", "answer").put("payload", answer))
       }
       "answer" -> {
         setRemoteDescription(signal.optJSONObject("payload") ?: JSONObject())
-        pendingIce.toList().forEach { peer?.addIceCandidate(it) }
-        pendingIce.clear()
+        applyPendingIceCandidates()
       }
       "ice" -> {
         val payload = signal.optJSONObject("payload") ?: return
         val candidate = payload.optString("candidate")
         if (candidate.isNotBlank()) {
           val ice = IceCandidate(payload.optString("sdpMid"), payload.optInt("sdpMLineIndex"), candidate)
-          if (peer?.remoteDescription != null) peer?.addIceCandidate(ice) else pendingIce.add(ice)
+          if (peer?.remoteDescription != null) addRemoteIceCandidate(ice) else pendingIce.add(ice)
         }
       }
       "hangup" -> {
@@ -359,7 +364,48 @@ internal class ServerTelecomCallEngine(
     }
   }
 
+  private fun addRemoteIceCandidate(candidate: IceCandidate) {
+    val accepted = peer?.addIceCandidate(candidate) == true
+    if (accepted) {
+      receivedIceCandidates += 1
+      recordStage("remote_ice_candidate_added")
+    } else {
+      rejectedIceCandidates += 1
+      Log.w(TAG, "WebRTC rejected a remote ICE candidate")
+      recordStage("remote_ice_candidate_rejected")
+    }
+  }
+
+  private fun applyPendingIceCandidates() {
+    val queued = pendingIce.toList()
+    pendingIce.clear()
+    queued.forEach(::addRemoteIceCandidate)
+  }
+
+  private suspend fun syncMediaConnected() {
+    if (disposed || !iceConnected || !remoteAudioTrackReady) return
+    val id = callId ?: return
+    connection.markConnected()
+    if (activeStateSyncedFor == id) return
+    val now = System.currentTimeMillis()
+    if (now - lastMediaSyncAttemptAt < 5_000L) return
+    lastMediaSyncAttemptAt = now
+    try {
+      api("set_active", JSONObject().put("call_id", id))
+      activeStateSyncedFor = id
+      recordStage("two_way_audio_media_ready")
+    } catch (error: Exception) {
+      val code = (error as? ServerCallApiException)?.errorCode ?: "STATE_SYNC_FAILED"
+      Log.w(TAG, "Two-way audio connected but call-state sync failed: " + code)
+      recordStage("media_state_sync_retry")
+    }
+  }
+
   private suspend fun preparePeer(serversJson: JSONArray) {
+    iceConnected = false
+    remoteAudioTrackReady = false
+    lastMediaSyncAttemptAt = 0L
+    activeStateSyncedFor = null
     if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
       throw IllegalStateException("Microphone permission is required for Server calls.")
     }
@@ -523,6 +569,9 @@ internal class ServerTelecomCallEngine(
     try { audioModule?.release() } catch (_: Exception) {}
     audioModule = null
     activeStateSyncedFor = null
+    iceConnected = false
+    remoteAudioTrackReady = false
+    lastMediaSyncAttemptAt = 0L
     try { (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}
   }
 
@@ -535,23 +584,24 @@ internal class ServerTelecomCallEngine(
   }
 
   override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
-    // WebRTC observer callbacks may arrive on a native signalling thread. Serialize
-    // all Android Telecom Connection state changes and backend state transitions
-    // through the engine's main-thread coroutine.
+    // ICE connectivity alone is not a successful voice call. The remote audio
+    // track must also arrive before Telecom and the backend report ACTIVE.
     scope.launch {
       if (disposed) return@launch
       when (state) {
         PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
-          val id = callId ?: return@launch
-          connection.markConnected()
-          if (activeStateSyncedFor != id) {
-            activeStateSyncedFor = id
-            try { api("set_active", JSONObject().put("call_id", id)) }
-            catch (error: Exception) { Log.w(TAG, "Could not sync active Server call: " + error.javaClass.simpleName) }
-          }
+          iceConnected = true
+          recordStage("ice_transport_connected")
+          syncMediaConnected()
+        }
+        PeerConnection.IceConnectionState.DISCONNECTED -> {
+          iceConnected = false
+          recordStage("ice_transport_disconnected")
         }
         PeerConnection.IceConnectionState.FAILED -> {
-          failCall("Server could not establish WebRTC audio on this network. A TURN relay may be required.")
+          iceConnected = false
+          recordStage("ice_transport_failed")
+          failCall("Server could not establish a peer-to-peer ICE path on this network. This network may require a TURN relay.")
         }
         else -> Unit
       }
@@ -564,14 +614,24 @@ internal class ServerTelecomCallEngine(
       try {
         api("signal", JSONObject().put("call_id", id).put("kind", "ice").put("payload", JSONObject()
           .put("candidate", candidate.sdp).put("sdpMid", candidate.sdpMid).put("sdpMLineIndex", candidate.sdpMLineIndex)))
+        sentIceCandidates += 1
       } catch (error: Exception) {
-        Log.w(TAG, "Could not submit ICE candidate: " + error.javaClass.simpleName)
+        val code = (error as? ServerCallApiException)?.errorCode ?: "ICE_SIGNAL_FAILED"
+        Log.w(TAG, "Could not submit an ICE candidate: " + code)
+        recordStage("ice_signal_failed")
       }
     }
   }
 
   override fun onAddTrack(receiver: RtpReceiver, mediaStreams: Array<out org.webrtc.MediaStream>) {
-    (receiver.track() as? AudioTrack)?.setEnabled(true)
+    val track = receiver.track() as? AudioTrack ?: return
+    track.setEnabled(true)
+    scope.launch {
+      if (disposed) return@launch
+      remoteAudioTrackReady = true
+      recordStage("remote_audio_track_received")
+      syncMediaConnected()
+    }
   }
   override fun onSignalingChange(state: PeerConnection.SignalingState) {}
   override fun onIceConnectionReceivingChange(receiving: Boolean) {}

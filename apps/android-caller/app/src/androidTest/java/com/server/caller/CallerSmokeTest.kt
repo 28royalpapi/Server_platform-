@@ -24,12 +24,23 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import org.junit.Test
+import org.webrtc.AudioTrack
+import org.webrtc.DataChannel
+import org.webrtc.IceCandidate
+import org.webrtc.MediaConstraints
+import org.webrtc.PeerConnection
+import org.webrtc.PeerConnectionFactory
+import org.webrtc.RtpReceiver
+import org.webrtc.SdpObserver
+import org.webrtc.SessionDescription
+import org.webrtc.audio.JavaAudioDeviceModule
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.Collections
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
@@ -1029,6 +1040,164 @@ class CallerSmokeTest {
       if (previousMarker == null) edit.remove("debug_last_telecom_hangup_call_id")
       else edit.putString("debug_last_telecom_hangup_call_id", previousMarker)
       edit.commit()
+    }
+  }
+
+  @Test fun webRtcPeersExchangeAudioTracksAndConnectOnAndroidDevice() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val hadMicPermission = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+      android.content.pm.PackageManager.PERMISSION_GRANTED
+    if (!hadMicPermission) runShellCommand("pm grant ${context.packageName} android.permission.RECORD_AUDIO")
+
+    val remoteAudioA = CountDownLatch(1)
+    val remoteAudioB = CountDownLatch(1)
+    val connectedA = CountDownLatch(1)
+    val connectedB = CountDownLatch(1)
+    val gatheredA = CountDownLatch(1)
+    val gatheredB = CountDownLatch(1)
+    val pendingForA = Collections.synchronizedList(mutableListOf<IceCandidate>())
+    val pendingForB = Collections.synchronizedList(mutableListOf<IceCandidate>())
+    val peerARef = AtomicReference<PeerConnection?>()
+    val peerBRef = AtomicReference<PeerConnection?>()
+
+    fun observer(
+      remotePeer: AtomicReference<PeerConnection?>,
+      pending: MutableList<IceCandidate>,
+      remoteAudio: CountDownLatch,
+      connected: CountDownLatch,
+      gatheringComplete: CountDownLatch
+    ) = object : PeerConnection.Observer {
+      override fun onSignalingChange(state: PeerConnection.SignalingState) {}
+      override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+        if (state == PeerConnection.IceConnectionState.CONNECTED ||
+            state == PeerConnection.IceConnectionState.COMPLETED) connected.countDown()
+      }
+      override fun onIceConnectionReceivingChange(receiving: Boolean) {}
+      override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
+        if (state == PeerConnection.IceGatheringState.COMPLETE) gatheringComplete.countDown()
+      }
+      override fun onIceCandidate(candidate: IceCandidate) {
+        val target = remotePeer.get()
+        if (target != null && target.remoteDescription != null) {
+          target.addIceCandidate(candidate)
+        } else {
+          pending.add(candidate)
+        }
+      }
+      override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) {}
+      override fun onAddStream(stream: org.webrtc.MediaStream) {
+        if (stream.audioTracks.isNotEmpty()) remoteAudio.countDown()
+      }
+      override fun onRemoveStream(stream: org.webrtc.MediaStream) {}
+      override fun onDataChannel(dataChannel: DataChannel) {}
+      override fun onRenegotiationNeeded() {}
+      override fun onAddTrack(receiver: RtpReceiver, mediaStreams: Array<out org.webrtc.MediaStream>) {
+        (receiver.track() as? AudioTrack)?.setEnabled(true)
+        if (receiver.track()?.kind() == "audio") remoteAudio.countDown()
+      }
+    }
+
+    var audioModule: JavaAudioDeviceModule? = null
+    var factory: PeerConnectionFactory? = null
+    var sourceA: org.webrtc.AudioSource? = null
+    var sourceB: org.webrtc.AudioSource? = null
+    var trackA: AudioTrack? = null
+    var trackB: AudioTrack? = null
+    var peerA: PeerConnection? = null
+    var peerB: PeerConnection? = null
+
+    fun createDescription(peer: PeerConnection, offer: Boolean): SessionDescription {
+      val latch = CountDownLatch(1)
+      val value = AtomicReference<SessionDescription?>()
+      val failure = AtomicReference<String?>()
+      val callback = object : SdpObserver {
+        override fun onCreateSuccess(description: SessionDescription) {
+          value.set(description)
+          latch.countDown()
+        }
+        override fun onSetSuccess() {}
+        override fun onCreateFailure(error: String) { failure.set(error); latch.countDown() }
+        override fun onSetFailure(error: String) { failure.set(error); latch.countDown() }
+      }
+      if (offer) peer.createOffer(callback, MediaConstraints())
+      else peer.createAnswer(callback, MediaConstraints())
+      assertTrue("WebRTC did not create ${if (offer) "an offer" else "an answer"}", latch.await(10, TimeUnit.SECONDS))
+      assertEquals("SDP creation failed", null, failure.get())
+      return value.get() ?: throw AssertionError("WebRTC returned no SDP")
+    }
+
+    fun setDescription(peer: PeerConnection, description: SessionDescription, local: Boolean) {
+      val latch = CountDownLatch(1)
+      val failure = AtomicReference<String?>()
+      val callback = object : SdpObserver {
+        override fun onCreateSuccess(p0: SessionDescription?) {}
+        override fun onSetSuccess() { latch.countDown() }
+        override fun onCreateFailure(error: String) { failure.set(error); latch.countDown() }
+        override fun onSetFailure(error: String) { failure.set(error); latch.countDown() }
+      }
+      if (local) peer.setLocalDescription(callback, description)
+      else peer.setRemoteDescription(callback, description)
+      assertTrue("WebRTC did not set ${if (local) "local" else "remote"} SDP", latch.await(10, TimeUnit.SECONDS))
+      assertEquals("SDP application failed", null, failure.get())
+    }
+
+    try {
+      PeerConnectionFactory.initialize(
+        PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions()
+      )
+      audioModule = JavaAudioDeviceModule.builder(context).createAudioDeviceModule()
+      factory = PeerConnectionFactory.builder().setAudioDeviceModule(audioModule).createPeerConnectionFactory()
+      val config = PeerConnection.RTCConfiguration(emptyList()).apply {
+        sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+      }
+      val observerA = observer(peerBRef, pendingForB, remoteAudioA, connectedA, gatheredA)
+      val observerB = observer(peerARef, pendingForA, remoteAudioB, connectedB, gatheredB)
+      peerA = factory!!.createPeerConnection(config, observerA)
+      peerB = factory!!.createPeerConnection(config, observerB)
+      assertNotNull("First WebRTC peer was not created", peerA)
+      assertNotNull("Second WebRTC peer was not created", peerB)
+      peerARef.set(peerA)
+      peerBRef.set(peerB)
+
+      sourceA = factory!!.createAudioSource(MediaConstraints())
+      sourceB = factory!!.createAudioSource(MediaConstraints())
+      trackA = factory!!.createAudioTrack("server-audio-a", sourceA)
+      trackB = factory!!.createAudioTrack("server-audio-b", sourceB)
+      trackA!!.setEnabled(true)
+      trackB!!.setEnabled(true)
+      assertNotNull("First peer rejected its local audio track", peerA!!.addTrack(trackA, listOf("server-audio-a")))
+      assertNotNull("Second peer rejected its local audio track", peerB!!.addTrack(trackB, listOf("server-audio-b")))
+
+      val offer = createDescription(peerA!!, true)
+      setDescription(peerA!!, offer, true)
+      assertTrue("First peer did not complete ICE gathering", gatheredA.await(15, TimeUnit.SECONDS))
+      val gatheredOffer = peerA!!.localDescription ?: offer
+      setDescription(peerB!!, gatheredOffer, false)
+      synchronized(pendingForB) { pendingForB.toList().forEach { peerB!!.addIceCandidate(it) }; pendingForB.clear() }
+
+      val answer = createDescription(peerB!!, false)
+      setDescription(peerB!!, answer, true)
+      assertTrue("Second peer did not complete ICE gathering", gatheredB.await(15, TimeUnit.SECONDS))
+      val gatheredAnswer = peerB!!.localDescription ?: answer
+      setDescription(peerA!!, gatheredAnswer, false)
+      synchronized(pendingForA) { pendingForA.toList().forEach { peerA!!.addIceCandidate(it) }; pendingForA.clear() }
+
+      assertTrue("First peer never reached ICE CONNECTED/COMPLETED", connectedA.await(25, TimeUnit.SECONDS))
+      assertTrue("Second peer never reached ICE CONNECTED/COMPLETED", connectedB.await(25, TimeUnit.SECONDS))
+      assertTrue("First peer never received the remote audio track", remoteAudioA.await(10, TimeUnit.SECONDS))
+      assertTrue("Second peer never received the remote audio track", remoteAudioB.await(10, TimeUnit.SECONDS))
+      assertTrue("Both sides must have local audio tracks enabled", trackA!!.enabled() && trackB!!.enabled())
+    } finally {
+      try { peerA?.close() } catch (_: Exception) {}
+      try { peerB?.close() } catch (_: Exception) {}
+      trackA?.dispose()
+      trackB?.dispose()
+      sourceA?.dispose()
+      sourceB?.dispose()
+      factory?.dispose()
+      audioModule?.release()
+      if (!hadMicPermission) runShellCommand("pm revoke ${context.packageName} android.permission.RECORD_AUDIO")
     }
   }
 
