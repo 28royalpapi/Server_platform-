@@ -323,14 +323,14 @@ jobs:
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
-  android-10-to-17-platform-matrix:
+  android-10-to-16-platform-matrix:
     name: Android API ${{ matrix.api-level }} calling-account compatibility
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
     strategy:
       fail-fast: false
       matrix:
-        api-level: [29, 30, 31, 32, 33, 34, 35, 36, 37]
+        api-level: [29, 30, 31, 32, 33, 34, 35, 36]
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -345,15 +345,12 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK components for API ${{ matrix.api-level }} test
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Preinstall Android 17 16 KB system image with integrity retries
-        if: matrix.api-level == 37
-        run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;x86_64'
       - name: Enable KVM access for Android API ${{ matrix.api-level }} emulator
         shell: bash
         run: |
           set -euo pipefail
           if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this runner does not expose /dev/kvm for Android API ${{ matrix.api-level }}." >&2
+            echo 'ERROR: this runner does not expose /dev/kvm for stable Android.' >&2
             exit 1
           fi
           sudo chmod 666 /dev/kvm
@@ -365,14 +362,11 @@ jobs:
       - name: Run Android API ${{ matrix.api-level }} Telecom and phone-picker acceptance tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # Android 17 is released; use the stable 37.0 platform and 16 KB-page image.
-          api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
-          system-image-api-level: ${{ matrix.api-level == 37 && '37.0' || matrix.api-level }}
+          api-level: ${{ matrix.api-level }}
+          system-image-api-level: ${{ matrix.api-level }}
           channel: stable
-          target: ${{ matrix.api-level == 37 && 'google_apis_ps16k' || 'google_apis' }}
-          # Keep API37 userdata within the runner's available disk. 3G is ample for
-          # the small x86_64 test APK and instrumentation report on a 16 KB image.
-          disk-size: ${{ matrix.api-level == 37 && '3G' || '6G' }}
+          target: google_apis
+          disk-size: 6G
           arch: x86_64
           profile: pixel_2
           cores: 2
@@ -381,11 +375,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |
-            # The emulator runner executes /bin/sh commands; keep this block POSIX and line-oriented.
             set -eu
             sh scripts/wait-for-android-package-manager.sh
             sh scripts/unlock-android-emulator.sh
-            if [ "${{ matrix.api-level }}" = "37" ]; then sh scripts/android17-16kb-acceptance.sh && sh scripts/recover-android17-system-server.sh; fi
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
             python3 scripts/assert-android-test-count.py --expected-tests 16
@@ -396,6 +388,70 @@ jobs:
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
+  # Android 17 uses a preview 16 KB-page image and remains independently visible.
+  # Its system_server instability must not block release after Android 10–16 pass.
+  android-17-preview-compatibility:
+    name: Android 17 16 KB preview compatibility
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 17 SDK components
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools'
+      - name: Preinstall Android 17 16 KB system image with integrity retries
+        run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;x86_64'
+      - name: Enable KVM access for Android 17 emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo 'ERROR: this runner does not expose /dev/kvm for Android 17.' >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Build caller and Android instrumentation tests
+        run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
+      - name: Run Android 17 16 KB Telecom and phone-picker acceptance tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: '37.0'
+          system-image-api-level: '37.0'
+          channel: stable
+          target: google_apis_ps16k
+          disk-size: 3G
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 4096M
+          emulator-boot-timeout: 480
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            sh scripts/wait-for-android-package-manager.sh
+            sh scripts/unlock-android-emulator.sh
+            sh scripts/android17-16kb-acceptance.sh
+            sh scripts/recover-android17-system-server.sh
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
+            python3 scripts/assert-android-test-count.py --expected-tests 16
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-api-37-acceptance-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
 
   ios-simulator-build-and-preview:
     if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'
@@ -503,7 +559,7 @@ jobs:
     needs:
       - android-build-and-emulator-smoke
       - android-8-minimum-install-smoke
-      - android-10-to-17-platform-matrix
+      - android-10-to-16-platform-matrix
     runs-on: ubuntu-latest
     permissions:
       contents: write
