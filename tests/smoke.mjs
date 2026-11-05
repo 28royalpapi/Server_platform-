@@ -6,6 +6,7 @@ const read = (p) => readFileSync(resolve(root,p),"utf8");
 const migration=read("supabase/migrations/20261021114947_server_backend_schema.sql");
 const pushMigration=read("supabase/migrations/20261101175446_server_push_devices_and_call_expiry.sql");
 const schedulerMigration=read("supabase/migrations/20261021121000_server_maintenance_scheduler.sql");
+const callExpiryMigration=read("supabase/migrations/20261105102434_server_call_expiry_reconciliation.sql");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
@@ -83,6 +84,14 @@ assert.match(calls,/CALL_MEMBERS_CREATE_FAILED/,
   "call creation must fail closed instead of leaving a call without its required membership rows");
 assert.match(schedulerMigration,/cron\.schedule\('server-maintenance-every-5-minutes'/,
   "expiry and maintenance work must be handled by the scheduled maintenance worker");
+assert.match(callExpiryMigration,/server_calls_unanswered_expiry_idx/,
+  "unanswered call expiry must be indexed outside the API request path");
+assert.match(callExpiryMigration,/expires_at <= now\(\)/,
+  "the maintenance worker must reconcile calls at their own configured expiry");
+assert.match(callExpiryMigration,/cron\.schedule\('server-maintenance-every-minute'/,
+  "call expiry is reconciled on a one-minute background schedule");
+assert.match(calls,/state\.eq\.missed,expires_at\.gt\./,
+  "incoming-call lookup must never ring a call after its expiry, even before the cron sweep runs");
 assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.single\(\)/,
   "call creation responses must not include a callee phone number or internal user UUID");
 assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.or\("caller_user_id\.eq\."\+uid/,
