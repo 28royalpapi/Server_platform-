@@ -45,6 +45,15 @@ android {
     versionName = "0.1.0"
     resourceConfigurations += listOf("en")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    // The Android Gradle plugin resolves prebuilt AAR native libraries from
+    // the defaultConfig ABI set. Apply the selected debug target here as well
+    // as on the debug build type so arm64 WebRTC libraries are packaged.
+    if (serverDebugAbiFilters.isNotEmpty()) {
+      ndk {
+        abiFilters.clear()
+        abiFilters.addAll(serverDebugAbiFilters)
+      }
+    }
     val projectUrl = providers.gradleProperty("SERVER_SUPABASE_URL").orElse("https://hzuovekqsjtpvmbuybxs.supabase.co").get()
     val publishableKey = providers.gradleProperty("SERVER_SUPABASE_PUBLISHABLE_KEY").orElse("sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E").get()
     buildConfigField("String", "SUPABASE_URL", "\"${projectUrl}\"")
@@ -75,7 +84,10 @@ android {
     debug {
       applicationIdSuffix = ".debug"
       if (serverDebugAbiFilters.isNotEmpty()) {
-        ndk { abiFilters.addAll(serverDebugAbiFilters) }
+        ndk {
+          abiFilters.clear()
+          abiFilters.addAll(serverDebugAbiFilters)
+        }
       }
     }
     release {
@@ -86,8 +98,12 @@ android {
       // The debug signer is only a local fallback; CI never publishes that APK.
       signingConfig = if (hasPersistentServerSigning) signingConfigs.getByName("serverPreview")
         else signingConfigs.getByName("debug")
-      // Avoid shipping x86 emulator libraries in the phone installer.
-      ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+      // Release builds always target real phones, independent of the debug
+      // ABI requested by the CI job (which may be x86_64 for emulators).
+      ndk {
+        abiFilters.clear()
+        abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
+      }
     }
   }
   compileOptions {
