@@ -235,7 +235,7 @@ Deno.serve(async(req:Request)=>{
   return out({ok:true,call_id:call.id,route,ice_servers:callIceServers,call,call_expires_at:expiresAt,push_delivery:pushDelivery});
  }
  if(action==="incoming"){
-   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
+   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).or("state.eq.missed,expires_at.gt."+new Date().toISOString()).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
    const {data:profiles}=ids.length?await db.from("server_profiles")
