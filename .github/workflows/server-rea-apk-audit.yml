@@ -117,8 +117,9 @@ jobs:
             }
           done
 
-          unzip -l "$APK" | grep -Fq 'lib/arm64-v8a/libjingle_peerconnection_so.so'
-          unzip -l "$APK" | grep -Fq 'lib/x86_64/libjingle_peerconnection_so.so'
+          unzip -l "$APK" > artifacts/rea-caller-apk-entries.txt
+          grep -Fq 'lib/arm64-v8a/libjingle_peerconnection_so.so' artifacts/rea-caller-apk-entries.txt
+          grep -Fq 'lib/x86_64/libjingle_peerconnection_so.so' artifacts/rea-caller-apk-entries.txt
           echo 'REA_TELECOM_WEBRTC_GUEST_PASS: compiled Android classes, guest handoff, and both phone/emulator WebRTC libraries are present.'
 
       - name: Upload compiled APKs and REA evidence
@@ -129,6 +130,7 @@ jobs:
           path: |
             artifacts/rea-*.json
             artifacts/rea-*-dex-strings.txt
+            artifacts/rea-caller-apk-entries.txt
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: warn
