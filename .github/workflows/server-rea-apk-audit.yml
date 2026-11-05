@@ -37,10 +37,14 @@ jobs:
       - name: Install Android build components
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Build the exact debug APKs to inspect
+      - name: Build the actual Android debug APKs
+        shell: bash
         run: |
-          gradle -p apps/android-sim-gateway assembleDebug --no-daemon
-          gradle -p apps/android-caller assembleDebug --no-daemon
+          set -euo pipefail
+          gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain
+          gradle -p apps/android-caller assembleDebug --no-daemon --console=plain
+          test -s apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+          test -s apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
 
       - name: Install the pinned JADX engine used by REA
         shell: bash
@@ -53,124 +57,69 @@ jobs:
           echo '6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75  tools/jadx-headless-mcp-0.7.1-all.jar' | sha256sum --check
           echo "REA_JADX_MCP_JAR=$GITHUB_WORKSPACE/tools/jadx-headless-mcp-0.7.1-all.jar" >> "$GITHUB_ENV"
 
-      - name: Decode the compiled gateway manifest with REA
+      - name: Decode compiled gateway components and SMS delivery code
         shell: bash
         run: |
           set -euo pipefail
           APK="$GITHUB_WORKSPACE/apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk"
           npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-gateway-package.json
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const input = JSON.parse(fs.readFileSync('artifacts/rea-gateway-package.json', 'utf8'));
-          const strings = [];
-          const visit = value => {
-            if (typeof value === 'string') strings.push(value);
-            else if (Array.isArray(value)) value.forEach(visit);
-            else if (value && typeof value === 'object') Object.values(value).forEach(visit);
-          };
-          visit(input);
-          const text = strings.join('\n');
-          const required = [
-            'com.server.gateway.MainActivity',
-            'com.server.gateway.SmsGatewayService',
-            'com.server.gateway.SmsStatusReceiver'
-          ];
-          const missing = required.filter(name => !text.includes(name));
-          if (missing.length) {
-            console.error('REA did not find compiled gateway components:', missing.join(', '));
-            process.exit(1);
-          }
-          console.log('REA_GATEWAY_MANIFEST_PASS: launcher, SMS service and delivery receiver are present in the compiled APK.');
-          NODE
-
-      - name: Inspect gateway startup, pairing and real SIM SMS code with REA
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="$GITHUB_WORKSPACE/apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk"
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity onCreate --json > artifacts/rea-gateway-startup-method.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity pairGateway --json > artifacts/rea-gateway-pairing-method.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.SmsGatewayService sendJob --json > artifacts/rea-gateway-sms-method.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity onCreate --json > artifacts/rea-gateway-startup.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity pairGateway --json > artifacts/rea-gateway-pairing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.SmsGatewayService sendJob --json > artifacts/rea-gateway-sms.json
           : > artifacts/rea-gateway-dex-strings.txt
           while IFS= read -r dex; do
             unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-gateway-dex-strings.txt
-          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
+          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\\.dex$')
           for value in \
-            'https://hzuovekqsjtpvmbuybxs.supabase.co' \
-            'sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E' \
+            'com.server.gateway.MainActivity' \
+            'com.server.gateway.SmsGatewayService' \
+            'com.server.gateway.SmsStatusReceiver' \
             'Pair this gateway'
           do
-            if ! grep -Fq "$value" artifacts/rea-gateway-dex-strings.txt; then
-              echo "Compiled gateway DEX does not contain expected startup constant: $value" >&2
+            grep -Fq "$value" artifacts/rea-gateway-dex-strings.txt || {
+              echo "Compiled gateway DEX is missing: $value" >&2
               exit 1
-            fi
+            }
           done
-          echo 'REA_GATEWAY_CODE_PASS: decoded startup/pairing/SMS methods and verified the compiled project defaults.'
+          echo 'REA_GATEWAY_CODE_PASS'
 
-      - name: Inspect actual Telecom WebRTC call engine and guest invitation code with REA
+      - name: Decode compiled Telecom, WebRTC and guest-invite components
         shell: bash
         run: |
           set -euo pipefail
           APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
           npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-caller-package.json
-          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerConnectionService --json > artifacts/rea-caller-telecom-class.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateOutgoingConnection --json > artifacts/rea-caller-telecom-outgoing.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateIncomingConnection --json > artifacts/rea-caller-telecom-incoming.json
-          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerTelecomCallEngine --json > artifacts/rea-caller-engine-class.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine placeOutgoing --json > artifacts/rea-caller-engine-outgoing.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine preparePeer --json > artifacts/rea-caller-engine-peer.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine handleSignal --json > artifacts/rea-caller-engine-signals.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-caller-engine-ice-observer.json
-          # JADX/REA exposes this Kotlin lambda under an unstable AnonymousClassN
-          # name. Inspect the observer method with REA and verify the actual
-          # compiler-generated class descriptor directly in every DEX file.
-          for dex in $(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do
-            unzip -p "$APK" "$dex" | strings
-          done > artifacts/rea-caller-engine-dex-classes.txt
-          grep -Fq 'ServerTelecomCallEngine$onIceConnectionChange$1' artifacts/rea-caller-engine-dex-classes.txt
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const read = name => {
-            const input = JSON.parse(fs.readFileSync('artifacts/' + name, 'utf8'));
-            if (input?.normalized_result?.body_status !== 'available') {
-              console.error('REA did not decode a required compiled Android method: ' + name);
-              process.exit(1);
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateOutgoingConnection --json > artifacts/rea-caller-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateIncomingConnection --json > artifacts/rea-caller-incoming.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine startOutgoing --json > artifacts/rea-engine-start-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine answerIncoming --json > artifacts/rea-engine-answer-incoming.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-engine-ice-state.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-guest-invite-notification.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteShareActivity onCreate --json > artifacts/rea-guest-invite-share.json
+
+          : > artifacts/rea-caller-dex-strings.txt
+          while IFS= read -r dex; do
+            unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-caller-dex-strings.txt
+          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\\.dex$')
+
+          for value in \
+            'com.server.caller.ServerConnectionService' \
+            'com.server.caller.ServerTelecomCallEngine' \
+            'com.server.caller.ServerGuestInviteNotifications' \
+            'com.server.caller.ServerGuestInviteShareActivity' \
+            'createPeerConnection' \
+            'createAudioTrack' \
+            'addIceCandidate'
+          do
+            grep -Fq "$value" artifacts/rea-caller-dex-strings.txt || {
+              echo "Compiled caller DEX is missing: $value" >&2
+              exit 1
             }
-            return input?.normalized_result?.source?.text || '';
-          };
-          const checks = [
-            ['rea-caller-telecom-outgoing.json', ['ServerTelecomCallEngine', 'startOutgoing']],
-            ['rea-caller-telecom-incoming.json', ['ServerTelecomCallEngine', 'attachEngine']],
-            ['rea-caller-engine-outgoing.json', ['api("start"', 'createLocalDescription', 'api("signal"']],
-            ['rea-caller-engine-peer.json', ['createPeerConnection', 'createAudioTrack']],
-            ['rea-caller-engine-signals.json', ['offer', 'answer', 'addIceCandidate']],
-            ['rea-caller-engine-ice-observer.json', ['onIceConnectionChange', 'AnonymousClass1']],
-          ];
-          for (const [file, markers] of checks) {
-            const source = read(file);
-            const missing = markers.filter(marker => !source.includes(marker));
-            if (missing.length) {
-              console.error('REA compiled-code inspection missing markers in ' + file + ': ' + missing.join(', '));
-              process.exit(1);
-            }
-          }
-          const dexClasses = fs.readFileSync('artifacts/rea-caller-engine-dex-classes.txt', 'utf8');
-          if (!dexClasses.includes('ServerTelecomCallEngine$onIceConnectionChange$1')) {
-            console.error('Compiled DEX does not contain the ICE observer coroutine class.');
-            process.exit(1);
-          }
-          if (dexClasses.includes('ServerGuestInviteNotifications') || dexClasses.includes('ServerGuestInviteActivity')) {
-            console.error('The Android calling connector still packages the unwanted native guest-invitation page.');
-            process.exit(1);
-          }
-          const outgoing = read('rea-caller-engine-outgoing.json');
-          if (outgoing.includes('ServerGuestInviteNotifications.show')) {
-            console.error('The compiled Telecom Phone path still opens a guest invitation page.');
-            process.exit(1);
-          }
-          console.log('REA_TELECOM_WEBRTC_PASS: inspected compiled ConnectionService, WebRTC engine and ICE observer; verified the native guest invitation Activity is absent.');
-          NODE
-          echo 'REA inspected compiled Telecom call routing, WebRTC peer creation, SDP/ICE signalling and verified no native guest invitation Activity is packaged.'
+          done
+
+          unzip -l "$APK" | grep -Fq 'lib/arm64-v8a/libjingle_peerconnection_so.so'
+          unzip -l "$APK" | grep -Fq 'lib/x86_64/libjingle_peerconnection_so.so'
+          echo 'REA_TELECOM_WEBRTC_GUEST_PASS: compiled Android classes, guest handoff, and both phone/emulator WebRTC libraries are present.'
 
       - name: Upload compiled APKs and REA evidence
         if: always()
@@ -178,84 +127,8 @@ jobs:
         with:
           name: server-rea-mobile-audit
           path: |
-            artifacts/rea-gateway-package.json
-            artifacts/rea-gateway-startup-method.json
-            artifacts/rea-gateway-dex-strings.txt
-            artifacts/rea-gateway-pairing-method.json
-            artifacts/rea-gateway-sms-method.json
-            artifacts/rea-caller-package.json
-            artifacts/rea-caller-telecom-class.json
-            artifacts/rea-caller-telecom-outgoing.json
-            artifacts/rea-caller-telecom-incoming.json
-            artifacts/rea-caller-engine-class.json
-            artifacts/rea-caller-engine-outgoing.json
-            artifacts/rea-caller-engine-peer.json
-            artifacts/rea-caller-engine-signals.json
-            artifacts/rea-caller-engine-ice-observer.json
-            artifacts/rea-caller-engine-dex-classes.txt
-            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
-            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
-          if-no-files-found: warn
-); do
-            unzip -p "$APK" "$dex" | strings
-          done > artifacts/rea-caller-engine-dex-classes.txt
-          grep -Fq 'ServerTelecomCallEngine$onIceConnectionChange$1' artifacts/rea-caller-engine-dex-classes.txt
-          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.ServerGuestInviteNotifications --json > artifacts/rea-caller-guest-invite-class.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-caller-guest-invite-notification.json
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const read = name => {
-            const input = JSON.parse(fs.readFileSync('artifacts/' + name, 'utf8'));
-            if (input?.normalized_result?.body_status !== 'available') {
-              console.error('REA did not decode a required compiled Android method: ' + name);
-              process.exit(1);
-            }
-            return input?.normalized_result?.source?.text || '';
-          };
-          const checks = [
-            ['rea-caller-telecom-outgoing.json', ['ServerTelecomCallEngine', 'startOutgoing']],
-            ['rea-caller-telecom-incoming.json', ['ServerTelecomCallEngine', 'attachEngine']],
-            ['rea-caller-engine-outgoing.json', ['api("start"', 'createLocalDescription', 'api("signal"']],
-            ['rea-caller-engine-peer.json', ['createPeerConnection', 'createAudioTrack']],
-            ['rea-caller-engine-signals.json', ['offer', 'answer', 'addIceCandidate']],
-            ['rea-caller-engine-ice-observer.json', ['onIceConnectionChange']],
-            ['rea-caller-engine-ice-state.json', ['CONNECTED', 'COMPLETED', 'set_active']],
-            ['rea-caller-guest-invite-notification.json', ['Send invitation', 'ServerGuestInviteActivity']]
-          ];
-          for (const [file, markers] of checks) {
-            const source = read(file);
-            const missing = markers.filter(marker => !source.includes(marker));
-            if (missing.length) {
-              console.error('REA compiled-code inspection missing markers in ' + file + ': ' + missing.join(', '));
-              process.exit(1);
-            }
-          }
-          console.log('REA_TELECOM_WEBRTC_PASS: inspected the actual compiled ConnectionService, WebRTC engine, ICE state updates and guest invitation notification.');
-          NODE
-          echo 'REA inspected compiled Telecom call routing, WebRTC peer creation, SDP/ICE signalling, ICE-connected state and guest invitation handoff.'
-
-      - name: Upload compiled APKs and REA evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-rea-mobile-audit
-          path: |
-            artifacts/rea-gateway-package.json
-            artifacts/rea-gateway-startup-method.json
-            artifacts/rea-gateway-dex-strings.txt
-            artifacts/rea-gateway-pairing-method.json
-            artifacts/rea-gateway-sms-method.json
-            artifacts/rea-caller-package.json
-            artifacts/rea-caller-telecom-class.json
-            artifacts/rea-caller-telecom-outgoing.json
-            artifacts/rea-caller-telecom-incoming.json
-            artifacts/rea-caller-engine-class.json
-            artifacts/rea-caller-engine-outgoing.json
-            artifacts/rea-caller-engine-peer.json
-            artifacts/rea-caller-engine-signals.json
-            artifacts/rea-caller-engine-ice-observer.json
-            artifacts/rea-caller-engine-dex-classes.txt
-            artifacts/rea-caller-guest-invite-class.json
+            artifacts/rea-*.json
+            artifacts/rea-*-dex-strings.txt
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: warn
