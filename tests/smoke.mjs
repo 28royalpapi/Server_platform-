@@ -12,6 +12,7 @@ const queueExtensionMigration=read("supabase/migrations/20261105105014_server_du
 const callDeliveryMigration=read("supabase/migrations/20261105105649_server_call_delivery_queue.sql");
 const workerChainingMigration=read("supabase/migrations/20261105111000_server_call_delivery_worker_chaining.sql");
 const dispatchTimeoutMigration=read("supabase/migrations/20261105113000_server_dispatch_timeout_and_noncollapse_push.sql");
+const workerSlotsMigration=read("supabase/migrations/20261105115000_server_call_delivery_worker_slots.sql");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
@@ -122,6 +123,18 @@ assert.match(callDeliveryWorker,/MAX_PARALLEL_SENDS = 40/,
   "notification provider fan-out is bounded within each worker invocation");
 assert.match(callDeliveryWorker,/server_call_delivery_kick_continuation/,
   "worker chains the next batch when additional queue messages are visible");
+assert.match(workerSlotsMigration,/server_call_delivery_worker_slots/,
+  "the call delivery service has an explicit worker-slot lease table");
+assert.match(workerSlotsMigration,/for update skip locked/,
+  "worker slots are claimed exclusively without two dispatchers leasing the same slot");
+assert.match(workerSlotsMigration,/server_call_delivery_claim_worker_slots\(8,90\)/,
+  "the dispatcher enforces a fixed upper bound of eight concurrent workers");
+assert.match(callDeliveryWorker,/server_call_delivery_worker_slot_valid/,
+  "the worker validates its unique lease before reading the message queue");
+assert.match(callDeliveryWorker,/server_call_delivery_release_worker_slot/,
+  "each worker releases its slot in a finally block after batch completion");
+assert.match(callDeliveryWorker,/WORKER_SLOT_LEASE_INVALID/,
+  "requests without a valid worker lease cannot read the delivery queue");
 assert.match(workerChainingMigration,/server_call_delivery_kick_continuation/,
   "worker continuation endpoint is a server-only database function");
 assert.match(callDeliveryWorker,/job\.read_ct >= MAX_READ_ATTEMPTS/,
