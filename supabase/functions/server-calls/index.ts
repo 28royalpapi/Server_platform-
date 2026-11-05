@@ -10,6 +10,24 @@ const SERVER_CALL_TTL_SECONDS = 180;
 const GUEST_CALL_TTL_SECONDS = 20 * 60;
 const CALL_START_RATE_WINDOW_SECONDS = 60;
 const CALL_START_RATE_MAX = 20;
+const PRESENCE_FRESH_SECONDS = 35;
+const PRESENCE_WRITE_INTERVAL_MS = 12000;
+
+async function touchSessionPresence(db:any, session:any) {
+ const lastSeen=Date.parse(session.last_seen_at||"");
+ if(Number.isFinite(lastSeen)&&Date.now()-lastSeen<PRESENCE_WRITE_INTERVAL_MS) {
+  return session.last_seen_at;
+ }
+ const now=new Date();
+ const nowIso=now.toISOString();
+ const writeBefore=new Date(now.getTime()-PRESENCE_WRITE_INTERVAL_MS).toISOString();
+ const {error}=await db.from("server_sessions").update({last_seen_at:nowIso})
+  .eq("id",session.id).is("revoked_at",null).gt("expires_at",nowIso)
+  .lt("last_seen_at",writeBefore);
+ if(error)throw new Error("PRESENCE_HEARTBEAT_FAILED");
+ session.last_seen_at=nowIso;
+ return nowIso;
+}
 const BASE_ICE_SERVERS = [
  {urls:"stun:stun.cloudflare.com:3478"},
  {urls:"stun:stun.l.google.com:19302"}
@@ -123,7 +141,7 @@ Deno.serve(async(req:Request)=>{
  const auth=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
  if(!/^[0-9a-f]{64}$/.test(auth))return out({error:"SESSION_REQUIRED"},401);
  const sessionHash=await sha(auth);
- const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+ const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at,last_seen_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
  const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",session.user_id).maybeSingle();
  if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
@@ -156,6 +174,10 @@ Deno.serve(async(req:Request)=>{
    const {data,error}=await db.from("server_profiles").upsert(patch,{onConflict:"user_id"}).select("user_id,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").single();
    if(error||!data)return out({error:"PREFERENCES_SAVE_FAILED"},503); return out({ok:true,profile:data});
   }
+  if(action==="presence"){
+   const lastSeenAt=await touchSessionPresence(db,session);
+   return out({ok:true,presence:"online",last_seen_at:lastSeenAt,fresh_for_seconds:PRESENCE_FRESH_SECONDS});
+  }
   if(action==="start"){
    const {data:startAllowed,error:rateError}=await db.rpc("server_rate_limit_allow",{
     p_scope:"call_start",p_key_hash:await sha(uid),
@@ -163,6 +185,7 @@ Deno.serve(async(req:Request)=>{
    });
    if(rateError)return out({error:"CALL_START_RATE_LIMIT_UNAVAILABLE"},503);
    if(startAllowed!==true)return out({error:"CALL_START_RATE_LIMITED",retry_after_seconds:CALL_START_RATE_WINDOW_SECONDS},429);
+   await touchSessionPresence(db,session);
    const serverTarget=typeof b.to_server_id==="string"?b.to_server_id.trim().toUpperCase():"";
    const to=phone(b.to_phone);
    if(!serverTarget&&!to)return out({error:"RECIPIENT_REQUIRED"},400);
@@ -188,6 +211,24 @@ Deno.serve(async(req:Request)=>{
     // Otherwise keep the caller on the existing guest invitation route.
     callee=found&&found.phone_verified_at&&found.allow_number_based_server_calls===true?found:null;
     route=callee?"server":"guest";
+   }
+   let recipientAvailability:any={status:"unknown_guest",background_wake_possible:false,last_seen_at:null};
+   if(route==="server"){
+    const {data:availability,error:availabilityError}=await db.rpc("server_recipient_availability",{
+     p_user_id:callee.user_id,p_fresh_seconds:PRESENCE_FRESH_SECONDS
+    });
+    if(availabilityError||!availability)return out({error:"RECIPIENT_AVAILABILITY_UNAVAILABLE"},503);
+    recipientAvailability=availability;
+    if(availability.status==="offline"){
+     return out({
+      error:"RECIPIENT_NOT_REACHABLE",
+      code:"RECIPIENT_OFFLINE",
+      message:"This Server recipient is not currently online or reachable through a registered background endpoint. No internet call was created. Carrier flash-call or operator missed-call fallback is not connected yet.",
+      call_created:false,
+      recipient_availability:availability,
+      carrier_fallback:{status:"not_configured",available:false,method:"operator_flash_or_missed_call"}
+     },409);
+    }
    }
    const now=new Date().toISOString();
    const callTtlSeconds=route==="guest"?GUEST_CALL_TTL_SECONDS:SERVER_CALL_TTL_SECONDS;
@@ -227,15 +268,22 @@ Deno.serve(async(req:Request)=>{
     const manualDelivery=(reason:string)=>out({
       ok:true,call_id:call.id,route,ice_servers:callIceServers,call,
       invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
-      guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason
+      guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason,
+      recipient_availability:{status:"unknown_guest",connected:false},
+      carrier_fallback:{status:"not_configured",available:false,method:"operator_flash_or_missed_call"}
     });
     // Guest-call invitations must not silently consume a user's SMS balance.
     // The caller explicitly chooses an existing share/messaging app instead.
     return manualDelivery("Server does not send automatic or paid SMS for guest invitations. Share the secure invitation using an app already on your phone; the recipient needs internet to answer.");
    }
-   
- }
- if(action==="incoming"){
+   return out({
+    ok:true,call_id:call.id,route,call,ice_servers:callIceServers,
+    recipient_availability:recipientAvailability,
+    push_delivery:pushDelivery
+   });
+  }
+  if(action==="incoming"){
+   await touchSessionPresence(db,session);
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).or("state.eq.missed,expires_at.gt."+new Date().toISOString()).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
