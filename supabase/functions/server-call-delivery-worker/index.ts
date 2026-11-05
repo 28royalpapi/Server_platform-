@@ -175,6 +175,20 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
   const dispatchToken = req.headers.get("x-server-dispatch-token") || "";
   if (!dispatchToken) return Response.json({ error: "WORKER_AUTH_REQUIRED" }, { status: 401 });
+  let dispatchBody: Record<string, unknown>;
+  try {
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("INVALID_BODY");
+    dispatchBody = parsed as Record<string, unknown>;
+  } catch {
+    return Response.json({ error: "WORKER_DISPATCH_BODY_INVALID" }, { status: 400 });
+  }
+  const workerSlot = Number(dispatchBody.worker_slot);
+  const workerLeaseId = typeof dispatchBody.worker_lease_id === "string" ? dispatchBody.worker_lease_id : "";
+  if (!Number.isInteger(workerSlot) || workerSlot < 1 || workerSlot > 8 ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workerLeaseId)) {
+    return Response.json({ error: "WORKER_SLOT_REQUIRED" }, { status: 400 });
+  }
 
   const url = Deno.env.get("SUPABASE_URL") || "";
   const key = (() => {
@@ -194,7 +208,13 @@ Deno.serve(async (req: Request) => {
     p_token: dispatchToken
   });
   if (authError || authorized !== true) return Response.json({ error: "WORKER_AUTH_INVALID" }, { status: 401 });
+  const { data: slotValid, error: slotError } = await db.rpc("server_call_delivery_worker_slot_valid", {
+    p_slot_id: workerSlot,
+    p_lease_id: workerLeaseId
+  });
+  if (slotError || slotValid !== true) return Response.json({ error: "WORKER_SLOT_LEASE_INVALID" }, { status: 409 });
 
+  try {
   const { data: rawMessages, error: readError } = await db.rpc("server_call_delivery_read_batch", {
     p_quantity: MAX_BATCH,
     p_visibility_seconds: VISIBILITY_SECONDS
@@ -341,12 +361,9 @@ Deno.serve(async (req: Request) => {
     return Response.json({ error: "QUEUE_ACK_FAILED" }, { status: 503 });
   }
 
-  // Schedule the next bounded batch immediately. The DB-side gate coalesces
-  // repeated kicks so a burst cannot create one HTTP worker request per call.
-  await db.rpc("server_call_delivery_kick_continuation");
-
   return Response.json({
     ok: true,
+    worker_slot: workerSlot,
     read: messages.length,
     accepted,
     skipped,
@@ -355,4 +372,18 @@ Deno.serve(async (req: Request) => {
     invalid_tokens_removed: invalidTokensRemoved,
     acked: ack.length
   });
+  } finally {
+    // A slot lease is the hard concurrency boundary. Release it before asking
+    // the dispatcher to fill newly available slots; expired leases recover
+    // workers that crash before reaching this finally block.
+    try {
+      await db.rpc("server_call_delivery_release_worker_slot", {
+        p_slot_id: workerSlot,
+        p_lease_id: workerLeaseId
+      });
+    } catch { /* the lease expires automatically if release fails */ }
+    try {
+      await db.rpc("server_call_delivery_kick_continuation");
+    } catch { /* the minute recovery job will kick visible work */ }
+  }
 });
