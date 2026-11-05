@@ -491,7 +491,7 @@ assert.match(androidEngine,/two_way_audio_media_ready/);
 assert.match(androidEngine,/remote_audio_track_received/);
 assert.match(androidEngine,/inbound_audio_rtp_packets_received/);
 assert.match(androidEngine,/RTCStatsCollectorCallback/);
-assert.match(androidGuest,/inbound-rtp/);
+assert.match(guestWeb,/inbound-rtp/);
 assert.match(androidTests,/Caller received no inbound audio RTP packets/);
 assert.match(androidTests,/Recipient received no inbound audio RTP packets/);
 assert.match(androidTests,/webRtcPeersExchangeAudioTracksAndConnectOnAndroidDevice/,
