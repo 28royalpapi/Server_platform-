@@ -131,6 +131,13 @@ class CallerSmokeTest {
       assertNotNull("The secure guest invitation notification was not posted", posted)
       assertTrue("The notification must offer an explicit Share invitation action",
         posted!!.notification.actions.any { it.title.toString() == "Share invitation" })
+      assertTrue("The guest notification must also offer the caller-confirmed carrier flash-call handoff",
+        posted!!.notification.actions.any { it.title.toString() == "Try carrier flash call" })
+      val carrierIntent = ServerCarrierDialer.createIntent(phone)
+      assertEquals("The carrier fallback must open Android's native dialler, not place a call silently",
+        Intent.ACTION_DIAL, carrierIntent?.action)
+      assertEquals("The carrier dialler must target the intended E.164 number",
+        phone, carrierIntent?.data?.schemeSpecificPart)
       assertNotNull("Tapping the notification must open the native share activity", posted.notification.contentIntent)
 
       val chooser = ServerGuestInviteShareActivity.createShareChooserIntent(phone, invitation)
