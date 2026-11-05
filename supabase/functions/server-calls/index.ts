@@ -192,34 +192,32 @@ Deno.serve(async(req:Request)=>{
    const now=new Date().toISOString();
    const callTtlSeconds=route==="guest"?GUEST_CALL_TTL_SECONDS:SERVER_CALL_TTL_SECONDS;
    const expiresAt=new Date(Date.now()+callTtlSeconds*1000).toISOString();
-   const {data:call,error:ce}=await db.from("server_calls").insert({
-    caller_user_id:uid,callee_user_id:callee?.user_id||null,callee_phone_e164:recipientPhone,
-    route,state:"ringing",created_at:now,updated_at:now,expires_at:expiresAt
-   }).select("id,state,route,created_at,updated_at,expires_at").single();
-   if(ce||!call)return out({error:"CALL_CREATE_FAILED"},503);
+   // Generate the guest token before the database transaction so the call,
+   // participant rows and hashed one-call invite are committed together.
+   const guestToken=route==="guest"
+    ?Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("")
+    :null;
+   if(route==="guest"&&!to)return out({error:"RECIPIENT_PHONE_REQUIRED"},400);
+   const guestTokenHash=guestToken?await sha(guestToken):null;
+   const guestInviteExpiresAt=guestToken?expiresAt:null;
+   const {data:created,error:ce}=await db.rpc("server_create_call_atomic",{
+    p_caller_user_id:uid,
+    p_callee_user_id:callee?.user_id||null,
+    p_callee_phone_e164:recipientPhone,
+    p_route:route,
+    p_expires_at:expiresAt,
+    p_invite_phone_e164:route==="guest"?to:null,
+    p_invite_token_hash:guestTokenHash,
+    p_invite_expires_at:guestInviteExpiresAt
+   });
+   if(ce||!created?.call)return out({error:"CALL_CREATE_FAILED"},503);
+   const call=created.call;
    const callIceServers=await iceServersForCall(call.id,callTtlSeconds);
-   const {error:memberError}=await db.from("server_call_members").upsert([
-    {call_id:call.id,user_id:uid,member_role:"caller"},
-    ...(callee?[{call_id:call.id,user_id:callee.user_id,member_role:"callee"}]:[])
-   ],{onConflict:"call_id,user_id"});
-   if(memberError){
-    await db.from("server_calls").delete().eq("id",call.id);
-    return out({error:"CALL_MEMBERS_CREATE_FAILED"},503);
-   }
    let pushDelivery:any={sent:0,configured:false,reason:"NOT_A_SERVER_USER"};
    if(route==="server"&&callee?.user_id){pushDelivery=await sendRecipientPush(db,callee.user_id,call.id,profile.server_id||"A Server user");}
    if(route==="guest"){
-    if(!to){await db.from("server_calls").delete().eq("id",call.id);return out({error:"RECIPIENT_PHONE_REQUIRED"},400);}
-    // Pilot policy: guest calling has no caller/recipient invitation quota.
-    // Rate/plan caps are a product decision for a later paid rollout, not a
-    // prerequisite for WebRTC or Android Telecom. Keep each invite authenticated,
-    // token-hashed, one-call scoped and expiring; no automatic carrier SMS is sent.
-    const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
-    const tokenHash=await sha(token),expires=new Date(Date.now()+20*60*1000).toISOString();
-    const {data:invite,error:ie}=await db.from("server_guest_invites").insert({
-      call_id:call.id,phone_e164:to,token_hash:tokenHash,expires_at:expires
-    }).select("id").single();
-    if(ie||!invite){await db.from("server_calls").delete().eq("id",call.id);return out({error:"INVITE_CREATE_FAILED"},503);}
+    const token=guestToken as string;
+    const expires=guestInviteExpiresAt as string;
     const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
     const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
     const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Accept to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (expires in 20 minutes).";
@@ -231,8 +229,8 @@ Deno.serve(async(req:Request)=>{
     // Guest-call invitations must not silently consume a user's SMS balance.
     // The caller explicitly chooses an existing share/messaging app instead.
     return manualDelivery("Server does not send automatic or paid SMS for guest invitations. Share the secure invitation using an app already on your phone; the recipient needs internet to answer.");
-  }
-  return out({ok:true,call_id:call.id,route,ice_servers:callIceServers,call,call_expires_at:expiresAt,push_delivery:pushDelivery});
+   }
+   
  }
  if(action==="incoming"){
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).or("state.eq.missed,expires_at.gt."+new Date().toISOString()).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
