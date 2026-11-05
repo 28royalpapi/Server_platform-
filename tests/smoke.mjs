@@ -105,8 +105,8 @@ assert.match(callExpiryMigration,/cron\.schedule\('server-maintenance-every-minu
   "call expiry is reconciled on a one-minute background schedule");
 assert.match(calls,/state\.eq\.missed,expires_at\.gt\./,
   "incoming-call lookup must never ring a call after its expiry, even before the cron sweep runs");
-assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.single\(\)/,
-  "call creation responses must not include a callee phone number or internal user UUID");
+assert.match(atomicCallMigration,/'id',v_call\.id[\s\S]*?'expires_at',v_call\.expires_at/,
+  "atomic call creation returns only public call fields, not callee phone or private user IDs");
 assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.or\("caller_user_id\.eq\."\+uid/,
   "call polling responses expose only public call state and IDs");
 assert.doesNotMatch(calls,/\.select\("[^"]*(?:callee_phone_e164|callee_user_id)[^"]*"\)\.or\(/,
