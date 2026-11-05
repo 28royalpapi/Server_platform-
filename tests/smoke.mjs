@@ -5,6 +5,7 @@ const root = process.cwd();
 const read = (p) => readFileSync(resolve(root,p),"utf8");
 const migration=read("supabase/migrations/20261021114947_server_backend_schema.sql");
 const pushMigration=read("supabase/migrations/20261101175446_server_push_devices_and_call_expiry.sql");
+const schedulerMigration=read("supabase/migrations/20261021121000_server_maintenance_scheduler.sql");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
@@ -68,6 +69,14 @@ assert.match(androidIncoming,/Server session refresh deferred/,"transient token-
 assert.match(androidIncoming,/Server session refresh rejected/,"permanent token-refresh failures are rejected");
 assert.match(androidIncoming,/tokenExpired/,"polling distinguishes expired offline sessions from revoked valid sessions");
 assert.match(calls,/found.allow_number_based_server_calls===true/);
+assert.doesNotMatch(calls,/expireStaleRingingCalls|last_seen_at:\s*new Date\(\)\.toISOString\(\)/,
+  "high-frequency call API requests must not run global expiry sweeps or write a session heartbeat");
+assert.doesNotMatch(calls,/allSignals/,
+  "call polling must calculate its cursor from the same signal query, not issue a duplicate database read");
+assert.match(calls,/nextAfterSeq/,
+  "call polling advances its signal cursor from the single ordered signal result");
+assert.match(schedulerMigration,/cron\.schedule\('server-maintenance-every-5-minutes'/,
+  "expiry and maintenance work must be handled by the scheduled maintenance worker");
 assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.single\(\)/,
   "call creation responses must not include a callee phone number or internal user UUID");
 assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.or\("caller_user_id\.eq\."\+uid/,
