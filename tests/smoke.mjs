@@ -644,7 +644,7 @@ assert.match(androidMain,/not connected yet/,"a guest invitation is not misrepre
 assert.match(androidEngine,/Recipient presence is fresh/,"Android Telecom logs the live-presence path");
 assert.match(androidEngine,/throw ServerCallApiException\(status, result, reason\)/,
   "the Telecom HTTP client preserves structured recipient-offline responses for SIM fallback");
-assert.match(androidEngine,/apiError\.errorCode === "RECIPIENT_OFFLINE"/,
+assert.match(androidEngine,/apiError\.errorCode == "RECIPIENT_OFFLINE"/,
   "the Telecom call engine recognises a Server-offline recipient before creating a call");
 assert.match(androidEngine,/failCall\(message, dialNumber\)/,
   "the Telecom engine shows the user-confirmed carrier handoff after ending the failed Server attempt");
