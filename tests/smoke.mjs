@@ -93,8 +93,8 @@ assert.match(atomicCallMigration,/insert into public\.server_guest_invites/,
   "the same atomic transaction creates guest invitation hashes");
 assert.match(atomicCallMigration,/grant execute on function public\.server_create_call_atomic[\s\S]*?to service_role/,
   "only the service role may execute the internal atomic call-creation RPC");
-assert.match(calls,/CALL_MEMBERS_CREATE_FAILED/,
-  "call creation must fail closed instead of leaving a call without its required membership rows");
+assert.match(calls,/CALL_CREATE_FAILED/,
+  "call creation must fail closed when its atomic transaction cannot commit");
 assert.match(schedulerMigration,/cron\.schedule\('server-maintenance-every-5-minutes'/,
   "expiry and maintenance work must be handled by the scheduled maintenance worker");
 assert.match(callExpiryMigration,/server_calls_unanswered_expiry_idx/,
