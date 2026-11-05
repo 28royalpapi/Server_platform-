@@ -616,7 +616,12 @@ assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations use 
 assert.doesNotMatch(androidMain,/private fun notifyCarrierFallback|Try a normal carrier call|charges may apply/,"Android must not offer a paid cellular fallback when Server calling fails");
 assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
 assert.match(androidMain,/no background wake job or accepted push was confirmed/,"the caller is told when no durable wake job or provider acceptance exists");
-assert.match(androidMain,/durably queued/,"the caller is told when its wake job is queued but not delivered");
+assert.match(androidMain,/background wake job is queued/,"the caller is told when its wake job is queued but not delivered");
+assert.match(androidMain,/Recipient is currently online in Server/,"the caller sees when the recipient has fresh Server presence");
+assert.match(androidMain,/background push endpoint is registered/,"the caller sees when only a background push endpoint is available");
+assert.match(androidMain,/not connected yet/,"a guest invitation is not misrepresented as an active ring before the guest joins");
+assert.match(androidEngine,/Recipient presence is fresh/,"Android Telecom logs the live-presence path");
+assert.match(androidEngine,/background wake job is queued/,"Android Telecom logs background delivery without claiming that the phone rang");
 assert.match(androidMain,/SMS may incur your carrier's charge/,"Android discloses that a caller-selected SMS may be billable");
 assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");
 assert.match(androidFirebase,/fcm_registered_server_id/,"push-token registration is scoped to the signed-in Server identity");
