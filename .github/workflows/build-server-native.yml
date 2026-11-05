@@ -133,8 +133,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APP_APK='apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk'
+          DEBUG_APK_DIR='apps/android-caller/app/build/outputs/apk/debug'
           TEST_APK='apps/android-caller/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
+          find_debug_apk_for_abi() {
+            local target_abi="$1"
+            local candidate
+            while IFS= read -r candidate; do
+              if unzip -l "$candidate" | grep -F "lib/$target_abi/libjingle_peerconnection_so.so" >/dev/null; then
+                echo "$candidate"
+                return 0
+              fi
+            done < <(find "$DEBUG_APK_DIR" -maxdepth 1 -type f -name '*.apk' ! -name '*androidTest*' | sort)
+            echo "ERROR: no debug APK in $DEBUG_APK_DIR contains lib/$target_abi/libjingle_peerconnection_so.so" >&2
+            find "$DEBUG_APK_DIR" -maxdepth 1 -type f -name '*.apk' -print >&2 || true
+            return 1
+          }
           APP_RELEASE='apps/android-caller/app/build/outputs/apk/release'
           BUNDLE_RELEASE='apps/android-caller/app/build/outputs/bundle/release'
           GATEWAY_APK='apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk'
@@ -149,30 +162,26 @@ jobs:
           # explicitly before expecting the test APK to exist.
           echo "ASSEMBLE_X86_64_INSTRUMENTATION_PAIR_START $(date -u +%FT%TZ)"
           timeout 720s gradle -p apps/android-caller assembleDebugAndroidTest --no-daemon --console=plain --stacktrace
+          APP_APK="$(find_debug_apk_for_abi x86_64)"
           test -s "$APP_APK" && test -s "$TEST_APK"
-          if ! unzip -l "$APP_APK" | grep 'lib/x86_64/libjingle_peerconnection_so.so' >/dev/null; then
-            echo "ERROR: x86_64 emulator debug APK does not contain its WebRTC native library." >&2
-            exit 1
-          fi
           if unzip -l "$APP_APK" | grep 'lib/arm64-v8a/' >/dev/null; then
             echo "ERROR: x86_64 test pair unexpectedly contains ARM64 libraries; keep the emulator pair isolated." >&2
             exit 1
           fi
+          echo "X86_64_DEBUG_APK=$APP_APK"
           cp "$APP_APK" artifacts/physical/server-android-x86_64-debug.apk
           cp "$TEST_APK" artifacts/physical/server-android-x86_64-androidTest.apk
 
           # Cleanly rebuild the same source for physical ARM64 devices.
           echo "CLEAN_AND_ASSEMBLE_ARM64_TEST_PAIR_START $(date -u +%FT%TZ)"
           timeout 720s gradle -p apps/android-caller clean assembleDebugAndroidTest -PSERVER_DEBUG_ABI_FILTERS=arm64-v8a --no-daemon --console=plain --stacktrace
+          APP_APK="$(find_debug_apk_for_abi arm64-v8a)"
           test -s "$APP_APK" && test -s "$TEST_APK"
-          if ! unzip -l "$APP_APK" | grep 'lib/arm64-v8a/libjingle_peerconnection_so.so' >/dev/null; then
-            echo "ERROR: ARM64 debug APK does not contain the ARM64 WebRTC native library." >&2
-            exit 1
-          fi
           if unzip -l "$APP_APK" | grep 'lib/x86_64/' >/dev/null; then
             echo "ERROR: physical ARM64 debug APK still contains x86_64 native libraries." >&2
             exit 1
           fi
+          echo "ARM64_DEBUG_APK=$APP_APK"
           cp "$APP_APK" artifacts/physical/server-android-arm64-debug.apk
           cp "$TEST_APK" artifacts/physical/server-android-arm64-androidTest.apk
 
@@ -189,7 +198,7 @@ jobs:
         with:
           name: server-android-debug-apks
           path: |
-            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/*.apk
             artifacts/physical/*.apk
             artifacts/release/*
             apps/android-caller/app/build/outputs/apk/androidTest/debug/*.apk
