@@ -1,10 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
 const SERVER_CALL_TTL_SECONDS = 180;
-const MAX_BATCH = 50;
+const MAX_BATCH = 250;
 const VISIBILITY_SECONDS = 60;
 const MAX_READ_ATTEMPTS = 5;
-const MAX_PARALLEL_SENDS = 20;
+const MAX_PARALLEL_SENDS = 40;
 
 const b64url = (value: string | Uint8Array) => {
   const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
@@ -344,7 +344,7 @@ Deno.serve(async (req: Request) => {
 
   // Schedule the next bounded batch immediately. The DB-side gate coalesces
   // repeated kicks so a burst cannot create one HTTP worker request per call.
-  await db.rpc("server_call_delivery_kick");
+  await db.rpc("server_call_delivery_kick_continuation");
 
   return Response.json({
     ok: true,
