@@ -596,7 +596,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
-        setStatus("The secure guest invitation is ready to share. The recipient needs internet and microphone access to answer.")
+        setStatus("Guest invitation created, but the recipient is not connected yet. Share the link; they must open it with internet access and tap Answer before the call can connect.")
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
         val reachability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
