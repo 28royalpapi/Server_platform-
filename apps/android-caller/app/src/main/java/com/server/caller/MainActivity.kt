@@ -599,14 +599,19 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         setStatus("The secure guest invitation is ready to share. The recipient needs internet and microphone access to answer.")
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
+        val reachability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
         val queued = pushDelivery?.optBoolean("queued", false) ?: false
         val submitted = pushDelivery?.optInt("sent", 0) ?: 0
-        if (queued) {
-          setStatus("Call created and its background wake job is durably queued. Delivery is not confirmed; the recipient still needs an internet connection and a registered push endpoint or an active Server listener.")
+        if (queued && reachability == "online") {
+          setStatus("Recipient is currently online in Server. The call and background wake job were created; waiting for the recipient's device to accept. A queued alert is not proof that the phone has rung.")
+        } else if (queued && reachability == "background_reachable") {
+          setStatus("Recipient is not currently active in Server, but a background push endpoint is registered. Server has queued a wake alert; delivery and ringing are not confirmed.")
+        } else if (queued) {
+          setStatus("Call created and its background wake job is queued. Delivery is not confirmed; the recipient still needs internet access and a working Server listener or push endpoint.")
         } else if (submitted > 0) {
           setStatus("The push provider accepted an incoming-call alert request. Delivery is not confirmed; waiting for the recipient to answer.")
         } else {
-          setStatus("Call created, but no background wake job or accepted push was confirmed. An already-active Server listener may still receive it; otherwise the recipient must reconnect or open Server. Carrier offline wake-up is not enabled.", true)
+          setStatus("Call created, but no background wake job or accepted push was confirmed. An already-active Server listener may still receive it; otherwise the recipient must reconnect or open Server.", true)
         }
         returnToSystemPhoneUi()
       }
