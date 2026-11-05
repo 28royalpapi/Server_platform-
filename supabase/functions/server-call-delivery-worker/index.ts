@@ -112,8 +112,7 @@ async function sendAndroidPush(device: Device, callId: string, callerLabel: stri
           },
           android: {
             priority: "HIGH",
-            ttl: SERVER_CALL_TTL_SECONDS + "s",
-            collapse_key: "server-live-call"
+            ttl: SERVER_CALL_TTL_SECONDS + "s"
           }
         }
       })
