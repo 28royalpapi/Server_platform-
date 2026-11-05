@@ -69,7 +69,7 @@ jobs:
           : > artifacts/rea-gateway-dex-strings.txt
           while IFS= read -r dex; do
             unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-gateway-dex-strings.txt
-          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\\.dex$')
+          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
           for value in \
             'com.server.gateway.MainActivity' \
             'com.server.gateway.SmsGatewayService' \
@@ -100,7 +100,7 @@ jobs:
           : > artifacts/rea-caller-dex-strings.txt
           while IFS= read -r dex; do
             unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-caller-dex-strings.txt
-          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\\.dex$')
+          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
           for value in \
             'com.server.caller.ServerConnectionService' \
