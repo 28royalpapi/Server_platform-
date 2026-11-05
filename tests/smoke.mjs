@@ -496,8 +496,10 @@ assert.match(calls,/server_rate_limit_allow/,
   "call starts have a bounded per-caller abuse limit");
 assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
   "guest invites do not impose a separate recipient quota beyond the caller-wide safety limit");
-assert.match(calls,/token_hash:tokenHash/,"guest invite links remain stored as token hashes");
-assert.match(calls,/expires_at:expires/,"guest invite links remain time-limited for basic abuse protection");
+assert.match(atomicCallMigration,/token_hash/,
+  "guest invite links remain stored as token hashes inside the database transaction");
+assert.match(atomicCallMigration,/expires_at,p_invite_expires_at/,
+  "guest invite links remain time-limited inside the database transaction");
 assert.match(calls,/delivery_mode:"manual_share"/);
 assert.match(calls,/stun:stun\.cloudflare\.com:3478/,
   "authenticated Server calls offer a second free STUN discovery path");
