@@ -624,6 +624,35 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         returnToSystemPhoneUi()
       }
     } catch (e: Exception) {
+      val apiError = e as? ServerCallApiException
+      if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE" &&
+          !apiError.payload.optBoolean("call_created", true)) {
+        recordTelecomDebugStage("recipient_offline_no_call_created")
+        val fallback = apiError.carrierFallback
+        carrierFallbackNumber = fallback?.optString("destination_e164")
+          ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
+        ServerTelecomRegistry.markEnded()
+        cleanPeer()
+        callId = null
+        activeStateSyncedFor = null
+        setStatus(
+          apiError.payload.optString("message", "This recipient is offline. No Server call was created."),
+          true
+        )
+        carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
+        if (pendingSystemDialerReturn) {
+          carrierFallbackNumber?.let {
+            ServerCallEngineStatusNotifications.showFailure(
+              this@MainActivity,
+              "Recipient is offline. No Server call was created.",
+              it
+            )
+          }
+          Toast.makeText(this@MainActivity, "Recipient is offline. Check the Server message or choose a phone SIM from the notification.", Toast.LENGTH_LONG).show()
+          returnToSystemPhoneUi()
+        }
+        return@launch
+      }
       recordTelecomDebugStage("call_setup_failed")
       // If Telecom launched this engine, tell the system dialer that the internet
       // route failed instead of leaving an endless "Dialing via Server" call.
