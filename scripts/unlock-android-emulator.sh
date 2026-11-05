@@ -20,10 +20,8 @@ adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 attempt=1
 while [ "$attempt" -le 30 ]; do
   state="$(adb shell am get-started-user-state 0 2>/dev/null | tr -d '\r' || true)"
-  unlocked="$(adb shell cmd user is-user-unlocked 0 2>/dev/null | tr -d '\r' | tail -1 || true)"
   echo "ANDROID_PRIMARY_USER_STATE=$state"
-  echo "ANDROID_USERMANAGER_UNLOCKED=$unlocked"
-  if [ "$state" = "RUNNING_UNLOCKED" ] && [ "$unlocked" = "true" ]; then
+  if [ "$state" = "RUNNING_UNLOCKED" ]; then
     echo "ANDROID_USER_UNLOCK_PASS"
     exit 0
   fi
