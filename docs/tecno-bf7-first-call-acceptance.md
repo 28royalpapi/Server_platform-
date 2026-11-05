@@ -20,6 +20,22 @@ The physical package must be the ARM64 debug app **and the matching ARM64 instru
 
 Do not substitute a release APK for the debug APK: the instrumentation APK is compiled against the debug application ID and must be paired with the matching debug app.
 
+## Billing caveat — do not upgrade for Server testing
+
+Google's current public documentation is inconsistent on the exact Spark prerequisite: the Test Lab quota/pricing and troubleshooting pages list a no-cost Spark quota of five physical test runs per day, but the Firebase Console quickstart says a project must be on Blaze (billing account linked) before running tests in the console.
+
+Because this project must not incur charges, **do not attach a billing account and do not upgrade to Blaze just to test Server**. Only attempt Test Lab if the console or CLI accepts the existing Spark project and clearly shows the test will consume the Spark no-cost quota. If it asks you to link billing or upgrade to Blaze, cancel and stop. The script's Spark guard only prevents knowingly selecting a paid plan; it cannot override Google's service-side entitlement checks.
+
+For the TECNO BF7 specifically, Android Device Streaming is not a guaranteed free fallback: Google provides 30 no-cost minutes per Spark project each month, but Partner Device Lab devices normally follow standard streaming pricing unless a device is explicitly marked exempt. Do not start a TECNO partner stream unless the console clearly identifies it as free.
+
+The reliable no-subscription, no-billing route is to test on a physical handset that we already own (your TECNO BF7) using local ADB from an authorized computer, or use any borrowed handset directly. That does not require Firebase Test Lab. Remote Test Lab is optional, not a blocker to real-device testing.
+
+Reference links:
+- [Firebase Test Lab console quickstart](https://firebase.google.com/docs/test-lab/android/firebase-console)
+- [Test Lab usage, quotas and pricing](https://firebase.google.com/docs/test-lab/usage-quotas-pricing)
+- [Test Lab troubleshooting FAQ](https://firebase.google.com/docs/test-lab/troubleshooting)
+- [Android Device Streaming and partner-device pricing note](https://developer.android.com/studio/run/android-device-streaming)
+
 ## Start one TECNO physical run
 
 1. Create or select a dedicated Firebase project for Server device testing. Keep it on Spark and do not add a billing account.
