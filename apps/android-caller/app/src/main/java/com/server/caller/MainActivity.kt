@@ -107,6 +107,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private lateinit var callPanel: LinearLayout
   private lateinit var callButton: Button
   private lateinit var hangupButton: Button
+  private lateinit var carrierFallbackButton: Button
+  private var carrierFallbackNumber: String? = null
 
   private val guestShareLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
     // Return to Android's Phone app only after the foreground share chooser has
@@ -207,6 +209,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
+    carrierFallbackButton = button("Use phone SIM") {
+      handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
+    }.apply { visibility = View.GONE }
+    callPanel.addView(carrierFallbackButton, matchWrap())
     callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply {
@@ -481,7 +487,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
       if (code !in 200..299) {
         val reason = result.optString("msg", result.optString("message", result.optString("error", "HTTP $code")))
-        throw IllegalStateException("$reason (HTTP $code)")
+        throw ServerCallApiException(code, result, reason)
       }
       result
     } finally { connection.disconnect() }
@@ -532,6 +538,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private fun startCall(): Job = lifecycleScope.launch {
+    carrierFallbackNumber = null
+    if (::carrierFallbackButton.isInitialized) carrierFallbackButton.visibility = View.GONE
     recordTelecomDebugStage("start_call_entered")
     val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     val activeNetwork = connectivity.activeNetwork
