@@ -15,6 +15,7 @@ const dispatchTimeoutMigration=read("supabase/migrations/20261105113000_server_d
 const workerSlotsMigration=read("supabase/migrations/20261105115000_server_call_delivery_worker_slots.sql");
 const workerAuditMigration=read("supabase/migrations/20261105120000_server_call_delivery_worker_audit.sql");
 const presenceMigration=read("supabase/migrations/20261105124000_server_recipient_presence_and_reachability.sql");
+const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push_devices_custom_identity_fk.sql");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
@@ -95,6 +96,10 @@ assert.match(presenceMigration,/server_recipient_availability/,
   "recipient reachability is determined by a private database function");
 assert.match(presenceMigration,/last_seen_at/,
   "recipient online status is based on a fresh session heartbeat rather than session expiry");
+assert.match(pushIdentityMigration,/references public\.server_profiles\(user_id\)/,
+  "push endpoints reference Server's custom profile identity rather than Supabase Auth users");
+assert.doesNotMatch(pushIdentityMigration,/references auth\.users/,
+  "push registration does not require a separate Supabase Auth identity");
 assert.match(calls,/PRESENCE_WRITE_INTERVAL_MS = 12000/,
   "authenticated session presence writes are throttled to avoid a database write on every poll");
 assert.match(calls,/touchSessionPresence\(db,session\)/,
