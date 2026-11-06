@@ -561,17 +561,12 @@ internal class ServerTelecomCallEngine(
     }
 
   private suspend fun ensureFreshSession() {
-    if (accessToken.isNullOrBlank()) throw IllegalStateException("Finish Server ID setup on this phone first.")
-    if (accessExpiry > System.currentTimeMillis() / 1000 + 90) return
-    val refreshed = postFunction("/functions/v1/server-auth", JSONObject().put("action", "refresh"), accessToken)
-    accessToken = refreshed.optString("access_token").takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
-      ?: throw IllegalStateException("Your Server session expired. Reopen Server setup.")
-    accessExpiry = try {
-      java.time.Instant.parse(refreshed.optString("expires_at")).epochSecond
-    } catch (_: Exception) {
-      System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60
+    val session = withContext(Dispatchers.IO) {
+      ServerDeviceSessionManager.ensureFresh(context, accessToken, accessExpiry, prefs)
     }
-    prefs.edit().putString("access_token", accessToken).putLong("access_expiry", accessExpiry).apply()
+    accessToken = session.accessToken
+    accessExpiry = session.expiresAtEpochSeconds
+    if (session.serverId != null) prefs.edit().putString("server_id", session.serverId).apply()
   }
 
   private suspend fun api(action: String, payload: JSONObject = JSONObject()): JSONObject {
