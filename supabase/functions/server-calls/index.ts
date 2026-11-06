@@ -337,18 +337,46 @@ Deno.serve(async(req:Request)=>{
     const token=guestToken as string;
     const expires=guestInviteExpiresAt as string;
     const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
+    // SMS is sent from the caller's own paired SIM. The recipient's messaging
+    // app can therefore resolve that sender number to the contact name they saved.
     const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
-    const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Answer to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (invitation valid for 24 hours; the live call window is 20 minutes, after which the page shows a missed call).";
+    const callerPhone=profile.phone_verified_at?phone(profile.phone_e164):null;
+    const callerDisplay=callerPhone||callerLabel;
+    const invitationUrl=guestUrl+"#token="+encodeURIComponent(token);
+    const smsBody="☎ INCOMING SERVER CALL\n"+callerDisplay+" is calling you. Tap to view the full-screen incoming call and answer securely. No Server installation or account is needed.\n"+invitationUrl+"\nThe live call expires in 20 minutes. Internet and microphone permission are required to answer.";
     const manualDelivery=(reason:string)=>out({
       ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
       invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
       guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason,
+      caller_display_label:callerDisplay,
       recipient_availability:{status:"unknown_guest",connected:false},
       carrier_fallback:{status:"user_confirmed_dialer",available:!!to,destination_e164:to,method:"android_action_dial",requires_user_confirmation:true}
     });
-    // Guest-call invitations must not silently consume a user's SMS balance.
-    // The caller explicitly chooses an existing share/messaging app instead.
-    return manualDelivery("Server does not send automatic or paid SMS for guest invitations. Share the secure invitation using an app already on your phone; the recipient needs internet to answer.");
+    // Automatically queue through an already paired, recently online SIM gateway.
+    // This uses the user's SIM rather than a third-party SMS provider.
+    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
+      .select("id").eq("enabled",true)
+      .gte("last_seen_at",new Date(Date.now()-90000).toISOString())
+      .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+    if(gatewayError)return manualDelivery("The paired Server SIM Gateway could not be checked. Reconnect it or share the invitation manually.");
+    if(!gateway)return manualDelivery("No paired Server SIM Gateway is online. Start the gateway on your phone, or share the invitation manually.");
+    const sourceEventId="server-guest-call:"+call.id;
+    const {error:smsQueueError}=await db.from("server_sms_jobs").insert({
+      category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,
+      source_event_id:sourceEventId,status:"queued"
+    });
+    if(smsQueueError&&smsQueueError.code!=="23505"){
+      return manualDelivery("The SIM gateway is online, but the invitation could not be queued. Share it manually while delivery recovers.");
+    }
+    return out({
+      ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
+      invite_expires_at:expires,delivery_mode:"automatic_sms_queued",delivery_channel:"paired_sim_gateway",
+      sms_delivery:{status:"queued",gateway_online:true,recipient:to,source:"caller's paired SIM"},
+      guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,
+      caller_display_label:callerDisplay,
+      recipient_availability:{status:"unknown_guest",connected:false},
+      carrier_fallback:{status:"not_needed",available:false}
+    });
    }
    return out({
     ok:true,call_id:call.id,route,call,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,
