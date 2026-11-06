@@ -355,7 +355,7 @@ Deno.serve(async(req:Request)=>{
     // Automatically queue through an already paired, recently online SIM gateway.
     // This uses the user's SIM rather than a third-party SMS provider.
     const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
-      .select("id").eq("enabled",true)
+      .select("id").eq("owner_user_id",uid).eq("enabled",true)
       .gte("last_seen_at",new Date(Date.now()-90000).toISOString())
       .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
     if(gatewayError)return manualDelivery("The paired Server SIM Gateway could not be checked. Reconnect it or share the invitation manually.");
