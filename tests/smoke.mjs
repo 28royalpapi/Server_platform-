@@ -41,6 +41,7 @@ const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
 const androidSessionManager=read("apps/android-caller/app/src/main/java/com/server/caller/ServerDeviceSessionManager.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
+const guestBrowserE2eShell=read("scripts/android-guest-browser-e2e.sh");
 const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
 const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
 const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
@@ -366,6 +367,14 @@ assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity prep
   "the call-engine audit must not use the obsolete Activity WebRTC implementation");
 assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/, "Android 8 remains a minimum-install compatibility check");
+assert.ok(nativeWorkflow.includes("script: bash scripts/android-guest-browser-e2e.sh"),
+  "guest E2E runs a checked-in Bash script as one command instead of passing multi-line Bash through sh");
+assert.match(guestBrowserE2eShell,/adb shell am instrument -w -r/,
+  "the Bash E2E harness launches the real Android Telecom instrumentation test");
+assert.match(guestBrowserE2eShell,/node scripts\/android-guest-browser-e2e\.mjs/,
+  "the Bash E2E harness drives the no-install guest through Playwright");
+assert.doesNotMatch(nativeWorkflow,/bash -euo pipefail <<'BASH'/,
+  "the emulator action must not split an inline Bash here-document into individual sh commands");
 assert.ok(android17Preview.includes("api-level: '37.0'"), "Android 17 preview job uses the SDK platform 37.0 package identifier");
 assert.ok(android17Preview.includes("system-image-api-level: '37.0'"), "Android 17 preview job uses the 37.0 emulator image namespace");
 assert.ok(android17Preview.includes("target: google_apis_ps16k"), "Android 17 preview job uses the supported 16 KB-page Google APIs image");
@@ -757,6 +766,8 @@ assert.match(guest,/RTCPeerConnection|server_call_signals/);
  assert.match(calls,/SERVER CALL:/,"the shared guest invitation clearly announces an incoming Server call");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-guest-preview\?token=/,"guest share links open a dynamic caller-branded preview before the full-screen call page");
+assert.match(guestBrowserE2e,/server-guest-preview/,"the browser E2E accepts the caller-identifying Open Graph preview URL");
+assert.match(guestBrowserE2e,/new URL\(invitationCandidate\)/,"the browser E2E parses and opens the exact shared preview link");
 assert.match(guestPreview,/og:title/,"the guest preview publishes a social-card caller title for messaging apps");
 assert.match(guestPreview,/og:image/,"the guest preview publishes incoming-call artwork for rich link cards");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");

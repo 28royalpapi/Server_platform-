@@ -7,9 +7,22 @@ const artifactDir = process.env.SERVER_E2E_ARTIFACT_DIR || "artifacts/server-gue
 if (!invitationFile) throw new Error("SERVER_GUEST_INVITATION_FILE is required.");
 await mkdir(artifactDir, { recursive: true });
 const invitationText = await readFile(invitationFile, "utf8");
-const invitationMatch = invitationText.match(/https:\/\/[^\s]+\/guest\.html#token=[0-9a-f]{64}/i);
-if (!invitationMatch) throw new Error("The Android caller did not save a valid guest invitation URL.");
-const invitationUrl = invitationMatch[0];
+const invitationCandidate = invitationText.match(/https:\/\/[^\s<>"']+/i)?.[0]?.replace(/[),.;]+$/, "");
+if (!invitationCandidate) throw new Error("The Android caller did not save a guest invitation URL.");
+const parsedInvitation = new URL(invitationCandidate);
+const directGuestToken = parsedInvitation.pathname.endsWith("/guest.html")
+  ? parsedInvitation.hash.match(/^#token=([0-9a-f]{64})$/i)?.[1]
+  : null;
+const previewToken = /\/server-guest-preview$/i.test(parsedInvitation.pathname)
+  ? parsedInvitation.searchParams.get("token")
+  : null;
+if (!(directGuestToken || (previewToken && /^[0-9a-f]{64}$/i.test(previewToken)))) {
+  throw new Error("The Android caller's invitation is neither a valid guest page URL nor a secure caller-preview URL.");
+}
+// The caller shares the Open Graph preview URL. Playwright opens that exact
+// URL; its recipient-facing page redirects into guest.html after showing the
+// caller-identifying preview metadata to link unfurlers.
+const invitationUrl = parsedInvitation.toString();
 
 function makeToneWav(seconds = 20) {
   const sampleRate = 48000;
