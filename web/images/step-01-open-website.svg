@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1000" viewBox="0 0 600 1000" role="img">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#123528"/><stop offset="1" stop-color="#07110f"/></linearGradient><linearGradient id="screen" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10251d"/><stop offset="1" stop-color="#07120f"/></linearGradient></defs>
+<rect x="12" y="12" width="576" height="976" rx="58" fill="#020706" stroke="#668879" stroke-width="4"/>
+<rect x="32" y="34" width="536" height="932" rx="42" fill="url(#screen)"/>
+<rect x="232" y="22" width="136" height="12" rx="6" fill="#020706"/>
+<text x="62" y="76" fill="#dbe8e1" font-size="20" font-family="Arial">9:41</text><circle cx="494" cy="66" r="9" fill="#dbe8e1"/><path d="M518 56l18 20h-36z" fill="#dbe8e1"/><rect x="544" y="56" width="12" height="20" rx="3" fill="none" stroke="#dbe8e1" stroke-width="2"/>
+
+<rect x="48" y="105" width="504" height="840" rx="18" fill="#0a1814" stroke="#244a37" stroke-width="2"/>
+<rect x="70" y="128" width="48" height="48" rx="13" fill="#123d2b" stroke="#5ac68e"/><text x="94" y="161" text-anchor="middle" font-size="28" font-weight="bold" fill="#9af0bd" font-family="Arial">S</text>
+<text x="132" y="151" fill="#effcf4" font-size="27" font-weight="bold" font-family="Arial">server</text><text x="132" y="174" fill="#8fa99a" font-size="14" font-family="Arial">Your internet calling identity</text>
+<text x="72" y="248" fill="#8ce7b5" font-size="15" font-weight="bold" letter-spacing="3" font-family="Arial">DEVICE-FIRST SETUP</text>
+<text x="72" y="316" fill="#f0f8f3" font-size="44" font-weight="bold" font-family="Arial">One identity.</text>
+<text x="72" y="368" fill="#9aefbd" font-size="42" font-weight="bold" font-family="Arial">Call over internet.</text>
+<text x="72" y="420" fill="#a3b8ad" font-size="18" font-family="Arial">This website guides your Server setup.</text>
+<text x="72" y="448" fill="#a3b8ad" font-size="18" font-family="Arial">No SIM selection or new number needed.</text>
+<rect x="68" y="498" width="468" height="280" rx="18" fill="#10291f" stroke="#315d48" stroke-width="2"/>
+<text x="92" y="542" fill="#8ce6b6" font-size="18" font-weight="bold" font-family="Arial">01</text>
+<text x="140" y="544" fill="#f0f8f3" font-size="27" font-weight="bold" font-family="Arial">Install the connector</text>
+<text x="92" y="590" fill="#9eb4a8" font-size="17" font-family="Arial">A small Android companion connects</text>
+<text x="92" y="617" fill="#9eb4a8" font-size="17" font-family="Arial">Server to the phone calling interface.</text>
+<rect x="90" y="654" width="420" height="70" rx="13" fill="#76dda8"/>
+<text x="300" y="697" fill="#052014" font-size="20" font-weight="bold" text-anchor="middle" font-family="Arial">Download Android connector ↓</text>
+<text x="92" y="755" fill="#829c8d" font-size="14" font-family="Arial">Keep this page open after the download.</text>
+<text x="72" y="840" fill="#8ce6b6" font-size="18" font-weight="bold" font-family="Arial">Your existing SIMs stay unchanged.</text>
+
+<rect x="244" y="938" width="112" height="7" rx="4" fill="#dce8e1"/>
+</svg>

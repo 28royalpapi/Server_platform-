@@ -34,6 +34,14 @@ import java.time.Instant
 class ServerIncomingCallService : Service() {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private var pollingJob: Job? = null
+  private var incomingCallId: String? = null
+  // Process-local by design: if Android recreates the service, active calls must be
+  // re-reported to Telecom instead of being suppressed by stale persisted IDs.
+  private val reportedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+  private val reportedMissedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+  private var activeIncomingCallId: String? = null
+  private var activeIncomingCaller: String = "Server caller"
+  private var activeIncomingSilent: Boolean = false
   private val prefs by lazy { getSharedPreferences("server-session", Context.MODE_PRIVATE) }
 
   override fun onCreate() {
@@ -42,21 +50,69 @@ class ServerIncomingCallService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    if (!ServerTelecomRegistry.isEnabled(this) || prefs.getString("access_token", null).isNullOrBlank()) {
-      stopSelf()
-      return START_NOT_STICKY
+    // Android starts a foreground service with a strict startup deadline. Promote
+    // it immediately, before making Telecom/session eligibility checks or network
+    // calls; otherwise the OS can terminate the process with
+    // ForegroundServiceDidNotStartInTimeException on a Telecom hand-off.
+    when (intent?.action) {
+      ACTION_SHOW_INCOMING_CALL, ACTION_SILENCE_INCOMING_CALL -> {
+        val callId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+        if (callId.isNotBlank()) {
+          activeIncomingCallId = callId
+          activeIncomingCaller = intent.getStringExtra(EXTRA_CALLER_ID).orEmpty().ifBlank { "Server caller" }
+          activeIncomingSilent = intent.action == ACTION_SILENCE_INCOMING_CALL
+        }
+      }
+      ACTION_CLEAR_INCOMING_CALL -> {
+        val callId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+        if (activeIncomingCallId == callId) {
+          activeIncomingCallId = null
+          activeIncomingCaller = "Server caller"
+          activeIncomingSilent = false
+        }
+      }
     }
+
     try {
-      val notification = buildNotification()
+      val notification = activeIncomingCallId?.let { callId ->
+        ServerCallNotifications.buildIncomingNotification(this, callId, activeIncomingCaller, activeIncomingSilent)
+      } ?: buildNotification()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
+        startForeground(FOREGROUND_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
       } else {
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(FOREGROUND_NOTIFICATION_ID, notification)
       }
     } catch (error: Exception) {
       Log.w(TAG, "Could not start Server call listener: " + error.javaClass.simpleName)
       stopSelf()
       return START_NOT_STICKY
+    }
+
+    // The service is safely foregrounded now; it can stop cleanly when the user
+    // has disabled Server or when the local Server session is no longer valid.
+    if (!ServerTelecomRegistry.isEnabled(this) || prefs.getString("access_token", null).isNullOrBlank()) {
+      stopForeground(STOP_FOREGROUND_REMOVE)
+      stopSelf()
+      return START_NOT_STICKY
+    }
+    if (intent?.action == ACTION_END_CALL) {
+      val callId = intent.getStringExtra(EXTRA_CALL_ID).orEmpty()
+      scope.launch {
+        try {
+          val token = freshAccessToken()
+          if (!token.isNullOrBlank() && callId.isNotBlank()) {
+            postJson("/functions/v1/server-calls", JSONObject().put("action", "end").put("call_id", callId), token)
+          }
+        } catch (error: Exception) {
+          Log.w(TAG, "Could not decline Server call: " + error.javaClass.simpleName)
+        } finally {
+          if (callId.isNotBlank()) {
+            ServerTelecomRegistry.markEnded(callId)
+            ServerCallNotifications.cancel(this@ServerIncomingCallService, callId)
+          }
+        }
+      }
+      return START_STICKY
     }
     if (pollingJob?.isActive != true) {
       pollingJob = scope.launch { pollIncomingCalls() }
@@ -69,7 +125,7 @@ class ServerIncomingCallService : Service() {
   override fun onDestroy() {
     pollingJob?.cancel()
     scope.cancel()
-    try { (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID) } catch (_: Exception) {}
+    try { (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(FOREGROUND_NOTIFICATION_ID) } catch (_: Exception) {}
     super.onDestroy()
   }
 
@@ -90,18 +146,29 @@ class ServerIncomingCallService : Service() {
             val row = rows.optJSONObject(i) ?: continue
             val callId = row.optString("id")
             if (callId.isBlank()) continue
-            liveCallIds.add(callId)
-            val reported = prefs.getStringSet(KEY_REPORTED_IDS, emptySet()).orEmpty()
-            if (callId in reported) continue
-
             val caller = row.optString("caller_server_id").takeIf { it.isNotBlank() }
               ?: row.optString("caller_phone_e164").takeIf { it.isNotBlank() }
               ?: "Server caller"
+
+            if (row.optString("state") == "missed") {
+              if (reportedMissedCallIds.add(callId)) {
+                try {
+                  val shown = ServerCallNotifications.showMissed(this, callId, caller)
+                  if (!shown) reportedMissedCallIds.remove(callId)
+                } catch (error: Exception) {
+                  reportedMissedCallIds.remove(callId)
+                  Log.w(TAG, "Could not show a missed Server call: " + error.javaClass.simpleName)
+                }
+              }
+              continue
+            }
+            if (row.optString("state") != "ringing" && row.optString("state") != "connecting") continue
+            liveCallIds.add(callId)
+            if (!reportedCallIds.add(callId)) continue
             try {
               ServerTelecomRegistry.reportIncoming(this, callId, caller)
-              val bounded = (reported + callId).toList().takeLast(MAX_REPORTED_IDS).toSet()
-              prefs.edit().putStringSet(KEY_REPORTED_IDS, bounded).apply()
             } catch (error: Exception) {
+              reportedCallIds.remove(callId)
               Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
             }
           }
@@ -132,22 +199,16 @@ class ServerIncomingCallService : Service() {
     val expires = prefs.getLong("access_expiry", 0L)
     if (expires > System.currentTimeMillis() / 1000 + 120) return current
     return try {
-      val refreshed = postJson("/functions/v1/server-auth", JSONObject().put("action", "refresh"), current)
-      val token = refreshed.optString("access_token")
-      if (!token.matches(Regex("^[0-9a-f]{64}$"))) return null
-      val expiry = try { Instant.parse(refreshed.optString("expires_at")).epochSecond }
-        catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
-      prefs.edit().putString("access_token", token).putLong("access_expiry", expiry).apply()
-      token
+      ServerDeviceSessionManager.ensureFresh(this, current, expires, prefs).accessToken
     } catch (error: Exception) {
-      val status = Regex("HTTP (\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
-      // Authentication/other permanent 4xx errors stop the listener. Network,
-      // rate-limit and server failures are transient: keep the current token and retry.
+      val status = (error as? ServerCallApiException)?.httpStatus
+      // Authentication/other permanent 4xx errors stop the listener only after
+      // device-identity recovery has also failed. Network and server failures retry.
       if (status != null && status in 400..499 && status != 429) {
-        Log.w(TAG, "Server session refresh rejected: HTTP " + status)
+        Log.w(TAG, "Server session recovery rejected: HTTP " + status)
         null
       } else {
-        Log.w(TAG, "Server session refresh deferred: " + error.javaClass.simpleName)
+        Log.w(TAG, "Server session recovery deferred: " + error.javaClass.simpleName)
         current
       }
     }
@@ -209,10 +270,45 @@ class ServerIncomingCallService : Service() {
   companion object {
     private const val TAG = "ServerIncomingCalls"
     private const val CHANNEL_ID = "server-incoming-calls"
-    private const val NOTIFICATION_ID = 7338
-    private const val KEY_REPORTED_IDS = "server_reported_incoming_call_ids"
-    private const val MAX_REPORTED_IDS = 300
+    internal const val FOREGROUND_NOTIFICATION_ID = 7338
     private const val POLL_INTERVAL_MS = 2200L
+    private const val ACTION_SHOW_INCOMING_CALL = "com.server.caller.action.FGS_SHOW_INCOMING"
+    private const val ACTION_SILENCE_INCOMING_CALL = "com.server.caller.action.FGS_SILENCE_INCOMING"
+    private const val ACTION_CLEAR_INCOMING_CALL = "com.server.caller.action.FGS_CLEAR_INCOMING"
+    private const val ACTION_END_CALL = "com.server.caller.action.FGS_END_CALL"
+    private const val EXTRA_CALL_ID = "server_call_id"
+    private const val EXTRA_CALLER_ID = "server_caller_id"
+
+    private fun dispatch(context: Context, action: String, callId: String, caller: String = "") {
+      if (callId.isBlank()) return
+      val serviceIntent = Intent(context, ServerIncomingCallService::class.java).apply {
+        this.action = action
+        putExtra(EXTRA_CALL_ID, callId)
+        if (caller.isNotBlank()) putExtra(EXTRA_CALLER_ID, caller.take(80))
+      }
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(serviceIntent)
+        else context.startService(serviceIntent)
+      } catch (error: Exception) {
+        Log.w(TAG, "Could not update Server call notification: " + error.javaClass.simpleName)
+      }
+    }
+
+    fun showIncomingCall(context: Context, callId: String, caller: String, silent: Boolean = false) {
+      dispatch(context, if (silent) ACTION_SILENCE_INCOMING_CALL else ACTION_SHOW_INCOMING_CALL, callId, caller)
+    }
+
+    fun silenceIncomingCall(context: Context, callId: String, caller: String) {
+      dispatch(context, ACTION_SILENCE_INCOMING_CALL, callId, caller)
+    }
+
+    fun clearIncomingCall(context: Context, callId: String) {
+      dispatch(context, ACTION_CLEAR_INCOMING_CALL, callId)
+    }
+
+    fun endCall(context: Context, callId: String) {
+      dispatch(context, ACTION_END_CALL, callId)
+    }
 
     fun start(context: Context) {
       val serviceIntent = Intent(context, ServerIncomingCallService::class.java)

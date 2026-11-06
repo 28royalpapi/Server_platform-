@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="referrer" content="no-referrer">
-  <title>Server — choose your calling identity</title>
+  <title>Server — your internet calling identity</title>
   <link rel="stylesheet" href="styles.css">
   <script defer src="app.js"></script>
 </head>
@@ -13,47 +13,56 @@
   <main class="shell">
     <header class="brand-row">
       <div class="brand-mark" aria-hidden="true">S</div>
-      <div><div class="brand-name">server</div><div class="brand-caption">Choose your calling identity</div></div>
+      <div><div class="brand-name">server</div><div class="brand-caption">Your internet calling identity</div></div>
     </header>
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
-      <h1>Choose on your phone.<br><span>Set up without SMS OTP.</span></h1>
-      <p>This website is Server’s onboarding experience. On Android, the phone must hand SIM and system-calling tasks to a small native integration component; it opens this same web flow, then returns you to the normal dialer. A website alone cannot read SIM slots or register a system calling account.</p>
+      <h1>One identity.<br><span>Call over the internet.</span></h1>
+      <p>This website is Server’s onboarding experience. A small Android calling component connects Server to the phone’s system calling interface. You do not need to select a SIM or link a mobile number to create a Server identity.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Start setup on this phone</h2><p>Set up once here, then use your normal phone dialer. A Server ID does not require SMS OTP; linking a mobile number later is optional but helps saved contacts find Server users.</p></div></div>
-        <button class="primary full" id="open-server-app" type="button">Continue setup on this phone <span aria-hidden="true">→</span></button>
-        <p id="fallback" class="fine-print hidden">The phone integration did not open. A regular website cannot access SIM subscriptions or register an account with the system dialer by itself; the native integration component is required for those OS-controlled steps.</p>
-        <div class="next-note"><strong>Important about your number</strong><span>Keep your current number as your Server calling identity; you do not need to ask your contacts to save a second number. Server can route calls between Server users over the internet when the number is verified and the recipient opts in. Ordinary carrier calls still follow your mobile operator's settings.</span></div>
+        <section id="android-install" class="install-card">
+          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This small Android companion connects the Server website to Android's system calling interface. It does not replace your Phone app, create another number, or inspect your SIM slots.</p></div></div>
+          <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-arm64.apk">Download 64-bit ARM connector (recommended) <span aria-hidden="true">↓</span></a>
+          <p class="fine-print">Use this ARM64 build on most current Android phones. For an older phone that only supports 32-bit Android, use the ARMv7 option below. These are phone builds; emulator-only x86 packages are not offered here.</p>
+          <a class="secondary full install-link-secondary" id="download-android-connector-armv7" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-armv7.apk">Download 32-bit ARM connector (ARMv7)</a>
+          <ol class="install-steps">
+            <li>Open the downloaded APK from Chrome's download notification or your Downloads folder.</li>
+            <li>When Android asks, allow Chrome or Files to install this app, then approve the Server installation.</li>
+            <li>Return to this same website tab and continue setup below.</li>
+          </ol>
+          <p class="fine-print">This is an Android preview build distributed directly for testing, not a Play Store release. Android may ask you to approve installing apps from this source.</p>
+        </section>
+        <div class="step-title"><span class="step-number">02</span><div><h2>Return here to continue</h2><p>After Server is installed, come back to this page and tap the button. It opens the small connector and shows this same website again, with the native permission bridge enabled.</p></div></div>
+        <button class="primary full" id="open-server-app" type="button">I've installed Server — continue setup <span aria-hidden="true">→</span></button>
+        <p id="fallback" class="fine-print hidden">The phone integration did not open. A browser cannot register an account with Android's system calling interface by itself; install the Server calling component and try again.</p>
+        <div class="next-note"><strong>Important about your number</strong><span>Your Server ID is your internet-calling identity. Your existing mobile number and carrier service remain unchanged. You can optionally verify and link a number later, with your permission, so other Server users can find you that way.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-        <p class="fine-print">On iPhone, a website cannot inspect SIM slots. iOS 18.2+ can route Contacts tap-to-call to an alternative default calling app once Apple authorizes Server’s calling-app entitlement and the user chooses Server as the default. This does not add a third cellular SIM.</p>
+        <p id="ios-install-note" class="fine-print">iPhone uses a separate native Server app and Apple's calling-app permissions. The Android APK above cannot be installed on iPhone; the iOS setup will be released separately.</p>
       </div>
       <div id="native-setup" class="hidden">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Choose your SIM</h2><p>Android needs your permission to reveal the SIM list. After you grant it, choose SIM 1 or SIM 2 here. If the carrier hides the phone number, Server will show that clearly.</p></div></div>
-        <button class="primary full" id="detect-sims" type="button">Allow SIM access and detect SIMs <span aria-hidden="true">→</span></button>
-        <div id="sim-options" class="sim-options" aria-live="polite"></div>
-        <button class="primary full hidden" id="continue-permissions" type="button" disabled>Continue to calling permissions <span aria-hidden="true">→</span></button>
-        <div id="sim-selection-status" class="status hidden" role="status" aria-live="polite"></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>No SIM selection and no SMS OTP are required. Server uses your internet connection; your normal SIMs remain available for ordinary carrier calls.</p></div></div>
         <div id="call-permission-step" class="hidden">
-          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Grant microphone access so Server calls have audio. Notification permission helps the phone show call-related alerts.</p></div></div>
+          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio, Phone-state access so Server can check whether you enabled its Android calling account, and notifications for call alerts. Server does not read your phone number or enumerate SIM slots.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create Server identity and grant permissions <span aria-hidden="true">→</span></button>
+          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create my Server ID and enable calling <span aria-hidden="true">→</span></button>
         </div>
         <div id="finish-step" class="hidden">
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Your Server ID is ready. Link and verify the number you already use so Server users can find and call you on that identity. You do not need a second number for Server.</p>
+          <p class="done-text">Your Server ID is ready. You can call other Server users by Server ID. Linking a mobile number is optional and requires separate verification.</p>
 
-          <section id="phone-link-step" class="phone-link-step">
+          <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
+          <section id="phone-link-step" class="phone-link-step hidden">
             <h3>Link your mobile number</h3>
             <p class="fine-print">Verify the same number already on your SIM. When enabled below, other Server users can ring you through Server internet calling using this verified number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
             <div class="gateway-setup">
               <h4>Set up SMS verification</h4>
-              <p class="fine-print">Use an Android phone with an active SIM (this phone can be used). Generate a one-time code here, then open the Server SIM Gateway app, enter the code, pair it, grant SMS permission, and start the gateway. The code expires after 10 minutes.</p>
+              <p class="fine-print">Phone-number verification is optional and uses a separate SMS gateway. You do not need to complete it to use your Server ID. The code expires after 10 minutes.</p>
               <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate SMS gateway pairing code</button>
               <div id="sms-gateway-pairing-result" class="hidden">
                 <label for="sms-gateway-pairing-code">One-time pairing code</label>
@@ -74,12 +83,70 @@
             <button class="secondary full" id="skip-phone-link" type="button">Skip number verification</button>
           </section>
 
-          <p id="calling-account-note" class="done-text">Next, Android will ask you to enable Server under Calling accounts. After you approve it, Server will open your normal phone dialer.</p>
+          <p id="calling-account-note" class="done-text">Next, enable Server under Android Calling accounts. To see Server alongside SIM 1 and SIM 2 when you call a contact, set your phone's outgoing-call preference to <strong>Ask every time</strong> (the menu wording varies by phone). Then choose Server for an internet call or your SIM for a normal carrier call. Android keeps control of that choice.</p>
           <button class="secondary full" id="enable-calling-account" type="button">Enable Server in phone settings</button>
           <button class="primary full" id="open-phone-dialer" type="button">Open my normal phone dialer <span aria-hidden="true">→</span></button>
           <p class="fine-print">Server is an Android internet-calling account, not a second cellular SIM. Android dialers differ, so the exact placement of Server in the system's call choices depends on the phone and dialer version.</p>
         </div>
       </div>
+    </section>
+    <section class="walkthrough" aria-labelledby="walkthrough-title">
+      <header class="walkthrough-header">
+        <p class="eyebrow">SETUP, STEP BY STEP</p>
+        <h2 id="walkthrough-title">From this website to your phone's call screen</h2>
+        <p>Follow the illustrated Android setup journey. Android wording and screen layouts vary by phone brand and version.</p>
+      </header>
+      <div class="walkthrough-grid">
+        <article class="walkthrough-card">
+          <img src="images/step-01-open-website.svg" alt="Illustration of the Server website onboarding screen." loading="lazy" decoding="async">
+          <div class="walkthrough-copy">
+            <span>STEP 01</span>
+            <h3>Open the Server website</h3>
+            <p>The website is the starting point. Keep it open while you install the Android connector.</p>
+          </div>
+        </article>
+        <article class="walkthrough-card">
+          <img src="images/step-02-download-apk.svg" alt="Illustration of the Android Downloads screen with the Server connector APK." loading="lazy" decoding="async">
+          <div class="walkthrough-copy">
+            <span>STEP 02</span>
+            <h3>Download the APK</h3>
+            <p>Tap Download Android connector. When the file finishes, open it from Chrome Downloads.</p>
+          </div>
+        </article>
+        <article class="walkthrough-card">
+          <img src="images/step-03-install-apk.svg" alt="Illustration of Android's install-from-this-source setting and Server APK installation prompt." loading="lazy" decoding="async">
+          <div class="walkthrough-copy">
+            <span>STEP 03</span>
+            <h3>Install Server</h3>
+            <p>Approve Android's install prompt. Android may first ask Chrome or Files to allow installation from this source.</p>
+          </div>
+        </article>
+        <article class="walkthrough-card">
+          <img src="images/step-04-permissions.svg" alt="Illustration of the Android microphone, phone-state and notification permission steps." loading="lazy" decoding="async">
+          <div class="walkthrough-copy">
+            <span>STEP 04</span>
+            <h3>Allow required permissions</h3>
+            <p>Accept the terms, then grant microphone, Phone-state and notification permissions when Android asks. Phone-state access is used to check calling-account settings, not read SIM numbers.</p>
+          </div>
+        </article>
+        <article class="walkthrough-card">
+          <img src="images/step-05-calling-accounts.svg" alt="Illustration of Android Calling accounts with Server enabled and Ask every time selected." loading="lazy" decoding="async">
+          <div class="walkthrough-copy">
+            <span>STEP 05</span>
+            <h3>Enable Server in Calling accounts</h3>
+            <p>Turn on Server in Android Calling accounts. Set outgoing calls to Ask every time where your phone provides that option.</p>
+          </div>
+        </article>
+        <article class="walkthrough-card">
+          <img src="images/step-06-choose-server.svg" alt="Illustration of the phone app call-choice screen showing SIM 1, Server and SIM 2." loading="lazy" decoding="async">
+          <div class="walkthrough-copy">
+            <span>STEP 06</span>
+            <h3>Choose Server when calling</h3>
+            <p>Use the normal Phone app's call choices and select Server for an internet call. Carrier SIM choices remain available for normal cellular calls.</p>
+          </div>
+        </article>
+      </div>
+      <p class="walkthrough-note"><strong>About these pictures:</strong> They are explanatory illustrations of the setup screens, not screenshots captured from every Android phone. The exact prompts and call-choice layout depend on the device and dialer. Server-to-Server voice calling needs both phones online over mobile data or Wi-Fi. A non-Server recipient can answer a browser invitation only while online; offline carrier voice is not included in this preview.</p>
     </section>
     <footer><span>SERVER · NATIVE SETUP</span><span>Website onboarding · Native calling bridge</span></footer>
   </main>
