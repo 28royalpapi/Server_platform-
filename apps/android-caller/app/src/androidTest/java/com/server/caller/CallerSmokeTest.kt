@@ -69,7 +69,8 @@ class CallerSmokeTest {
         context,
         oldToken,
         System.currentTimeMillis() / 1000L - 60L,
-        prefs
+        prefs,
+        onSessionRestored = {}
       ) { body, bearer ->
         when (body.optString("action")) {
           "refresh" -> {
