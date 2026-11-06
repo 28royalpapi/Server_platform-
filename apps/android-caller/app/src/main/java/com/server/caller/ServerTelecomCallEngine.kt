@@ -376,6 +376,7 @@ internal class ServerTelecomCallEngine(
           ServerCallNotifications.cancel(context, id)
           ServerGuestInviteNotifications.cancel(context, id)
           connection.markRemoteEnded()
+          recordStage("remote_call_ended")
         }
         cleanupPeer()
         release()
