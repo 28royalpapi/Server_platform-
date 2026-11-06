@@ -571,7 +571,21 @@ internal class ServerTelecomCallEngine(
 
   private suspend fun api(action: String, payload: JSONObject = JSONObject()): JSONObject {
     ensureFreshSession()
-    return postFunction("/functions/v1/server-calls", JSONObject(payload.toString()).put("action", action), accessToken)
+    val requestBody = JSONObject(payload.toString()).put("action", action)
+    return try {
+      postFunction("/functions/v1/server-calls", requestBody, accessToken)
+    } catch (error: ServerCallApiException) {
+      if (error.httpStatus != 401) throw error
+      // Retry a single auth rejection after refreshing or restoring this device's
+      // own identity; do not retry rate limits, policy errors or server failures.
+      val recovered = withContext(Dispatchers.IO) {
+        ServerDeviceSessionManager.ensureFresh(context, accessToken, accessExpiry, prefs, forceRefresh = true)
+      }
+      accessToken = recovered.accessToken
+      accessExpiry = recovered.expiresAtEpochSeconds
+      if (recovered.serverId != null) prefs.edit().putString("server_id", recovered.serverId).apply()
+      postFunction("/functions/v1/server-calls", requestBody, accessToken)
+    }
   }
 
   private suspend fun postFunction(path: String, body: JSONObject, token: String?): JSONObject =
