@@ -46,6 +46,68 @@ import java.util.Collections
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
+  @Test fun expiredSessionRecoversSameServerIdentityFromPersistedDeviceCredentials() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val prefs = context.getSharedPreferences("server-session-recovery-test", Context.MODE_PRIVATE)
+    val installationId = UUID.randomUUID().toString()
+    val deviceSecret = "a".repeat(64)
+    val oldToken = "b".repeat(64)
+    val newToken = "c".repeat(64)
+    val serverId = "SVR-ABCDEF1234"
+    prefs.edit().clear()
+      .putString("installation_id", installationId)
+      .putString("device_secret", deviceSecret)
+      .putString("access_token", oldToken)
+      .putLong("access_expiry", System.currentTimeMillis() / 1000L - 60L)
+      .putString("server_id", serverId)
+      .commit()
+
+    val requestedActions = mutableListOf<String>()
+    val session = try {
+      ServerDeviceSessionManager.ensureFresh(
+        context,
+        oldToken,
+        System.currentTimeMillis() / 1000L - 60L,
+        prefs
+      ) { body, bearer ->
+        when (body.optString("action")) {
+          "refresh" -> {
+            requestedActions.add("refresh")
+            assertEquals("The expired session token must be used only for refresh.", oldToken, bearer)
+            ServerAuthResponse(401, JSONObject().put("error", "SESSION_REQUIRED"))
+          }
+          "register_device" -> {
+            requestedActions.add("register_device")
+            assertEquals("Device identity recovery is an unauthenticated registration request.", null, bearer)
+            assertEquals(installationId, body.optString("installation_id"))
+            assertEquals(deviceSecret, body.optString("device_secret"))
+            assertTrue(body.optBoolean("accepted_terms"))
+            assertEquals("server-terms-1.0", body.optString("terms_version"))
+            assertEquals("server-privacy-1.0", body.optString("privacy_version"))
+            ServerAuthResponse(
+              200,
+              JSONObject()
+                .put("access_token", newToken)
+                .put("expires_at", java.time.Instant.now().plusSeconds(30L * 24L * 60L * 60L).toString())
+                .put("user", JSONObject().put("server_id", serverId))
+            )
+          }
+          else -> throw AssertionError("Unexpected auth action: " + body.optString("action"))
+        }
+      }
+      assertEquals(listOf("refresh", "register_device"), requestedActions)
+      assertEquals(newToken, session.accessToken)
+      assertEquals(serverId, session.serverId)
+      assertEquals(newToken, prefs.getString("access_token", null))
+      assertEquals(serverId, prefs.getString("server_id", null))
+      assertTrue(prefs.getLong("access_expiry", 0L) > System.currentTimeMillis() / 1000L)
+      session
+    } finally {
+      prefs.edit().clear().commit()
+    }
+    assertEquals(serverId, session.serverId)
+  }
+
   @Test fun internationalNumberingMetadataCoversEverySupportedRegion() {
     val phoneUtil = PhoneNumberUtil.getInstance()
     val regions = phoneUtil.supportedRegions
