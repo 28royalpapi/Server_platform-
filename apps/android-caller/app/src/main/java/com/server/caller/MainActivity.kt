@@ -469,7 +469,24 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private suspend fun authRequest(path: String, body: JSONObject, bearer: Boolean = false): JSONObject = http(path, body, bearer)
   private suspend fun api(action: String, payload: JSONObject = JSONObject()): JSONObject {
     ensureFreshSession()
-    return http("/functions/v1/server-calls", payload.put("action", action), true)
+    val requestBody = JSONObject(payload.toString()).put("action", action)
+    return try {
+      http("/functions/v1/server-calls", requestBody, true)
+    } catch (error: ServerCallApiException) {
+      if (error.httpStatus != 401) throw error
+      // A server-side session revocation or long-offline expiry can happen before
+      // the locally cached expiry. Revalidate the device identity once, then retry
+      // the original authenticated operation exactly once.
+      val recovered = withContext(Dispatchers.IO) {
+        ServerDeviceSessionManager.ensureFresh(
+          this@MainActivity, accessToken, accessExpiry, prefs, forceRefresh = true
+        )
+      }
+      accessToken = recovered.accessToken
+      accessExpiry = recovered.expiresAtEpochSeconds
+      recovered.serverId?.let { currentServerId = it }
+      http("/functions/v1/server-calls", requestBody, true)
+    }
   }
   private suspend fun http(path: String, body: JSONObject, bearer: Boolean): JSONObject = withContext(Dispatchers.IO) {
     val project = BuildConfig.SUPABASE_URL.trimEnd('/')
