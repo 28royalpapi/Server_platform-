@@ -37,10 +37,16 @@ object ServerTelecomRegistry {
       sessionPrefs.getString("server_linked_phone", "").orEmpty()
     } else ""
     val observedNumber = linkedPhone.filter { it.isDigit() || it == '+' }
-    val accountBuilder = PhoneAccount.builder(handle, "Server")
+    val accountLabel = if (BuildConfig.DEBUG) "Server Preview" else "Server"
+    val shortDescription = if (BuildConfig.DEBUG) {
+      "Server preview internet calling account; not a cellular SIM"
+    } else {
+      "Server internet calling account; not a cellular SIM"
+    }
+    val accountBuilder = PhoneAccount.builder(handle, accountLabel)
       .setCapabilities(PhoneAccount.CAPABILITY_CALL_PROVIDER)
       .setSupportedUriSchemes(listOf(PhoneAccount.SCHEME_TEL))
-      .setShortDescription("Server internet calling account; not a cellular SIM")
+      .setShortDescription(shortDescription)
     if (observedNumber.isNotBlank()) {
       accountBuilder.setAddress(Uri.parse("tel:$observedNumber"))
     }

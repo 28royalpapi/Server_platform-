@@ -926,7 +926,8 @@ class CallerSmokeTest {
       var serverChoice: androidx.test.uiautomator.UiObject2? = null
       var testChoice: androidx.test.uiautomator.UiObject2? = null
       while (System.currentTimeMillis() < chooserDeadline && (serverChoice == null || testChoice == null)) {
-        serverChoice = device.findObject(By.text("Server"))
+        val serverLabel = if (BuildConfig.DEBUG) "Server Preview" else "Server"
+        serverChoice = device.findObject(By.text(serverLabel))
         testChoice = device.findObject(By.text("Test call provider (mock)"))
         Thread.sleep(200)
       }

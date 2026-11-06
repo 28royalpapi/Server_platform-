@@ -268,6 +268,42 @@ jobs:
         run: |
           npm install --no-save --package-lock=false playwright
           npx playwright install --with-deps chromium
+      - name: Enable KVM access for the guest-call Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this runner does not expose /dev/kvm for the guest-call Android emulator." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+      - name: Prepare virtual microphone and speaker for WebRTC
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y pulseaudio
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          pulseaudio --start --exit-idle-time=-1
+          READY=0
+          for attempt in $(seq 1 20); do
+            if pactl info >/dev/null 2>&1; then READY=1; break; fi
+            sleep 1
+          done
+          if [[ "$READY" -ne 1 ]]; then
+            echo "ERROR: PulseAudio did not start; Android WebRTC needs a virtual audio device." >&2
+            pulseaudio --check || true
+            exit 1
+          fi
+          pactl load-module module-null-sink sink_name=server_e2e_speaker
+          pactl load-module module-null-source source_name=server_e2e_microphone
+          pactl set-default-sink server_e2e_speaker
+          pactl set-default-source server_e2e_microphone
+          pactl info
+          echo "PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native" >> "$GITHUB_ENV"
       - name: Create a disposable Server test identity through the real auth endpoint
         run: node scripts/create-server-e2e-identity.mjs > "$RUNNER_TEMP/server-e2e-identity.json"
       - name: Run a real Server call from Android Telecom to the no-install guest browser
