@@ -126,6 +126,6 @@ class SmsGatewayService : Service() {
     const val ACTION_STOP = "com.server.gateway.STOP"
     private const val CHANNEL_ID = "server-sim-gateway"
     private const val NOTIFICATION_ID = 4127
-    private const val POLL_INTERVAL_MS = 12_000L
+    private const val POLL_INTERVAL_MS = 2_500L
   }
 }
