@@ -13,7 +13,9 @@ on:
       - 'scripts/**'
       - 'tests/**'
   push:
-    branches: [main]
+    # Run the same release-gating workflow on the active completion branch so
+    # newly pushed final fixes are built and tested (not merely source-audited).
+    branches: [main, android-finish]
     paths:
       - 'apps/android-caller/**'
       - 'apps/android-sim-gateway/**'
