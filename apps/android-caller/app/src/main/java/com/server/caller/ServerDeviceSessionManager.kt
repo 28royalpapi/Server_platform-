@@ -35,6 +35,7 @@ internal object ServerDeviceSessionManager {
     currentExpiry: Long,
     preferences: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
     forceRefresh: Boolean = false,
+    onSessionRestored: () -> Unit = { ServerPushRegistration.syncFcmToken(context) },
     request: ((JSONObject, String?) -> ServerAuthResponse)? = null
   ): ServerDeviceSession {
     val storedToken = preferences.getString("access_token", null)
@@ -79,7 +80,7 @@ internal object ServerDeviceSessionManager {
       throw apiError(recovered, "Server could not restore this device session")
     }
     val session = persistSession(preferences, recovered.body, preferences.getString("server_id", null), expiry)
-    ServerPushRegistration.syncFcmToken(context)
+    onSessionRestored()
     return session
   }
 
