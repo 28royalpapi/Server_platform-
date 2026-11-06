@@ -343,7 +343,7 @@ Deno.serve(async(req:Request)=>{
     const callerPhone=profile.phone_verified_at?phone(profile.phone_e164):null;
     const callerDisplay=callerPhone||callerLabel;
     const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
-    const smsBody="☎ INCOMING SERVER CALL\n"+callerDisplay+" is calling you. Tap to view the full-screen incoming call and answer securely. You do not need to install the Server app or create an account.\n"+invitationUrl+"\nThe live call expires in 20 minutes. Internet and microphone permission are required to answer.";
+    const smsBody="SERVER CALL: "+callerDisplay+" is calling you. Open to see the full-screen call and answer. No app required: "+invitationUrl+" (expires in 20 minutes).";
     const manualDelivery=(reason:string)=>out({
       ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
       invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
