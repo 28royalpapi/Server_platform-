@@ -734,7 +734,7 @@ assert.match(androidManifest,/ServerCarrierDialActivity/,
   "the explicit carrier handoff Activity is registered in the Android manifest");
 assert.match(androidMain,/button\("Call using selected SIM"\)/,
   "the main app exposes the caller-confirmed selected-SIM fallback after Server reports unavailable");
-assert.match(androidEngine,/background wake job is queued/,"Android Telecom logs background delivery without claiming that the phone rang");
+assert.match(androidEngine,/device delivery is not confirmed/,"Android Telecom logs background delivery without claiming that the phone rang");
 assert.match(androidMain,/SMS may incur your carrier's charge/,"Android discloses that a caller-selected SMS may be billable");
 assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");
 assert.match(androidFirebase,/fcm_registered_server_id/,"push-token registration is scoped to the signed-in Server identity");
