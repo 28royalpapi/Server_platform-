@@ -764,7 +764,7 @@ assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
 assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
-assert.match(calls,/You do not need to install the Server app/,
+assert.match(calls,/No app required/,
   "non-Server invite explains that a recipient does not need the app");
 assert.match(calls,/profile\.server_id/,
   "guest invitation identifies the caller's Server ID");
