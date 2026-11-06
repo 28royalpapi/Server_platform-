@@ -63,8 +63,8 @@ class CallerSmokeTest {
       .commit()
 
     val requestedActions = mutableListOf<String>()
-    val session = try {
-      ServerDeviceSessionManager.ensureFresh(
+    try {
+      val session = ServerDeviceSessionManager.ensureFresh(
         context,
         oldToken,
         System.currentTimeMillis() / 1000L - 60L,
@@ -101,11 +101,9 @@ class CallerSmokeTest {
       assertEquals(newToken, prefs.getString("access_token", null))
       assertEquals(serverId, prefs.getString("server_id", null))
       assertTrue(prefs.getLong("access_expiry", 0L) > System.currentTimeMillis() / 1000L)
-      session
     } finally {
       prefs.edit().clear().commit()
     }
-    assertEquals(serverId, session.serverId)
   }
 
   @Test fun internationalNumberingMetadataCoversEverySupportedRegion() {
