@@ -18,7 +18,7 @@ function renderInvite(details,isCached=false){
  const call=details.call||details;const state=String(call.state||details.state||"");const caller=String(details.caller_label||details.caller_phone||details.caller_server_id||"A Server user");
  if(state==="missed"){titleEl.textContent="Missed Server call";descriptionEl.textContent=caller+" tried to reach you through Server, but the live call window ended. The invitation receipt remains available for up to 24 hours.";status(isCached?"Saved missed-call details are available on this device.":"This is a missed call, not a live ringing session.");joinButton.disabled=true;return;}
  if(state==="ended"||state==="failed"){titleEl.textContent="Call ended";descriptionEl.textContent="The Server call has ended. Ask the caller to start another call.";status("This call is no longer available.",true);joinButton.disabled=true;return;}
- titleEl.textContent=caller+" is calling you";descriptionEl.textContent=caller+" is calling you through Server. Answer to connect by internet voice; no Server installation or account is required.";
+ titleEl.textContent=caller+" is calling you";descriptionEl.textContent=caller+" is calling you through Server. Answer to connect by internet voice. You do not need to install Server or create an account.";
  if(isCached){status("This invitation was saved on this device. Reconnect to check whether the caller is still waiting.",true);joinButton.disabled=true;}else{status("Invitation verified. Answer to enable your microphone.");joinButton.disabled=false;}
 }
 function status(message,isError=false){statusEl.textContent=message;statusEl.classList.toggle("is-error",isError);statusEl.classList.remove("hidden");}
