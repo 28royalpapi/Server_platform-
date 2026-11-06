@@ -320,7 +320,10 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |
-            set -euo pipefail
+            # The emulator action invokes this script through /bin/sh. Explicitly
+            # enter Bash so pipefail, [[ ... ]], and the rest of the strict script
+            # are interpreted consistently on the GitHub runner.
+            bash -euo pipefail <<'BASH'
             APP_APK='artifacts/server-android-debug-apks/artifacts/physical/server-android-x86_64-debug.apk'
             TEST_APK='artifacts/server-android-debug-apks/artifacts/physical/server-android-x86_64-androidTest.apk'
             test -s "$APP_APK" && test -s "$TEST_APK"
@@ -379,6 +382,7 @@ jobs:
             fi
             adb pull '/sdcard/Android/data/com.server.caller.debug/files/server-guest-call-id.txt' artifacts/server-guest-browser-e2e/server-call-id.txt || true
             echo "SERVER_GUEST_ANDROID_BROWSER_E2E_PASS"
+            BASH
       - uses: actions/upload-artifact@v4
         if: always()
         with:
