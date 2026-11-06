@@ -61,7 +61,6 @@ const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
 const calls=read("supabase/functions/server-calls/index.ts");
 const guest=read("supabase/functions/server-guest/index.ts");
-const gateway=read("supabase/functions/server-gateway/index.ts");
 const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
 
 const config=read("web/config.js");
