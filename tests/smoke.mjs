@@ -42,6 +42,7 @@ const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server
 const androidSessionManager=read("apps/android-caller/app/src/main/java/com/server/caller/ServerDeviceSessionManager.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const guestBrowserE2eShell=read("scripts/android-guest-browser-e2e.sh");
+const guestBrowserE2e=read("scripts/android-guest-browser-e2e.mjs");
 const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
 const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
 const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
