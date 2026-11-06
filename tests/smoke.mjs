@@ -701,7 +701,7 @@ assert.match(androidMain,/Call using selected SIM/,"Android offers the caller th
 assert.match(androidMain,/Standard call charges may apply/,"Android warns that carrier attempts are operator-dependent and may be chargeable");
 assert.doesNotMatch(androidCarrierDialer,/Intent\\.ACTION_CALL/,"the carrier fallback never silently places the call");
 assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
-assert.match(androidMain,/no background wake job or accepted push was confirmed/,"the caller is told when no durable wake job or provider acceptance exists");
+assert.match(androidMain,/Not currently reachable on Server/,"the caller is told when Server has no confirmed recipient route");
 assert.match(androidMain,/background wake job is queued/,"the caller is told when its wake job is queued but not delivered");
 assert.match(androidMain,/Available on Server/,"the caller sees when the recipient has fresh Server presence");
 assert.match(androidMain,/background push endpoint is registered/,"the caller sees when only a background push endpoint is available");
