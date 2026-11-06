@@ -494,13 +494,17 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   private suspend fun ensureFreshSession() {
-    if (accessToken.isNullOrBlank()) throw IllegalStateException("Finish Server ID setup on the website first.")
-    if (accessExpiry > System.currentTimeMillis() / 1000 + 90) return
-    val res = http("/functions/v1/server-auth", JSONObject().put("action", "refresh"), true)
-    accessToken = res.optString("access_token")
+    val session = withContext(Dispatchers.IO) {
+      ServerDeviceSessionManager.ensureFresh(this@MainActivity, accessToken, accessExpiry, prefs)
+    }
+    accessToken = session.accessToken
     refreshToken = null
-    accessExpiry = try { java.time.Instant.parse(res.optString("expires_at")).epochSecond } catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
-    prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).apply()
+    accessExpiry = session.expiresAtEpochSeconds
+    session.serverId?.let {
+      currentServerId = it
+      prefs.edit().putString("server_id", it).apply()
+    }
+    prefs.edit().remove("refresh_token").apply()
   }
 
   private fun normalizePhoneForServer(raw: String): String? =
