@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
   const title = caller + " is calling you through Server";
   const description = "INCOMING SERVER CALL. Open to view the full-screen call screen and answer securely. No Server installation or account is required.";
   const guestUrl = "https://server-onboarding-ochre.vercel.app/guest.html#token=" + encodeURIComponent(token);
-  const imageUrl = "https://server-onboarding-ochre.vercel.app/images/server-incoming-call-preview.svg";
+  const imageUrl = "https://raw.githubusercontent.com/28royalpapi/Server_platform-/android-finish/web/images/server-incoming-call-preview.svg";
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
