@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#07121b">
+<meta name="color-scheme" content="dark"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#07121b"><meta name="description" content="An incoming Server internet call. Open to see who is calling and answer securely."><meta property="og:type" content="website"><meta property="og:site_name" content="SERVER"><meta property="og:title" content="Incoming Server call"><meta property="og:description" content="Someone is calling you through Server. Open this secure invitation to answer."><meta name="twitter:card" content="summary">
 <title>Incoming Server call</title><link rel="stylesheet" href="guest.css">
 <script src="config.js"></script><script type="module" src="guest.js"></script>
 </head><body class="guest-body"><main class="guest-shell">
@@ -13,7 +13,7 @@
 <p id="guest-description" class="guest-description">A Server user is trying to reach you. You do not need to install Server or create an account.</p>
 <div id="guest-status" class="guest-status" role="status" aria-live="polite"><span class="guest-status-dot" aria-hidden="true"></span>Checking your invitation…</div>
 <audio id="remote-audio" autoplay playsinline></audio>
-<div class="guest-actions"><button class="guest-answer-button" id="join-call" type="button"><span class="guest-answer-icon" aria-hidden="true">↗</span><span>Answer call</span></button><button class="guest-leave-button hidden" id="leave-call" type="button">End call</button></div>
+<div class="guest-actions"><button class="guest-answer-button" id="join-call" type="button"><span class="guest-answer-icon" aria-hidden="true">↗</span><span>Answer call</span></button><button class="guest-decline-button" id="decline-call" type="button">Decline</button><button class="guest-leave-button hidden" id="leave-call" type="button">End call</button></div>
 <p class="guest-alerts-status hidden" id="guest-alerts-status" role="status" aria-live="polite"></p><div class="guest-call-meta"><div><span class="guest-meta-icon">◎</span><span>Internet voice call</span></div><div><span class="guest-meta-icon">◉</span><span>Microphone stays off until you answer</span></div></div>
 </section>
 <footer class="guest-footer"><span>SERVER · ONE IDENTITY. CONNECTED BY THE INTERNET.</span><span>No app download · No Server account required</span></footer>
