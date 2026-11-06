@@ -744,7 +744,7 @@ assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
  assert.match(calls,/category:"guest_invite"/,"guest SMS jobs use the dedicated guest_invite category");
  assert.match(calls,/gte\("last_seen_at",new Date\(Date\.now\(\)-90000\)/,"automatic guest SMS requires a recently online paired gateway");
- assert.match(calls,/☎ INCOMING SERVER CALL/,"guest SMS clearly announces an incoming Server call");
+ assert.match(calls,/SERVER CALL:/,"guest SMS clearly announces an incoming Server call");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-guest-preview\?token=/,"guest SMS links open a dynamic caller-branded preview before the full-screen call page");
 assert.match(guestPreview,/og:title/,"the guest preview publishes a social-card caller title for messaging apps");
