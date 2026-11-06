@@ -106,6 +106,17 @@ if(req.method==="GET"||action==="inspect"){
  const {data:caller}=await db.from("server_profiles").select("server_id").eq("user_id",call.caller_user_id).maybeSingle();
  return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,caller_server_id:caller?.server_id||"A Server user",call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
 }
+if(action==="decline"){
+ const now=new Date().toISOString();
+ const {call,error:callError}=await loadGuestCall();
+ if(callError||!call)return out({error:"CALL_NOT_FOUND"},404);
+ if(!["ringing","connecting"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
+ const {error:signalError}=await db.from("server_call_signals").insert({call_id:invite.call_id,from_guest_invite_id:invite.id,kind:"hangup",payload:{reason:"declined"}});
+ if(signalError)return out({error:"CALL_DECLINE_FAILED"},503);
+ const {error:updateError}=await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",invite.call_id).in("state",["ringing","connecting"]);
+ if(updateError)return out({error:"CALL_DECLINE_FAILED"},503);
+ return out({ok:true,state:"ended"});
+}
 if(action==="join"){
  const {call,error:callError}=await loadGuestCall();
  if(callError||!call)return out({error:"CALL_NOT_FOUND"},404);
