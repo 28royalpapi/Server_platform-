@@ -103,8 +103,9 @@ async function loadGuestCall(){
 if(req.method==="GET"||action==="inspect"){
  const {call,error:callError}=await loadGuestCall();
  if(callError||!call)return out({error:"CALL_NOT_FOUND"},404);
- const {data:caller}=await db.from("server_profiles").select("server_id").eq("user_id",call.caller_user_id).maybeSingle();
- return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,caller_server_id:caller?.server_id||"A Server user",call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
+ const {data:caller}=await db.from("server_profiles").select("server_id,phone_e164,phone_verified_at").eq("user_id",call.caller_user_id).maybeSingle();
+ const callerLabel=caller?.phone_verified_at&&typeof caller.phone_e164==="string"?caller.phone_e164:(caller?.server_id||"A Server user");
+ return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,caller_server_id:caller?.server_id||"A Server user",caller_label:callerLabel,caller_phone:caller?.phone_verified_at?caller.phone_e164:null,call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
 }
 if(action==="decline"){
  const now=new Date().toISOString();
