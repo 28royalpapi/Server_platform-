@@ -568,7 +568,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           setStatus("The invitation is ready, but Android could not open a sharing app.", true)
         }
       }
-      .setNeutralButton("Try carrier flash call") { _, _ ->
+      .setNeutralButton("Call using selected SIM") { _, _ ->
         handoffToCarrierDialer(recipientPhone, callId)
       }
       .setNegativeButton("Cancel") { _, _ ->
