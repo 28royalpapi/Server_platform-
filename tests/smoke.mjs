@@ -594,8 +594,8 @@ assert.match(androidTests,/input_method_nav_back/,
   "the Phone picker uses the system IME navigation control rather than Android Phone Back");
 assert.match(androidTests,/guestCallInvitationNotificationOffersShareAndSelectedSimActions/,
   "the no-install guest route has an executable native notification/share and SIM-fallback test");
-assert.match(androidTests,/Try carrier flash call/,
-  "the guest notification instrumentation test verifies the carrier fallback action is visible");
+assert.match(androidTests,/Call using selected SIM/,
+  "the guest notification instrumentation test verifies the selected SIM fallback action is visible");
 assert.match(androidTests,/Intent\.ACTION_DIAL/,
   "the guest notification instrumentation test verifies the fallback opens the system dialler");
 assert.match(androidTests,/createShareChooserIntent/,
