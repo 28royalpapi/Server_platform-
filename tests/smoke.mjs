@@ -559,8 +559,8 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
-assert.match(calls,/delivery_mode:"manual_share"/,
-  "guest invitations are returned for an explicit user-initiated share rather than automatic SMS");
+assert.match(calls,/delivery_mode:"automatic_sms_queued"/,
+  "guest invitations are automatically queued through a paired SIM gateway when online");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
   "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
@@ -670,8 +670,9 @@ assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches An
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
 assert.match(calls,/sms_body:smsBody/);
-assert.match(calls,/Server does not send automatic or paid SMS for guest invitations/);
-assert.doesNotMatch(calls,/category:"guest_invite"/,"guest invitations are never queued for automatic paid SMS delivery");
+assert.match(calls,/category:"guest_invite"/,"guest invitations use the existing SIM gateway SMS queue");
+assert.match(calls,/sourceEventId="server-guest-call:"/,"guest SMS queue insertion is idempotent per call");
+assert.match(calls,/automatic_sms_queued/,"automatic guest delivery is explicitly reported to the caller");
 assert.match(calls,/invitation_text:smsBody/,"the backend returns a secure shareable guest invitation message");
 assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
