@@ -107,6 +107,7 @@ internal class ServerTelecomCallEngine(
   private var audioTrack: AudioTrack? = null
   private var audioModule: JavaAudioDeviceModule? = null
   private var iceServers = JSONArray()
+  private var iceServerMode = "stun-only"
   private val pendingIce = mutableListOf<IceCandidate>()
   private var actionJob: Job? = null
   private var pollingJob: Job? = null
@@ -180,6 +181,7 @@ internal class ServerTelecomCallEngine(
       connection.setRingbackRequested(route == "server")
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
+      iceServerMode = started.optString("ice_server_mode", "stun-only")
       recordStage("backend_call_created")
       preparePeer(iceServers)
       if (hangupRequested) {
@@ -276,6 +278,7 @@ internal class ServerTelecomCallEngine(
         return
       }
       iceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
+      iceServerMode = accepted.optString("ice_server_mode", "stun-only")
       preparePeer(iceServers)
       connection.markConnecting()
       if (hangupRequested) {
@@ -503,6 +506,11 @@ internal class ServerTelecomCallEngine(
     }
     val config = PeerConnection.RTCConfiguration(servers).apply {
       sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+      // When TURN credentials are present, force the relayed path so carrier
+      // NAT/firewall edge cases are exercised instead of silently preferring P2P.
+      if (iceServerMode == "cloudflare-turn" || iceServerMode == "coturn-turn") {
+        iceTransportsType = PeerConnection.IceTransportsType.RELAY
+      }
     }
     peer = peerFactory?.createPeerConnection(config, this)
       ?: throw IllegalStateException("WebRTC peer could not be created.")
