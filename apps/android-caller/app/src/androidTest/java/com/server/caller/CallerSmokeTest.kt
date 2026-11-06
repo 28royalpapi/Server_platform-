@@ -687,6 +687,9 @@ class CallerSmokeTest {
     for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS)) {
       runShellCommand("pm grant ${context.packageName} $permission")
     }
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+      runShellCommand("pm grant ${context.packageName} ${Manifest.permission.POST_NOTIFICATIONS}")
+    }
   }
   private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
@@ -733,6 +736,14 @@ class CallerSmokeTest {
   @Test fun preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
+    val e2eArguments = InstrumentationRegistry.getArguments()
+    val e2eToken = e2eArguments.getString("server_test_token")?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
+    val guestE2e = e2eToken != null
+    val dialledNumber = if (guestE2e) "+12025550147" else "+2348012345678"
+    val expectedDialledDigits = dialledNumber.filter { it.isDigit() }
+    val e2eExpiry = e2eArguments.getString("server_test_expiry")?.toLongOrNull()
+      ?: System.currentTimeMillis() / 1000 + 3600
+    val e2eServerId = e2eArguments.getString("server_test_server_id").orEmpty()
     grantTelecomPermissions(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
@@ -743,6 +754,7 @@ class CallerSmokeTest {
     )
     val previousToken = prefs.getString("access_token", null)
     val previousExpiry = prefs.getLong("access_expiry", 0L)
+    val previousServerId = prefs.getString("server_id", null)
     val previousPhone = prefs.getString("phone", null)
     val previousSelectedSimPhone = prefs.getString("selected_sim_phone", null)
     val previousConnectionServiceEnteredAt = prefs.getLong("debug_last_telecom_connection_service_entered_at", 0L)
@@ -762,10 +774,11 @@ class CallerSmokeTest {
       assertTrue("The test must have microphone permission before exercising a background Telecom call",
         context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED)
       prefs.edit()
-        .putString("access_token", "0".repeat(64))
-        .putLong("access_expiry", System.currentTimeMillis() / 1000 + 3600)
-        .putString("phone", "+2348012345678")
-        .putString("selected_sim_phone", "+2348012345678")
+        .putString("access_token", e2eToken ?: "0".repeat(64))
+        .putLong("access_expiry", e2eExpiry)
+        .putString("server_id", e2eServerId)
+        .putString("phone", dialledNumber)
+        .putString("selected_sim_phone", dialledNumber)
         .remove("debug_last_call_engine_entered_at")
         .remove("debug_last_telecom_connection_service_entered_at")
         .remove("debug_last_telecom_request_scheme")
@@ -844,7 +857,7 @@ class CallerSmokeTest {
       // This test verifies Telecom provider selection, not national-number
       // country inference. Use explicit E.164 so the emulator's locale/SIM does
       // not change the dialled destination.
-      digitsField!!.setText("+2348012345678")
+      digitsField!!.setText(dialledNumber)
       fun displayedDestinationDigits(): String {
         val field = device.findObject(By.res(resolvedDialerPackage, "digits")) ?: digitsField
         return field.text?.toString().orEmpty().filter { it.isDigit() }
@@ -853,7 +866,7 @@ class CallerSmokeTest {
       val entryDeadline = System.currentTimeMillis() + 8_000
       while (System.currentTimeMillis() < entryDeadline) {
         enteredDigits = displayedDestinationDigits()
-        if (enteredDigits == "2348012345678") break
+        if (enteredDigits == expectedDialledDigits) break
         Thread.sleep(100)
       }
       if (enteredDigits != "2348012345678") {
@@ -866,7 +879,7 @@ class CallerSmokeTest {
         }
       }
       assertEquals("Android Phone must retain every digit of the E.164 destination regardless of visual formatting",
-        "2348012345678", enteredDigits)
+        expectedDialledDigits, enteredDigits)
 
       // Close only Gboard's navigation-bar IME button. Android Phone's own
       // Back action hides the dialpad itself, so never fall back to pressBack().
@@ -964,8 +977,56 @@ class CallerSmokeTest {
         "phone", prefs.getString("debug_last_call_target_kind", null))
       assertEquals("Outgoing Android Telecom request must use the telephone URI scheme",
         "tel", prefs.getString("debug_last_telecom_request_scheme", null))
-      assertEquals("Android Telecom must preserve the + prefix and all 13 digits of the E.164 destination",
-        "+2348012345678".length, prefs.getInt("debug_last_telecom_request_target_length", -1))
+      assertEquals("Android Telecom must preserve the complete E.164 destination including the + prefix",
+        dialledNumber.length, prefs.getInt("debug_last_telecom_request_target_length", -1))
+
+      if (guestE2e) {
+        // This branch performs a real phone-dialler -> Server ConnectionService ->
+        // Supabase guest invitation -> browser-answer -> two-way audio -> hang-up.
+        // The browser script runs beside this instrumentation process on the CI host.
+        val inviteDeadline = System.currentTimeMillis() + 60_000
+        var invitation = prefs.getString("debug_last_guest_invitation_text", null).orEmpty()
+        while (invitation.isBlank() && System.currentTimeMillis() < inviteDeadline) {
+          if (prefs.getString("debug_last_telecom_stage", null) == "call_setup_failed") break
+          invitation = prefs.getString("debug_last_guest_invitation_text", null).orEmpty()
+          Thread.sleep(150)
+        }
+        val callId = prefs.getString("debug_last_guest_call_id", null).orEmpty()
+        val failureReason = prefs.getString("debug_last_call_failure", null).orEmpty()
+        assertTrue("The real Server backend did not return a secure guest invitation (stage=" +
+          prefs.getString("debug_last_telecom_stage", "unknown") + "; failure=" + failureReason + ")",
+          invitation.contains("/guest.html#token=") &&
+            Regex("#token=[0-9a-f]{64}").containsMatchIn(invitation))
+        assertTrue("The guest call did not produce a backend call ID", callId.isNotBlank())
+        val outputDir = context.getExternalFilesDir(null) ?: context.cacheDir
+        File(outputDir, "server-guest-invitation.txt").writeText(invitation)
+        File(outputDir, "server-guest-call-id.txt").writeText(callId)
+        Log.i("ServerGuestE2E", "SERVER_GUEST_INVITATION_READY: native Android Telecom created the guest call and secure browser invitation.")
+
+        val mediaDeadline = System.currentTimeMillis() + 120_000
+        var stage = prefs.getString("debug_last_telecom_stage", "not-recorded").orEmpty()
+        while (System.currentTimeMillis() < mediaDeadline &&
+          stage != "two_way_audio_media_ready" && stage != "call_setup_failed") {
+          stage = prefs.getString("debug_last_telecom_stage", "not-recorded").orEmpty()
+          Thread.sleep(200)
+        }
+        val receivedPackets = prefs.getLong("debug_last_inbound_audio_rtp_packets", 0L)
+        val mediaFailure = prefs.getString("debug_last_call_failure", null).orEmpty()
+        assertEquals("The Android native WebRTC engine must receive guest audio RTP and mark the call active (failure=" +
+          mediaFailure + "; packets=" + receivedPackets + ")", "two_way_audio_media_ready", stage)
+        assertTrue("Android did not receive guest audio RTP packets", receivedPackets > 0L)
+        Log.i("ServerGuestE2E", "SERVER_GUEST_ANDROID_AUDIO_PASS: Android Telecom received inbound audio RTP packets=" + receivedPackets + ".")
+
+        val hangupDeadline = System.currentTimeMillis() + 60_000
+        while (System.currentTimeMillis() < hangupDeadline &&
+          prefs.getString("debug_last_telecom_stage", null) != "remote_call_ended") {
+          Thread.sleep(200)
+        }
+        assertEquals("Ending the guest browser call must tear down the Android Telecom call",
+          "remote_call_ended", prefs.getString("debug_last_telecom_stage", null))
+        Log.i("ServerGuestE2E", "SERVER_GUEST_HANGUP_PASS: remote hang-up cleared the Android Telecom connection.")
+        return
+      }
 
       // This test intentionally uses an invalid session, so a real backend rejection
       // is expected. Telecom must reach its bound WebRTC engine without opening an
@@ -988,6 +1049,7 @@ class CallerSmokeTest {
       val edit = prefs.edit()
       if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
       edit.putLong("access_expiry", previousExpiry)
+      if (previousServerId == null) edit.remove("server_id") else edit.putString("server_id", previousServerId)
       if (previousPhone == null) edit.remove("phone") else edit.putString("phone", previousPhone)
       if (previousSelectedSimPhone == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousSelectedSimPhone)
       if (previousConnectionServiceEnteredAt == 0L) edit.remove("debug_last_telecom_connection_service_entered_at") else edit.putLong("debug_last_telecom_connection_service_entered_at", previousConnectionServiceEnteredAt)

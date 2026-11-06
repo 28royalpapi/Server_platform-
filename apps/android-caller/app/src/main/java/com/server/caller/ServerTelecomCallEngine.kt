@@ -141,6 +141,12 @@ internal class ServerTelecomCallEngine(
 
   private suspend fun placeOutgoing(rawTarget: String) {
     recordStage("call_engine_connection_started")
+    if (BuildConfig.DEBUG) {
+      prefs.edit().remove("debug_last_guest_invitation_text")
+        .remove("debug_last_guest_call_id")
+        .remove("debug_last_inbound_audio_rtp_packets")
+        .apply()
+    }
     try {
       val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
       val capabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
@@ -196,6 +202,14 @@ internal class ServerTelecomCallEngine(
           started.optString("sms_body")
         }
         if (invitation.isBlank()) throw IllegalStateException("Server did not return a secure guest invitation.")
+        // Keep the invitation available to the debug-only virtual-device E2E
+        // harness. The release build never writes this bearer token to local storage.
+        if (BuildConfig.DEBUG) {
+          prefs.edit()
+            .putString("debug_last_guest_invitation_text", invitation)
+            .putString("debug_last_guest_call_id", callId.orEmpty())
+            .apply()
+        }
         if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
           throw IllegalStateException(
             "Allow Server notifications to share a secure call invitation with someone who does not use Server."
@@ -318,6 +332,7 @@ internal class ServerTelecomCallEngine(
               ServerCallNotifications.cancel(context, endedId)
               ServerGuestInviteNotifications.cancel(context, endedId)
               connection.markRemoteEnded()
+              recordStage("remote_call_ended")
             }
             cleanupPeer()
             release()

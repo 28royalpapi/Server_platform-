@@ -248,6 +248,110 @@ jobs:
 
 
 
+  android-guest-browser-e2e:
+    name: Android Telecom to no-install guest browser end-to-end call
+    needs: android-build-and-emulator-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: android-actions/setup-android@v4
+      - name: Download the x86_64 emulator app and instrumentation pair
+        uses: actions/download-artifact@v4
+        with:
+          name: server-android-debug-apks
+          path: artifacts/server-android-debug-apks
+      - name: Install Playwright Chromium and system dependencies
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install --with-deps chromium
+      - name: Create a disposable Server test identity through the real auth endpoint
+        run: node scripts/create-server-e2e-identity.mjs > "$RUNNER_TEMP/server-e2e-identity.json"
+      - name: Run a real Server call from Android Telecom to the no-install guest browser
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 360
+          disable-animations: true
+          emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -euo pipefail
+            APP_APK='artifacts/server-android-debug-apks/artifacts/physical/server-android-x86_64-debug.apk'
+            TEST_APK='artifacts/server-android-debug-apks/artifacts/physical/server-android-x86_64-androidTest.apk'
+            test -s "$APP_APK" && test -s "$TEST_APK"
+            adb install -r "$APP_APK"
+            adb install -r "$TEST_APK"
+            adb shell pm grant com.server.caller.debug android.permission.RECORD_AUDIO
+            adb shell pm grant com.server.caller.debug android.permission.READ_PHONE_STATE
+            adb shell pm grant com.server.caller.debug android.permission.READ_CONTACTS
+            adb shell pm grant com.server.caller.debug android.permission.POST_NOTIFICATIONS
+
+            SERVER_TEST_TOKEN="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/server-e2e-identity.json","utf8")).access_token)')"
+            SERVER_TEST_EXPIRY="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/server-e2e-identity.json","utf8")).access_expiry))')"
+            SERVER_TEST_ID="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/server-e2e-identity.json","utf8")).server_id)')"
+            test -n "$SERVER_TEST_TOKEN" && test -n "$SERVER_TEST_ID"
+            mkdir -p artifacts/server-guest-browser-e2e
+
+            adb shell am instrument -w -r \
+              -e class com.server.caller.CallerSmokeTest#preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice \
+              -e server_test_token "$SERVER_TEST_TOKEN" \
+              -e server_test_expiry "$SERVER_TEST_EXPIRY" \
+              -e server_test_server_id "$SERVER_TEST_ID" \
+              com.server.caller.debug.test/androidx.test.runner.AndroidJUnitRunner \
+              > "$RUNNER_TEMP/server-e2e-instrumentation.log" 2>&1 &
+            INSTRUMENTATION_PID=$!
+            INVITE_ON_DEVICE='/sdcard/Android/data/com.server.caller.debug/files/server-guest-invitation.txt'
+            INVITE_ON_HOST="$RUNNER_TEMP/server-guest-invitation.txt"
+            FOUND_INVITE=false
+            for attempt in $(seq 1 150); do
+              if adb pull "$INVITE_ON_DEVICE" "$INVITE_ON_HOST" >/dev/null 2>&1 && test -s "$INVITE_ON_HOST"; then
+                FOUND_INVITE=true
+                break
+              fi
+              if ! kill -0 "$INSTRUMENTATION_PID" 2>/dev/null; then
+                cat "$RUNNER_TEMP/server-e2e-instrumentation.log"
+                echo "Instrumentation ended before the real guest invitation was created." >&2
+                exit 1
+              fi
+              sleep 1
+            done
+            if [[ "$FOUND_INVITE" != "true" ]]; then
+              cat "$RUNNER_TEMP/server-e2e-instrumentation.log"
+              echo "Timed out waiting for Android Telecom to create the guest invitation." >&2
+              exit 1
+            fi
+            SERVER_GUEST_INVITATION_FILE="$INVITE_ON_HOST" \
+              SERVER_E2E_ARTIFACT_DIR="$GITHUB_WORKSPACE/artifacts/server-guest-browser-e2e" \
+              node scripts/android-guest-browser-e2e.mjs
+            set +e
+            wait "$INSTRUMENTATION_PID"
+            TEST_STATUS=$?
+            set -e
+            cat "$RUNNER_TEMP/server-e2e-instrumentation.log"
+            if [[ "$TEST_STATUS" -ne 0 ]]; then
+              echo "The Android Telecom end-to-end instrumentation failed." >&2
+              exit "$TEST_STATUS"
+            fi
+            adb pull '/sdcard/Android/data/com.server.caller.debug/files/server-guest-call-id.txt' artifacts/server-guest-browser-e2e/server-call-id.txt || true
+            echo "SERVER_GUEST_ANDROID_BROWSER_E2E_PASS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-guest-browser-e2e
+          path: |
+            artifacts/server-guest-browser-e2e/**
+            ${{ runner.temp }}/server-e2e-instrumentation.log
+          if-no-files-found: warn
+
   android-8-minimum-install-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -560,6 +664,7 @@ jobs:
       - android-build-and-emulator-smoke
       - android-8-minimum-install-smoke
       - android-10-to-16-platform-matrix
+      - android-guest-browser-e2e
     runs-on: ubuntu-latest
     permissions:
       contents: write
