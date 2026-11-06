@@ -210,12 +210,22 @@ internal class ServerTelecomCallEngine(
             .putString("debug_last_guest_call_id", callId.orEmpty())
             .apply()
         }
-        if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
-          throw IllegalStateException(
-            "Allow Server notifications to share a secure call invitation with someone who does not use Server."
-          )
+        val deliveryMode = started.optString("delivery_mode", "manual_share")
+        if (deliveryMode == "automatic_sms_queued") {
+          val delivery = started.optJSONObject("sms_delivery")
+          Log.i(TAG, "Guest invitation queued through paired SIM gateway; provider status=" +
+            delivery?.optString("status", "queued"))
+          recordStage("guest_invitation_sms_queued")
+        } else {
+          if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
+            throw IllegalStateException(
+              started.optString("delivery_message").ifBlank {
+                "Reconnect the paired Server SIM Gateway or allow notifications to share the guest invitation."
+              }
+            )
+          }
+          recordStage("guest_invitation_manual_share_ready")
         }
-        recordStage("guest_invitation_ready")
         // The recipient answers on the secure browser page. Keep the Telecom call
         // and WebRTC offer alive while the browser joins; do not launch an Activity
         // over Android's Phone app from this background ConnectionService.
