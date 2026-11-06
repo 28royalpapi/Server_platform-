@@ -61,6 +61,8 @@ const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
 const calls=read("supabase/functions/server-calls/index.ts");
 const guest=read("supabase/functions/server-guest/index.ts");
+const guestPreview=read("supabase/functions/server-guest-preview/index.ts");
+const guestPreviewImage=read("web/images/server-incoming-call-preview.svg");
 const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
 
 const config=read("web/config.js");
@@ -742,6 +744,12 @@ assert.match(guest,/RTCPeerConnection|server_call_signals/);
  assert.match(calls,/gte\("last_seen_at",new Date\(Date\.now\(\)-90000\)/,"automatic guest SMS requires a recently online paired gateway");
  assert.match(calls,/☎ INCOMING SERVER CALL/,"guest SMS clearly announces an incoming Server call");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
+assert.match(calls,/server-guest-preview\?token=/,"guest SMS links open a dynamic caller-branded preview before the full-screen call page");
+assert.match(guestPreview,/og:title/,"the guest preview publishes a social-card caller title for messaging apps");
+assert.match(guestPreview,/og:image/,"the guest preview publishes incoming-call artwork for rich link cards");
+assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
+assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
+
  assert.match(guestWeb,/iceTransportPolicy:joined\.ice_server_mode&&joined\.ice_server_mode!=="stun-only"\?"relay":"all"/,"guest browser forces TURN relay when valid TURN credentials are provisioned");
  assert.match(androidEngine,/iceTransportsType = PeerConnection\.IceTransportsType\.RELAY/,"Android forces TURN relay when valid TURN credentials are provisioned");
 
