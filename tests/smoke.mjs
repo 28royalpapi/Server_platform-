@@ -515,7 +515,7 @@ assert.match(androidGuestShare,/Intent\(Intent\.ACTION_SEND\)/,
   "the caller explicitly opens Android's native share chooser");
 assert.match(androidGuestShare,/Intent\(Intent\.ACTION_SENDTO, Uri\.fromParts\("smsto", phone, null\)\)/,
   "the SMS composer is addressed to the selected saved contact");
-assert.doesNotMatch(androidGuestShare,/sendTextMessage|SmsManager\.send/,"Server never sends an SMS without the caller tapping Send");
+assert.doesNotMatch(androidGuestShare,/sendTextMessage|SmsManager\.send/,"the caller app delegates SMS transmission to the paired SIM gateway, not its own process");
 assert.match(androidManifest,/android:name="com\.server\.caller\.ServerGuestInviteShareActivity"/,
   "the native share activity is available only after the user taps the guest invitation notification");
 assert.match(androidPhoneNormalizer,/PhoneNumberUtil\.getInstance\(\)/,
@@ -675,7 +675,7 @@ assert.doesNotMatch(calls,/category:"guest_invite"/,"guest invitations are never
 assert.match(calls,/invitation_text:smsBody/,"the backend returns a secure shareable guest invitation message");
 assert.match(androidMain,/normalizePhoneForServer/);
 assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
-assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations use the system share sheet rather than forcing SMS");
+assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations retain a system share-sheet fallback when the paired gateway is unavailable");
 assert.match(androidMain,/Try carrier flash call/,"Android offers the caller a SIM-based carrier fallback when Server cannot reach the recipient");
 assert.match(androidMain,/Standard call charges may apply/,"Android warns that carrier attempts are operator-dependent and may be chargeable");
 assert.doesNotMatch(androidCarrierDialer,/Intent\\.ACTION_CALL/,"the carrier fallback never silently places the call");
@@ -730,6 +730,13 @@ assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
+ assert.match(calls,/category:"guest_invite"/,"guest SMS jobs use the dedicated guest_invite category");
+ assert.match(calls,/gte\("last_seen_at",new Date\(Date\.now\(\)-90000\)/,"automatic guest SMS requires a recently online paired gateway");
+ assert.match(calls,/☎ INCOMING SERVER CALL/,"guest SMS clearly announces an incoming Server call");
+ assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
+ assert.match(guestWeb,/iceTransportPolicy:joined\.ice_server_mode&&joined\.ice_server_mode!=="stun-only"\?"relay":"all"/,"guest browser forces TURN relay when valid TURN credentials are provisioned");
+ assert.match(androidEngine,/iceTransportsType = PeerConnection\.IceTransportsType\.RELAY/,"Android forces TURN relay when valid TURN credentials are provisioned");
+
 const configCode=config.split("\n").filter(line=>!line.trim().startsWith("//")).join("\n");
 assert.doesNotMatch(configCode,/service[_-]?role|sb_secret/i,"browser config contains no privileged key");
 assert.match(config,/hzuovekqsjtpvmbuybxs\.supabase\.co/);
