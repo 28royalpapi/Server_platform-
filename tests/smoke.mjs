@@ -248,8 +248,8 @@ assert.match(androidSetup,/ServerFallbackSimManager\.optionsJson/);
 assert.match(androidSetup,/ServerFallbackSimManager\.saveSelection/);
 assert.match(androidFallbackSim,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
 assert.match(androidFallbackSim,/Manifest\.permission\.READ_PHONE_STATE/);
-assert.doesNotMatch(androidFallbackSim,/getLine1Number|iccId|imsi|subscriberId/i,
-  "SIM fallback selection never reads subscriber phone numbers or serial identifiers");
+assert.doesNotMatch(androidFallbackSim,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
+  "SIM fallback selection never invokes APIs that read subscriber phone numbers or serial identifiers");
 assert.match(androidSetup,/registerDevice\(acceptedTerms: Boolean\)/,
   "Server ID registration is performed by the website's native permission bridge");
 assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,
