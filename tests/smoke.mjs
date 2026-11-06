@@ -84,8 +84,8 @@ assert.match(auth,/allow_number_based_server_calls/);
 assert.match(auth,/async function bearer\(req:Request,db:any,allowExpiredForRefresh=false\)/,"expired sessions receive a grace window only through refresh");
 assert.match(auth,/const expiryCutoff=allowExpiredForRefresh\?Date\.now\(\)-7\*24\*60\*60\*1000:Date\.now\(\)/,"expired-session cutoff is limited to seven days and is conditional");
 assert.match(auth,/bearer\(req,db,action==="refresh"\)/,"normal API actions cannot use expired sessions");
-assert.match(androidIncoming,/Server session refresh deferred/,"transient token-refresh failures must retry instead of stopping the incoming-call listener");
-assert.match(androidIncoming,/Server session refresh rejected/,"permanent token-refresh failures are rejected");
+assert.match(androidIncoming,/Server session recovery deferred/,"transient session-refresh and device-recovery failures must retry instead of stopping the incoming-call listener");
+assert.match(androidIncoming,/Server session recovery rejected/,"permanent session-refresh and device-recovery failures are rejected");
 assert.match(androidIncoming,/tokenExpired/,"polling distinguishes expired offline sessions from revoked valid sessions");
 assert.match(calls,/found.allow_number_based_server_calls===true/);
 assert.doesNotMatch(calls,/expireStaleRingingCalls|last_seen_at:\s*new Date\(\)\.toISOString\(\)/,
