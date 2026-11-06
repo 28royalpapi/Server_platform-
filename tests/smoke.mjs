@@ -38,6 +38,7 @@ const androidBuild=read("apps/android-caller/app/build.gradle.kts");
 const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallNotifications.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
+const androidSessionManager=read("apps/android-caller/app/src/main/java/com/server/caller/ServerDeviceSessionManager.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
 const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
