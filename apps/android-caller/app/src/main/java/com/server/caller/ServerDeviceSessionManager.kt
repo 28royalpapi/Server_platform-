@@ -68,6 +68,7 @@ internal object ServerDeviceSessionManager {
       throw IllegalStateException("Your Server session expired and this installation has no recoverable device identity. Reopen Server setup.")
     }
 
+    val selectedSim = ServerFallbackSimManager.selectedOption(context)
     val registration = JSONObject()
       .put("action", "register_device")
       .put("installation_id", installationId)
@@ -75,6 +76,8 @@ internal object ServerDeviceSessionManager {
       .put("accepted_terms", true)
       .put("terms_version", "server-terms-1.0")
       .put("privacy_version", "server-privacy-1.0")
+      .put("selected_sim_slot", selectedSim?.slotIndex ?: JSONObject.NULL)
+      .put("selected_sim_carrier", selectedSim?.carrierName ?: JSONObject.NULL)
     val recovered = send(registration, null)
     if (recovered.status !in 200..299) {
       throw apiError(recovered, "Server could not restore this device session")

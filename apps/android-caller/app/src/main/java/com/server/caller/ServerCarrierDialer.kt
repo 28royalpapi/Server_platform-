@@ -3,6 +3,7 @@ package com.server.caller
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.telecom.TelecomManager
 
 /**
  * Opens Android's ordinary phone dialler for a caller-confirmed carrier attempt.
@@ -16,8 +17,17 @@ internal object ServerCarrierDialer {
     return Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))
   }
 
+  fun createIntent(context: Context, rawNumber: String): Intent? {
+    val intent = createIntent(rawNumber) ?: return null
+    val selectedAccount = ServerFallbackSimManager.selectedPhoneAccount(context)
+    if (selectedAccount != null) {
+      intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, selectedAccount)
+    }
+    return intent
+  }
+
   fun open(context: Context, rawNumber: String): Boolean {
-    val intent = createIntent(rawNumber) ?: return false
+    val intent = createIntent(context, rawNumber) ?: return false
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     return try {
       context.startActivity(intent)

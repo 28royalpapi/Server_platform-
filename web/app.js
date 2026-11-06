@@ -36,6 +36,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const terms = document.querySelector("#native-terms");
   const grantCalls = document.querySelector("#grant-call-permissions");
   const finishStep = document.querySelector("#finish-step");
+  const fallbackSimStep = document.querySelector("#fallback-sim-step");
+  const fallbackSimOptionsEl = document.querySelector("#fallback-sim-options");
+  const fallbackSimNote = document.querySelector("#fallback-sim-note");
+  const saveFallbackSimButton = document.querySelector("#save-fallback-sim");
   const serverId = document.querySelector("#server-id");
   const phoneLinkInput = document.querySelector("#link-phone-number");
   const phoneCodeInput = document.querySelector("#link-phone-code");
@@ -55,6 +59,64 @@ if (isNativeSetup && nativeSetup && stepForm) {
   let phoneLinkVerified = false;
   let persistedNumberConsent = false;
   let destinationCountryContactsGranted = false;
+  let selectedFallbackSimKey = "ask";
+  let fallbackSimOptionPayload = null;
+  const renderFallbackSimOptions = (payload) => {
+    fallbackSimOptionPayload = payload;
+    const options = Array.isArray(payload && payload.options) ? payload.options : [];
+    selectedFallbackSimKey = String(payload && payload.selected_key || "ask");
+    const choices = [{
+      key: "ask",
+      label: "Ask me every time",
+      description: "Android will show the available SIM lines each time you choose a carrier call."
+    }, ...options.map((option) => ({
+      key: String(option.key),
+      label: String(option.label || ("SIM " + (Number(option.slot_index) + 1))),
+      description: "Your mobile operator will apply its normal voice-call charges."
+    }))];
+    if (fallbackSimOptionsEl) fallbackSimOptionsEl.textContent = "";
+    choices.forEach((choice) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "sim-choice" + (choice.key === selectedFallbackSimKey ? " selected" : "");
+      item.setAttribute("aria-pressed", choice.key === selectedFallbackSimKey ? "true" : "false");
+      const heading = document.createElement("strong");
+      heading.textContent = choice.label;
+      const detail = document.createElement("span");
+      detail.textContent = choice.description;
+      item.appendChild(heading);
+      item.appendChild(detail);
+      item.addEventListener("click", () => {
+        selectedFallbackSimKey = choice.key;
+        renderFallbackSimOptions(fallbackSimOptionPayload);
+        if (fallbackSimNote) fallbackSimNote.textContent = choice.description;
+      });
+      fallbackSimOptionsEl && fallbackSimOptionsEl.appendChild(item);
+    });
+    if (fallbackSimNote) {
+      if (payload && payload.selected_sim_unavailable) {
+        fallbackSimNote.textContent = "Your previously selected SIM is no longer active. Choose another line or ask Android every time.";
+      } else if (!options.length) {
+        fallbackSimNote.textContent = "Android did not expose an active SIM calling account. Server internet calls still work; choose Ask me every time and use the phone dialler if a carrier fallback is needed.";
+      } else {
+        fallbackSimNote.textContent = "The selected SIM is used only when you choose a normal carrier fallback. The mobile operator bills that line.";
+      }
+    }
+  };
+  const loadFallbackSimOptions = () => {
+    if (!window.ServerAndroid || typeof window.ServerAndroid.getFallbackSimOptions !== "function") {
+      renderFallbackSimOptions({ok:true,options:[],selected_key:"ask"});
+      return;
+    }
+    try {
+      const payload = JSON.parse(window.ServerAndroid.getFallbackSimOptions());
+      if (!payload || payload.ok !== true) throw new Error((payload && payload.error) || "SIM choices unavailable");
+      renderFallbackSimOptions(payload);
+    } catch {
+      renderFallbackSimOptions({ok:true,options:[],selected_key:"ask"});
+      if (fallbackSimNote) fallbackSimNote.textContent = "SIM choices could not be read. Server will keep Ask me every time; your normal phone dialler remains available.";
+    }
+  };
   const normalizePhone = (raw) => {
     const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
     let candidate = value;
@@ -89,7 +151,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     grantCalls.disabled = true;
     grantCalls.textContent = "Waiting for Android permissions…";
-    showStatus("Android will request microphone and Phone permissions, notifications where supported, and optional Contacts access. Contacts access lets Server read the selected contact’s saved E.164 number or country on this device only; your address book is not uploaded.");
+    showStatus("Android will request microphone and Phone-state permissions, notifications where supported, and optional Contacts access. Phone-state access lets you choose a fallback SIM by carrier and slot; Server does not read SIM phone numbers or serial identifiers. Contacts access stays on this device.");
     if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.requestCallPermissions();
   });
@@ -97,20 +159,42 @@ if (isNativeSetup && nativeSetup && stepForm) {
   window.onServerCallPermissionResult = (microphoneGranted, notificationsGranted, phoneStateGranted, contactsGranted) => {
     destinationCountryContactsGranted = contactsGranted === true;
     grantCalls.disabled = false;
-    grantCalls.textContent = "Create my Server ID and enable calling →";
+    grantCalls.textContent = "Allow permissions and continue →";
     if (!microphoneGranted) {
       showStatus("Microphone permission is required for Server calls. Allow it and try again.");
       return;
     }
     if (!phoneStateGranted) {
-      showStatus("Android's Phone permission is required to register Server with the system calling interface. Server does not read your phone number or inspect SIM slots.");
+      showStatus("Android Phone-state permission is required to list active SIM carrier names and slots for your fallback choice and to check Server calling-account settings. Server does not read SIM phone numbers, ICCIDs or IMSIs.");
       return;
     }
-    showStatus("Permissions granted. Creating your Server identity…");
-    grantCalls.disabled = true;
-    if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
-    window.ServerAndroid.completeSetup(Boolean(terms && terms.checked));
+    if (!window.ServerAndroid) {
+      showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone.");
+      return;
+    }
+    callStep && callStep.classList.add("hidden");
+    fallbackSimStep && fallbackSimStep.classList.remove("hidden");
+    showStatus("Permissions granted. Choose the SIM Server should preselect if you make a normal carrier fallback.", true);
+    loadFallbackSimOptions();
   };
+
+  saveFallbackSimButton && saveFallbackSimButton.addEventListener("click", () => {
+    if (!window.ServerAndroid || typeof window.ServerAndroid.setFallbackSimSelection !== "function") {
+      showStatus("Android could not save the fallback SIM preference. Reopen Server onboarding from the installed connector.");
+      return;
+    }
+    saveFallbackSimButton.disabled = true;
+    try {
+      const saved = JSON.parse(window.ServerAndroid.setFallbackSimSelection(selectedFallbackSimKey));
+      if (!saved || saved.ok !== true) throw new Error((saved && saved.error) || "Fallback SIM preference could not be saved.");
+      fallbackSimStep && fallbackSimStep.classList.add("hidden");
+      showStatus("Fallback choice saved. Creating your Server identity…", true);
+      window.ServerAndroid.completeSetup(Boolean(terms && terms.checked));
+    } catch (error) {
+      showStatus(error.message || "Fallback SIM preference could not be saved.");
+      saveFallbackSimButton.disabled = false;
+    }
+  });
 
   window.onServerSetupResult = (result) => {
     grantCalls.disabled = false;

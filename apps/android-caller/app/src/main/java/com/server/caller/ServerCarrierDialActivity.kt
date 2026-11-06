@@ -25,7 +25,7 @@ class ServerCarrierDialActivity : Activity() {
       ServerTelecomRegistry.fallbackToCarrier(callId)
     }
 
-    val dialIntent = ServerCarrierDialer.createIntent(phone)
+    val dialIntent = ServerCarrierDialer.createIntent(this, phone)
     if (dialIntent == null) {
       Toast.makeText(this, "A valid phone number is required for a SIM call.", Toast.LENGTH_LONG).show()
       finish()

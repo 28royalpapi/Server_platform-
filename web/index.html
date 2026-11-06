@@ -18,13 +18,13 @@
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
       <h1>One identity.<br><span>Call over the internet.</span></h1>
-      <p>This website is Server’s onboarding experience. A small Android calling component connects Server to the phone’s system calling interface. You do not need to select a SIM or link a mobile number to create a Server identity.</p>
+      <p>Server is a hybrid calling service. When the recipient is reachable on Server, voice travels over the internet using WebRTC. If they are not currently reachable on Server, you can choose a normal call from your own mobile SIM; your mobile operator applies its usual charges.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
         <section id="android-install" class="install-card">
-          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This small Android companion connects the Server website to Android's system calling interface. It does not replace your Phone app, create another number, or inspect your SIM slots.</p></div></div>
+          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This small Android companion connects Server to Android's system calling interface. With your permission, it reads active SIM carrier names and slot positions so you can choose a fallback line. It never reads SIM phone numbers or serial identifiers.</p></div></div>
           <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-arm64.apk">Download 64-bit ARM connector (recommended) <span aria-hidden="true">↓</span></a>
           <p class="fine-print">Use this ARM64 build on most current Android phones. For an older phone that only supports 32-bit Android, use the ARMv7 option below. These are phone builds; emulator-only x86 packages are not offered here.</p>
           <a class="secondary full install-link-secondary" id="download-android-connector-armv7" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-armv7.apk">Download 32-bit ARM connector (ARMv7)</a>
@@ -43,18 +43,25 @@
         <p id="ios-install-note" class="fine-print">iPhone uses a separate native Server app and Apple's calling-app permissions. The Android APK above cannot be installed on iPhone; the iOS setup will be released separately.</p>
       </div>
       <div id="native-setup" class="hidden">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>No SIM selection and no SMS OTP are required. Server uses your internet connection; your normal SIMs remain available for ordinary carrier calls.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>Server tries the internet route first. If the recipient is reachable on Server, the call uses WebRTC. If not, Server can open your normal phone dialler with your preferred fallback SIM; your mobile operator charges its usual voice rate.</p></div></div>
         <div id="call-permission-step" class="hidden">
-          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio, Phone-state access so Server can check whether you enabled its Android calling account, and notifications for call alerts. Server does not read your phone number or enumerate SIM slots.</p></div></div>
+          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio, Phone-state access for Android calling-account status and your fallback SIM choices, and notifications for incoming calls. Server reads only the active SIM carrier label and slot you choose. It does not read SIM phone numbers, ICCIDs or IMSIs.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
-          <button class="primary full" id="grant-call-permissions" type="button" disabled>Create my Server ID and enable calling <span aria-hidden="true">→</span></button>
+          <button class="primary full" id="grant-call-permissions" type="button" disabled>Allow permissions and continue <span aria-hidden="true">→</span></button>
+        </div>
+        <div id="fallback-sim-step" class="hidden">
+          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred fallback SIM</h2><p>Server uses WebRTC when the recipient is reachable over Server. If you choose a carrier fallback, Android opens your normal phone dialler using this SIM when it is still available. You review the call and press Call; your mobile operator bills your line.</p></div></div>
+          <div id="fallback-sim-options" class="sim-options" role="group" aria-label="Preferred fallback SIM"></div>
+          <p id="fallback-sim-note" class="fine-print" role="status" aria-live="polite">Choose a preferred line, or ask Android to let you choose every time.</p>
+          <button class="primary full" id="save-fallback-sim" type="button">Save fallback choice and create my Server ID <span aria-hidden="true">→</span></button>
+          <p class="fine-print">SIM labels and slots are used only to identify your selected line. Server never reads or uploads your SIM phone number or serial identifiers. You can change this choice later in Android's normal calling settings.</p>
         </div>
         <div id="finish-step" class="hidden">
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Your Server ID is ready. You can call other Server users by Server ID. Linking a mobile number is optional and requires separate verification.</p>
+          <p class="done-text">Your Server ID is ready. Server uses internet voice when the recipient is reachable. When they are not reachable on Server, you can use your preferred SIM for an ordinary carrier call; your operator's charges apply.</p>
 
           <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
           <section id="phone-link-step" class="phone-link-step hidden">
@@ -83,7 +90,7 @@
             <button class="secondary full" id="skip-phone-link" type="button">Skip number verification</button>
           </section>
 
-          <p id="calling-account-note" class="done-text">Next, enable Server under Android Calling accounts. To see Server alongside SIM 1 and SIM 2 when you call a contact, set your phone's outgoing-call preference to <strong>Ask every time</strong> (the menu wording varies by phone). Then choose Server for an internet call or your SIM for a normal carrier call. Android keeps control of that choice.</p>
+          <p id="calling-account-note" class="done-text">Next, enable Server under Android Calling accounts. Server is the internet route; your cellular SIMs remain ordinary carrier routes. When Server cannot confirm the recipient's availability, the caller can choose the preferred SIM fallback and confirm the normal phone call.</p>
           <button class="secondary full" id="enable-calling-account" type="button">Enable Server in phone settings</button>
           <button class="primary full" id="open-phone-dialer" type="button">Open my normal phone dialer <span aria-hidden="true">→</span></button>
           <p class="fine-print">Server is an Android internet-calling account, not a second cellular SIM. Android dialers differ, so the exact placement of Server in the system's call choices depends on the phone and dialer version.</p>
@@ -146,7 +153,7 @@
           </div>
         </article>
       </div>
-      <p class="walkthrough-note"><strong>About these pictures:</strong> They are explanatory illustrations of the setup screens, not screenshots captured from every Android phone. The exact prompts and call-choice layout depend on the device and dialer. Server-to-Server voice calling needs both phones online over mobile data or Wi-Fi. A non-Server recipient can answer a browser invitation only while online; offline carrier voice is not included in this preview.</p>
+      <p class="walkthrough-note"><strong>About these pictures:</strong> They are explanatory illustrations, not screenshots from every Android phone. Exact prompts and call-choice layouts vary by device. Server first attempts an internet call to a reachable Server device or a guest browser. When the recipient is not reachable on Server, the caller may use their selected SIM for an ordinary carrier call; their mobile operator applies its charges.</p>
     </section>
     <footer><span>SERVER · NATIVE SETUP</span><span>Website onboarding · Native calling bridge</span></footer>
   </main>
