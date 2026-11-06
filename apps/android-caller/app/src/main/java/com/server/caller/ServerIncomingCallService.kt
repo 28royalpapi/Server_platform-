@@ -179,16 +179,37 @@ class ServerIncomingCallService : Service() {
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (error: Exception) {
-        val status = Regex("HTTP (\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
-        val tokenExpired = prefs.getLong("access_expiry", 0L) <= System.currentTimeMillis() / 1000
-        // A revoked valid session should stop this service. If refresh failed while
-        // offline and the stored token has expired, keep retrying refresh instead.
-        if ((status == 401 || status == 403) && !tokenExpired) {
+        val status = (error as? ServerCallApiException)?.httpStatus
+          ?: Regex("HTTP (\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+        if (status == 401) {
+          // The local expiry can lag backend revocation. On an authenticated
+          // 401, explicitly refresh once and, when the backend says the refresh
+          // window has closed, restore this installation using its device key.
+          try {
+            ServerDeviceSessionManager.ensureFresh(
+              this,
+              prefs.getString("access_token", null),
+              prefs.getLong("access_expiry", 0L),
+              prefs,
+              forceRefresh = true
+            )
+            Log.i(TAG, "Server incoming-call session revalidated.")
+          } catch (recoveryError: Exception) {
+            val recoveryStatus = (recoveryError as? ServerCallApiException)?.httpStatus
+            if (recoveryStatus != null && recoveryStatus in 400..499 && recoveryStatus != 429) {
+              Log.w(TAG, "Server incoming-call session recovery rejected: HTTP " + recoveryStatus)
+              stopSelf()
+              break
+            }
+            Log.w(TAG, "Server incoming-call session recovery deferred: " + recoveryError.javaClass.simpleName)
+          }
+        } else if (status == 403) {
           Log.w(TAG, "Server incoming-call session rejected: HTTP " + status)
           stopSelf()
           break
+        } else {
+          Log.w(TAG, "Server incoming-call poll failed: " + error.javaClass.simpleName)
         }
-        Log.w(TAG, "Server incoming-call poll failed: " + error.javaClass.simpleName)
       }
       delay(POLL_INTERVAL_MS)
     }
@@ -231,7 +252,12 @@ class ServerIncomingCallService : Service() {
       val stream = if (status in 200..299) connection.inputStream else connection.errorStream
       val content = stream?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
       val parsed = try { JSONObject(content) } catch (_: Exception) { JSONObject() }
-      if (status !in 200..299) throw IllegalStateException("Server call polling HTTP " + status)
+      if (status !in 200..299) {
+        val reason = parsed.optString("message")
+          .ifBlank { parsed.optString("error") }
+          .ifBlank { "Server call polling HTTP " + status }
+        throw ServerCallApiException(status, parsed, reason)
+      }
       return parsed
     } finally {
       connection.disconnect()
