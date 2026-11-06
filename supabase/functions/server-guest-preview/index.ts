@@ -20,7 +20,7 @@ Deno.serve(async (req: Request) => {
   const token = url.searchParams.get("token") || "";
   if (token.length < 48 || token.length > 256) return new Response("Invalid call invitation", {status:404,headers});
   const projectUrl = Deno.env.get("SUPABASE_URL") || "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SECRET_KEY") || "";
+  const serviceKey = (() => { const raw = Deno.env.get("SUPABASE_SECRET_KEYS") || ""; if (raw) { try { const parsed = JSON.parse(raw); if (parsed && typeof parsed === "object") return parsed.default || Object.values(parsed)[0] || ""; } catch {} } return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SECRET_KEY") || ""; })();
   if (!projectUrl || !serviceKey) return new Response("Server call preview unavailable", {status:503,headers});
   const db = createClient(projectUrl,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}});
   const {data: invite,error: inviteError} = await db.from("server_guest_invites")
