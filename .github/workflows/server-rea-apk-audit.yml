@@ -102,11 +102,13 @@ jobs:
             unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-caller-dex-strings.txt
           done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
+          # DEX stores Java/Kotlin type descriptors with slash separators, so
+          # inspect stable simple class-name fragments rather than dotted source names.
           for value in \
-            'com.server.caller.ServerConnectionService' \
-            'com.server.caller.ServerTelecomCallEngine' \
-            'com.server.caller.ServerGuestInviteNotifications' \
-            'com.server.caller.ServerGuestInviteShareActivity' \
+            'ServerConnectionService' \
+            'ServerTelecomCallEngine' \
+            'ServerGuestInviteNotifications' \
+            'ServerGuestInviteShareActivity' \
             'createPeerConnection' \
             'createAudioTrack' \
             'addIceCandidate'
