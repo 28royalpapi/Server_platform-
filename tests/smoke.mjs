@@ -61,6 +61,9 @@ const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
 const calls=read("supabase/functions/server-calls/index.ts");
 const guest=read("supabase/functions/server-guest/index.ts");
+const gateway=read("supabase/functions/server-gateway/index.ts");
+const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
+
 const config=read("web/config.js");
 const app=read("web/app.js");
 const html=read("web/index.html");
@@ -672,6 +675,11 @@ assert.match(androidTelecom,/ServerTelecomCallEngine/,
 assert.match(calls,/sms_body:smsBody/);
 assert.match(calls,/category:"guest_invite"/,"guest invitations use the existing SIM gateway SMS queue");
 assert.match(calls,/sourceEventId="server-guest-call:"/,"guest SMS queue insertion is idempotent per call");
+assert.match(calls,/eq\("owner_user_id",uid\)/,"guest invitations are sent only through the caller's own SIM gateway");
+assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
+assert.match(gateway,/owner_user_id:pair\.owner_user_id/,"claimed SIM gateways inherit the pairing owner's identity");
+assert.match(gatewayOwnerMigration,/add column if not exists owner_user_id uuid references auth\.users\(id\)/,"existing SIM gateway rows can be migrated to account ownership");
+
 assert.match(calls,/automatic_sms_queued/,"automatic guest delivery is explicitly reported to the caller");
 assert.match(calls,/invitation_text:smsBody/,"the backend returns a secure shareable guest invitation message");
 assert.match(androidMain,/normalizePhoneForServer/);
