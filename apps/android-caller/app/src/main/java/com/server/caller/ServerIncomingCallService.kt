@@ -199,22 +199,16 @@ class ServerIncomingCallService : Service() {
     val expires = prefs.getLong("access_expiry", 0L)
     if (expires > System.currentTimeMillis() / 1000 + 120) return current
     return try {
-      val refreshed = postJson("/functions/v1/server-auth", JSONObject().put("action", "refresh"), current)
-      val token = refreshed.optString("access_token")
-      if (!token.matches(Regex("^[0-9a-f]{64}$"))) return null
-      val expiry = try { Instant.parse(refreshed.optString("expires_at")).epochSecond }
-        catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
-      prefs.edit().putString("access_token", token).putLong("access_expiry", expiry).apply()
-      token
+      ServerDeviceSessionManager.ensureFresh(this, current, expires, prefs).accessToken
     } catch (error: Exception) {
-      val status = Regex("HTTP (\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
-      // Authentication/other permanent 4xx errors stop the listener. Network,
-      // rate-limit and server failures are transient: keep the current token and retry.
+      val status = (error as? ServerCallApiException)?.httpStatus
+      // Authentication/other permanent 4xx errors stop the listener only after
+      // device-identity recovery has also failed. Network and server failures retry.
       if (status != null && status in 400..499 && status != 429) {
-        Log.w(TAG, "Server session refresh rejected: HTTP " + status)
+        Log.w(TAG, "Server session recovery rejected: HTTP " + status)
         null
       } else {
-        Log.w(TAG, "Server session refresh deferred: " + error.javaClass.simpleName)
+        Log.w(TAG, "Server session recovery deferred: " + error.javaClass.simpleName)
         current
       }
     }
