@@ -6,19 +6,60 @@ const BASE_ICE_SERVERS = [
  {urls:"stun:stun.cloudflare.com:3478"},
  {urls:"stun:stun.l.google.com:19302"}
 ];
-/**
- * Optional coturn REST credentials. Configure SERVER_TURN_URLS and
- * SERVER_TURN_SHARED_SECRET together in Supabase secrets. With neither set,
- * Server continues using both public STUN discovery endpoints. TURN URLs and
- * shared credentials are never embedded in a client or committed to source.
- */
-async function iceServersForCall(identity:string, ttlSeconds:number) {
+type IceServerConfig = {
+ ice_servers:any[];
+ ice_server_mode:"cloudflare-turn"|"coturn-turn"|"stun-only";
+};
+
+async function cloudflareTurnIceServers(ttlSeconds:number) {
+ const keyId=Deno.env.get("CLOUDFLARE_TURN_KEY_ID")||"";
+ const apiToken=Deno.env.get("CLOUDFLARE_TURN_API_TOKEN")||"";
+ if(!keyId||!apiToken)return null;
+ const ttl=Math.max(300,Math.min(3600,ttlSeconds));
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),8000);
+ try {
+  const response=await fetch(
+   "https://rtc.live.cloudflare.com/v1/turn/keys/"+encodeURIComponent(keyId)+"/credentials/generate-ice-servers",
+   {
+    method:"POST",
+    headers:{"authorization":"Bearer "+apiToken,"content-type":"application/json"},
+    body:JSON.stringify({ttl}),
+    signal:controller.signal
+   }
+  );
+  if(!response.ok) {
+   console.error("CLOUDFLARE_TURN_CREDENTIALS_HTTP_"+response.status);
+   return null;
+  }
+  const payload=await response.json();
+  const rows=Array.isArray(payload?.iceServers)?payload.iceServers:[];
+  const turnRows=rows.filter((row:any)=>{
+   const urls=Array.isArray(row?.urls)?row.urls:[row?.urls];
+   return urls.some((url:any)=>typeof url==="string"&&/^turns?:turn\.cloudflare\.com:/i.test(url))&&
+    typeof row.username==="string"&&row.username.length>0&&
+    typeof row.credential==="string"&&row.credential.length>0;
+  });
+  if(!turnRows.length) {
+   console.error("CLOUDFLARE_TURN_RESPONSE_INVALID");
+   return null;
+  }
+  return [...turnRows,...BASE_ICE_SERVERS];
+ } catch(_error) {
+  console.error("CLOUDFLARE_TURN_CREDENTIALS_UNAVAILABLE");
+  return null;
+ } finally {
+  clearTimeout(timeout);
+ }
+}
+
+async function coturnIceServers(identity:string, ttlSeconds:number) {
  const rawUrls=Deno.env.get("SERVER_TURN_URLS")||"";
  const sharedSecret=Deno.env.get("SERVER_TURN_SHARED_SECRET")||"";
- if(!rawUrls||sharedSecret.length<32)return BASE_ICE_SERVERS;
+ if(!rawUrls||sharedSecret.length<32)return null;
  const turnUrls=rawUrls.split(",").map((url:string)=>url.trim())
   .filter((url:string)=>/^turns?:[^\s@]+$/i.test(url)).slice(0,8);
- if(!turnUrls.length)return BASE_ICE_SERVERS;
+ if(!turnUrls.length)return null;
  const safeIdentity=identity.replace(/[^A-Za-z0-9_.-]/g,"").slice(0,80)||"server";
  const expires=Math.floor(Date.now()/1000)+Math.max(300,Math.min(3600,ttlSeconds+120));
  const username=expires+":"+safeIdentity;
@@ -27,6 +68,14 @@ async function iceServersForCall(identity:string, ttlSeconds:number) {
  const signature=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(username)));
  const credential=btoa(String.fromCharCode(...signature));
  return [{urls:turnUrls,username,credential},...BASE_ICE_SERVERS];
+}
+
+async function iceServersForCall(identity:string, ttlSeconds:number):Promise<IceServerConfig> {
+ const cloudflare=await cloudflareTurnIceServers(ttlSeconds);
+ if(cloudflare)return {ice_servers:cloudflare,ice_server_mode:"cloudflare-turn"};
+ const coturn=await coturnIceServers(identity,ttlSeconds);
+ if(coturn)return {ice_servers:coturn,ice_server_mode:"coturn-turn"};
+ return {ice_servers:BASE_ICE_SERVERS,ice_server_mode:"stun-only"};
 }
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 function client(){const url=Deno.env.get("SUPABASE_URL")||"";let key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";if(!key){try{const k=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}");key=k.default||Object.values(k)[0]||"";}catch{}}if(!url||!key)throw new Error("SERVER_NOT_CONFIGURED");return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});}
@@ -68,7 +117,8 @@ if(action==="join"){
  const {call:updatedCall,error:ce}=await loadGuestCall();
  if(ce||!updatedCall)return out({error:"CALL_NOT_FOUND"},404);
  if(!["ringing","connecting"].includes(updatedCall.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
- return out({ok:true,invite_id:invite.id,call:updatedCall,ice_servers:await iceServersForCall(invite.id,Math.max(300,Math.ceil((Date.parse(updatedCall.expires_at)-Date.now())/1000))),media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
+ const iceConfig=await iceServersForCall(invite.id,Math.max(300,Math.ceil((Date.parse(updatedCall.expires_at)-Date.now())/1000)));
+ return out({ok:true,invite_id:invite.id,call:updatedCall,ice_servers:iceConfig.ice_servers,ice_server_mode:iceConfig.ice_server_mode,media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
 }
 if(action==="poll"){
  const after=Math.max(0,Number.isSafeInteger(b.after_seq)?Number(b.after_seq):Number(b.after)||0);
