@@ -12,6 +12,7 @@ import android.telecom.DisconnectCause
 import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
+import android.telecom.StatusHints
 
 /** Registers Server as a Telecom calling account, never as a SIM/eSIM subscription. */
 object ServerTelecomRegistry {
@@ -300,6 +301,12 @@ internal class ServerTelecomConnection(context: Context) : Connection() {
     // Ask the Server engine to end the pending internet call and release WebRTC
     // before the carrier dialler is opened.
     callEngine?.hangup()
+  }
+
+  fun updateServerStatus(message: String) {
+    // Status hints are best-effort; some OEM diallers display them and others
+    // retain their standard UI. Never interpret this as raw mobile-data telemetry.
+    setStatusHints(StatusHints(message.take(110), null, Bundle()))
   }
 
   fun markConnecting() { setInitializing() }

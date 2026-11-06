@@ -193,7 +193,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     root.addView(authPanel, matchWrap())
     authPanel.addView(label("Complete setup on the Server website"))
     authPanel.addView(TextView(this).apply {
-      text = "Create your Server ID on the website. SIM selection and SMS verification are not required. Open this screen only when Android needs to hand a call to Server."
+      text = "Create your Server ID on the website and choose a preferred fallback SIM. Server uses internet voice when the recipient is reachable; a normal carrier fallback is placed through your selected mobile line."
       textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(12))
     }, matchWrap())
     authPanel.addView(button("Open Server setup") {
@@ -209,14 +209,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-    carrierFallbackButton = button("Try carrier flash call") {
+    carrierFallbackButton = button("Call using selected SIM") {
       handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
     }.apply { visibility = View.GONE }
     callPanel.addView(carrierFallbackButton, matchWrap())
     callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply {
-      text = "Server-to-Server calls use your Server ID. Calls to people outside Server use a secure guest invitation link. The recipient needs internet to answer. Server does not place carrier voice calls."
+      text = "Server tries WebRTC when the recipient is reachable through Server. For a non-Server recipient, share the caller-identifying guest preview so they can answer in their browser. If Server cannot reach a recipient, you can use your selected SIM; your mobile operator applies its normal charges."
       textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0)
     })
   }
@@ -616,7 +616,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       ServerTelecomRegistry.markEnded(pendingCallId)
       val opened = ServerCarrierDialer.open(this@MainActivity, number)
       if (opened) {
-        setStatus("Opened your normal phone dialler. Choose the SIM you want and press Call yourself. Carrier delivery and missed-call alerts depend on the operator; this is not a Server internet call.")
+        setStatus("Opened your normal phone dialler. Server preselected your preferred SIM when that line was still active. Review the number and press Call; your mobile operator applies its normal charges.")
       } else {
         setStatus("Android could not open the phone dialler. No carrier call was placed.", true)
       }
@@ -690,22 +690,22 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
-        setStatus("Guest invitation created, but the recipient is not connected yet. Share the link; they must open it with internet access and tap Answer before the call can connect.")
+        setStatus("Recipient availability is unknown until their browser connects. Share the caller-identifying preview link; they can open it and tap Answer to connect over WebRTC. Or choose the selected SIM for a normal carrier call.")
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
         val reachability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
         val queued = pushDelivery?.optBoolean("queued", false) ?: false
         val submitted = pushDelivery?.optInt("sent", 0) ?: 0
         if (queued && reachability == "online") {
-          setStatus("Recipient is currently online in Server. The call and background wake job were created; waiting for the recipient's device to accept. A queued alert is not proof that the phone has rung.")
+          setStatus("Available on Server: a recent Server connection is active. The WebRTC call and background wake job are created; a queued alert is not proof that the phone has rung.")
         } else if (queued && reachability == "background_reachable") {
-          setStatus("Recipient is not currently active in Server, but a background push endpoint is registered. Server has queued a wake alert; delivery and ringing are not confirmed.")
+          setStatus("Not active in Server right now, but a background push endpoint is registered. Server has queued a wake alert; delivery and ringing are not confirmed. This is not proof that mobile data is off.")
         } else if (queued) {
           setStatus("Call created and its background wake job is queued. Delivery is not confirmed; the recipient still needs internet access and a working Server listener or push endpoint.")
         } else if (submitted > 0) {
           setStatus("The push provider accepted an incoming-call alert request. Delivery is not confirmed; waiting for the recipient to answer.")
         } else {
-          setStatus("Call created, but no background wake job or accepted push was confirmed. An already-active Server listener may still receive it; otherwise the recipient must reconnect or open Server.", true)
+          setStatus("Not currently reachable on Server. The recipient's mobile-data state is unknown; an already-active listener may still receive the call, otherwise they must reconnect or open Server.", true)
         }
         returnToSystemPhoneUi()
       }

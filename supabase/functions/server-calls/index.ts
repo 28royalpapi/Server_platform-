@@ -336,46 +336,26 @@ Deno.serve(async(req:Request)=>{
    if(route==="guest"){
     const token=guestToken as string;
     const expires=guestInviteExpiresAt as string;
-    const guestUrl="https://server-onboarding-ochre.vercel.app/guest.html";
-    // SMS is sent from the caller's own paired SIM. The recipient's messaging
-    // app can therefore resolve that sender number to the contact name they saved.
+    // This endpoint returns caller-specific Open Graph metadata and redirects
+    // the recipient to the secure browser call. Sharing is explicit; no SMS is queued.
     const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
     const callerPhone=profile.phone_verified_at?phone(profile.phone_e164):null;
     const callerDisplay=callerPhone||callerLabel;
     const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
-    const smsBody="SERVER CALL: "+callerDisplay+" is calling you. Open to see the full-screen call and answer. No app required: "+invitationUrl+" (expires in 20 minutes).";
-    const manualDelivery=(reason:string)=>out({
-      ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
-      invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
-      guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason,
-      caller_display_label:callerDisplay,
-      recipient_availability:{status:"unknown_guest",connected:false},
-      carrier_fallback:{status:"user_confirmed_dialer",available:!!to,destination_e164:to,method:"android_action_dial",requires_user_confirmation:true}
-    });
-    // Automatically queue through an already paired, recently online SIM gateway.
-    // This uses the user's SIM rather than a third-party SMS provider.
-    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
-      .select("id").eq("owner_user_id",uid).eq("enabled",true)
-      .gte("last_seen_at",new Date(Date.now()-90000).toISOString())
-      .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
-    if(gatewayError)return manualDelivery("The paired Server SIM Gateway could not be checked. Reconnect it or share the invitation manually.");
-    if(!gateway)return manualDelivery("No paired Server SIM Gateway is online. Start the gateway on your phone, or share the invitation manually.");
-    const sourceEventId="server-guest-call:"+call.id;
-    const {error:smsQueueError}=await db.from("server_sms_jobs").insert({
-      category:"guest_invite",recipient_e164:to,body:smsBody,call_id:call.id,
-      source_event_id:sourceEventId,status:"queued"
-    });
-    if(smsQueueError&&smsQueueError.code!=="23505"){
-      return manualDelivery("The SIM gateway is online, but the invitation could not be queued. Share it manually while delivery recovers.");
-    }
+    const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";
     return out({
-      ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
-      invite_expires_at:expires,delivery_mode:"automatic_sms_queued",delivery_channel:"paired_sim_gateway",
-      sms_delivery:{status:"queued",gateway_online:true,recipient:to,source:"caller's paired SIM"},
-      guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,
-      caller_display_label:callerDisplay,
-      recipient_availability:{status:"unknown_guest",connected:false},
-      carrier_fallback:{status:"not_needed",available:false}
+     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
+     invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
+     guest_invite_url:invitationUrl,invitation_text:invitationText,
+     // Compatibility alias for older Android builds. This text is not sent automatically.
+     sms_body:invitationText,
+     delivery_message:"The recipient's live Server/browser connection is not confirmed. Share this caller-identifying preview link for a free WebRTC guest call, or choose your SIM for an ordinary carrier call.",
+     caller_display_label:callerDisplay,
+     recipient_availability:{
+      status:"unknown_guest",connected:false,internet_status:"unknown",
+      explanation:"A phone number alone cannot reveal whether the recipient currently has mobile data or Wi-Fi."
+     },
+     carrier_fallback:{status:"user_confirmed_dialer",available:!!to,destination_e164:to,method:"android_action_dial",requires_user_confirmation:true}
     });
    }
    return out({

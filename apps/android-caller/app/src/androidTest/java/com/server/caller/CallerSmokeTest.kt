@@ -180,7 +180,7 @@ class CallerSmokeTest {
       null, ServerPhoneNumberNormalizer.toE164("not a phone number", "NG"))
   }
 
-  @Test fun guestCallInvitationNotificationOffersExplicitShareAndSmsActions() {
+  @Test fun guestCallInvitationNotificationOffersShareAndSelectedSimActions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -207,7 +207,7 @@ class CallerSmokeTest {
       assertTrue("The notification must offer an explicit Share invitation action",
         posted!!.notification.actions.any { it.title.toString() == "Share invitation" })
       assertTrue("The guest notification must also offer the caller-confirmed carrier flash-call handoff",
-        posted!!.notification.actions.any { it.title.toString() == "Try carrier flash call" })
+        posted!!.notification.actions.any { it.title.toString() == "Call using selected SIM" })
       val carrierIntent = ServerCarrierDialer.createIntent(phone)
       assertEquals("The carrier fallback must open Android's native dialler, not place a call silently",
         Intent.ACTION_DIAL, carrierIntent?.action)
@@ -223,10 +223,8 @@ class CallerSmokeTest {
       assertEquals("The secure browser invite must be included unchanged", invitation, shareIntent?.getStringExtra(Intent.EXTRA_TEXT))
       val initialIntents = chooser.getParcelableArrayExtra(Intent.EXTRA_INITIAL_INTENTS)
         ?.filterIsInstance<Intent>().orEmpty()
-      val smsIntent = initialIntents.firstOrNull { it.action == Intent.ACTION_SENDTO }
-      assertNotNull("The chooser must offer an optional addressed SMS composer", smsIntent)
-      assertEquals("The SMS composer must target the original saved-contact number", phone, smsIntent!!.data?.schemeSpecificPart)
-      assertEquals("The SMS body must contain the secure guest invitation", invitation, smsIntent.getStringExtra("sms_body"))
+      assertTrue("Server must not force an SMS composer as a default share target",
+        initialIntents.none { it.action == Intent.ACTION_SENDTO })
     } finally {
       ServerGuestInviteNotifications.cancel(context, callId)
     }
@@ -490,7 +488,7 @@ class CallerSmokeTest {
     return false
   }
 
-  @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
+  @Test fun launcherShowsHybridOnboardingWithFallbackSimChoice() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     assertEquals("Server must not request access to SIM phone numbers",
@@ -505,22 +503,22 @@ class CallerSmokeTest {
       val device = UiDevice.getInstance(instrumentation)
       // Android 8's bundled WebView does not consistently expose ordinary HTML
       // div text as UiAutomator accessibility nodes. Verify the visible DOM
-      // itself, including the brand, ID-first heading, and no-SIM explanation.
+      // itself, including the brand, hybrid explanation and fallback-SIM step.
       // The subsequent checkbox acceptance remains a real UiDevice screen tap.
       var nativeUiState = "not-ready"
       val uiDeadline = System.currentTimeMillis() + 20_000
       while (System.currentTimeMillis() < uiDeadline) {
         nativeUiState = evaluateSetupWebView(
           scenario,
-          "(function(){var visible=function(e){if(!e)return false;var r=e.getBoundingClientRect(),s=window.getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&r.bottom>0&&r.top<window.innerHeight;};var brand=document.querySelector('.brand-name');var native=document.querySelector('#native-setup');var heading=native&&native.querySelector('.step-title h2');var text=native?(native.textContent||''):'';return [document.readyState,brand?(brand.textContent||'').trim().toLowerCase():'missing-brand',visible(brand),visible(native),visible(heading),text.indexOf('No SIM selection and no SMS OTP are required')>=0].join('|');})()"
+          "(function(){var visible=function(e){if(!e)return false;var r=e.getBoundingClientRect(),s=window.getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&r.bottom>0&&r.top<window.innerHeight;};var brand=document.querySelector('.brand-name');var native=document.querySelector('#native-setup');var heading=native&&native.querySelector('.step-title h2');var text=native?(native.textContent||''):'';return [document.readyState,brand?(brand.textContent||'').trim().toLowerCase():'missing-brand',visible(brand),visible(native),visible(heading),text.indexOf('Server tries the internet route first')>=0 && text.indexOf('Choose a preferred fallback SIM')>=0].join('|');})()"
         )
         if (nativeUiState == "complete|server|true|true|true|true") break
         Thread.sleep(250)
       }
-      assertEquals("Server's bundled onboarding must render its brand, ID-first setup, and no-SIM explanation visibly in WebView. DOM state: " + nativeUiState,
+      assertEquals("Server's bundled onboarding must render its brand, hybrid explanation and fallback-SIM step in WebView. DOM state: " + nativeUiState,
         "complete|server|true|true|true|true", nativeUiState)
-      assertTrue("The old SIM-selection UI must not appear",
-        !device.hasObject(By.textContains("Choose your SIM")))
+      assertEquals("The fallback SIM choice must exist in the actual onboarding DOM", "true",
+        evaluateSetupWebView(scenario, "(function(){return !!document.querySelector('#fallback-sim-step') && !!document.querySelector('#fallback-sim-options') && !!document.querySelector('#save-fallback-sim');})()"))
       assertTrue("The old SIM permission button must not appear",
         !device.hasObject(By.textContains("Allow SIM access")))
 

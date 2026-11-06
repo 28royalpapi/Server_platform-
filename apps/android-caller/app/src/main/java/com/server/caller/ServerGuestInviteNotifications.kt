@@ -15,7 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 /**
  * A no-install recipient cannot ring as a native Telecom call. This notification
  * gives the caller an explicit, user-initiated route to share the expiring browser
- * invitation. Server itself never sends SMS.
+ * invitation. Server does not automatically send per-call SMS invitations.
  */
 internal object ServerGuestInviteNotifications {
   private const val CHANNEL_ID = "server-guest-invites-v1"
@@ -71,9 +71,9 @@ internal object ServerGuestInviteNotifications {
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.sym_action_email)
       .setContentTitle("Server invitation ready")
-      .setContentText("Share the internet invite or try a carrier flash call with your SIM.")
+      .setContentText("Share the preview invitation or call with your preferred SIM.")
       .setStyle(NotificationCompat.BigTextStyle().bigText(
-        "Share the secure link with $masked; they must open it and tap Answer. Or choose Try carrier flash call to open your phone dialler, select a SIM and confirm. Whether the operator leaves a missed call or sends a later alert depends on its service."
+        "Share the Server call preview with $masked. The preview identifies who is calling; the recipient opens it and taps Answer to connect over WebRTC. Or choose Call using selected SIM to place a normal carrier call. Review the dialler and press Call yourself; your operator applies its usual charges."
       ))
       .setCategory(NotificationCompat.CATEGORY_CALL)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -83,7 +83,7 @@ internal object ServerGuestInviteNotifications {
       .setTimeoutAfter(20 * 60 * 1000L)
       .setContentIntent(sharePending)
       .addAction(android.R.drawable.ic_menu_share, "Share invitation", sharePending)
-      .addAction(android.R.drawable.sym_action_call, "Try carrier flash call", carrierPending)
+      .addAction(android.R.drawable.sym_action_call, "Call using selected SIM", carrierPending)
       .build()
     return try {
       NotificationManagerCompat.from(context).notify(notificationId(callId), notification)

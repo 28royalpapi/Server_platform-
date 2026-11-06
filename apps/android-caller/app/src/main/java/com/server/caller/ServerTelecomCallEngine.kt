@@ -176,9 +176,12 @@ internal class ServerTelecomCallEngine(
         return
       }
       route = started.optString("route", "guest")
-      // A Server account route can ring the remote Server user. A guest invite
-      // cannot ring an ordinary carrier number until the recipient opens its link.
+      // Availability is Server reachability, never a claim that a phone number's
+      // mobile data is actually enabled or disabled.
       connection.setRingbackRequested(route == "server")
+      if (route == "guest") {
+        connection.updateServerStatus("Guest recipient not yet connected · preview link ready")
+      }
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       iceServerMode = started.optString("ice_server_mode", "stun-only")
@@ -212,22 +215,14 @@ internal class ServerTelecomCallEngine(
             .putString("debug_last_guest_call_id", callId.orEmpty())
             .apply()
         }
-        val deliveryMode = started.optString("delivery_mode", "manual_share")
-        if (deliveryMode == "automatic_sms_queued") {
-          val delivery = started.optJSONObject("sms_delivery")
-          Log.i(TAG, "Guest invitation queued through paired SIM gateway; provider status=" +
-            delivery?.optString("status", "queued"))
-          recordStage("guest_invitation_sms_queued")
-        } else {
-          if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
-            throw IllegalStateException(
-              started.optString("delivery_message").ifBlank {
-                "Reconnect the paired Server SIM Gateway or allow notifications to share the guest invitation."
-              }
-            )
-          }
-          recordStage("guest_invitation_manual_share_ready")
+        if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
+          throw IllegalStateException(
+            started.optString("delivery_message").ifBlank {
+              "Allow Server notifications so you can share the caller-identifying guest preview."
+            }
+          )
         }
+        recordStage("guest_invitation_preview_share_ready")
         // The recipient answers on the secure browser page. Keep the Telecom call
         // and WebRTC offer alive while the browser joins; do not launch an Activity
         // over Android's Phone app from this background ConnectionService.
@@ -238,10 +233,13 @@ internal class ServerTelecomCallEngine(
       val availability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
       val queuedWake = started.optJSONObject("push_delivery")?.optBoolean("queued", false) ?: false
       if (availability == "online") {
-        Log.i(TAG, "Recipient presence is fresh; the active Server listener should receive the incoming call.")
+        connection.updateServerStatus("Available on Server · internet call")
+        Log.i(TAG, "Recipient has a fresh Server presence heartbeat.")
       } else if (availability == "background_reachable" && queuedWake) {
-        Log.i(TAG, "Recipient is not active; a background wake job is queued. Device delivery is not confirmed.")
+        connection.updateServerStatus("Server push queued · ringing not confirmed")
+        Log.i(TAG, "Recipient has a registered background endpoint; device delivery is not confirmed.")
       } else {
+        connection.updateServerStatus("Not currently reachable on Server")
         Log.w(TAG, "Recipient reachability was not confirmed by Server.")
       }
       beginPolling()
@@ -253,7 +251,7 @@ internal class ServerTelecomCallEngine(
           ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
         val message = apiError.payload.optString(
           "message",
-          "This Server recipient is offline. No Server call was created."
+          "This recipient is not currently reachable on Server. Their mobile data may be off, or the Server receiver may be inactive. Use your preferred SIM for a normal carrier call if you want to continue."
         )
         failCall(message, dialNumber)
         return
@@ -747,11 +745,11 @@ internal object ServerCallEngineStatusNotifications {
     }
     val builder = NotificationCompat.Builder(context, CHANNEL)
       .setSmallIcon(android.R.drawable.sym_call_missed)
-      .setContentTitle("Server could not start the internet call")
+      .setContentTitle("Recipient not currently reachable on Server")
       .setContentText(message.take(180))
       .setStyle(NotificationCompat.BigTextStyle().bigText(message))
       .setAutoCancel(true)
-    val dialIntent = carrierFallbackPhone?.let(ServerCarrierDialer::createIntent)
+    val dialIntent = carrierFallbackPhone?.let { ServerCarrierDialer.createIntent(context, it) }
     if (dialIntent != null) {
       val pending = PendingIntent.getActivity(
         context,
@@ -759,7 +757,7 @@ internal object ServerCallEngineStatusNotifications {
         dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
       )
-      builder.addAction(android.R.drawable.sym_action_call, "Use phone SIM", pending)
+      builder.addAction(android.R.drawable.sym_action_call, "Call using selected SIM", pending)
     }
     manager.notify(8601, builder.build())
   }

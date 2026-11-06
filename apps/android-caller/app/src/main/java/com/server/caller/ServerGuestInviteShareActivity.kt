@@ -2,13 +2,12 @@ package com.server.caller
 
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 
 /**
  * Launched only after the caller taps the guest-invitation notification.
- * It opens Android's native share/SMS chooser; the caller must press Send.
+ * It opens Android's native app-share chooser; the caller chooses where to share.
  */
 class ServerGuestInviteShareActivity : Activity() {
   companion object {
@@ -18,12 +17,7 @@ class ServerGuestInviteShareActivity : Activity() {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, invitation)
       }
-      val sms = Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone, null)).apply {
-        putExtra("sms_body", invitation)
-      }
-      return Intent.createChooser(share, "Share Server call invitation").apply {
-        putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(sms))
-      }
+      return Intent.createChooser(share, "Share Server call preview")
     }
   }
 
