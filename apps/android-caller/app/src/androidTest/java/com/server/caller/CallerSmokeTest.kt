@@ -441,12 +441,22 @@ class CallerSmokeTest {
 
     ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use { scenario ->
       val device = UiDevice.getInstance(instrumentation)
-      assertTrue("Server onboarding brand is not visible",
-        device.wait(Until.hasObject(By.text("server")), 20_000))
-      assertTrue("Server ID-first setup heading is not visible",
-        device.wait(Until.hasObject(By.textContains("Create your Server identity")), 20_000))
-      assertTrue("The setup must explain that SIM selection is not required",
-        device.wait(Until.hasObject(By.textContains("No SIM selection and no SMS OTP are required")), 10_000))
+      // Android 8's bundled WebView does not consistently expose ordinary HTML
+      // div text as UiAutomator accessibility nodes. Verify the visible DOM
+      // itself, including the brand, ID-first heading, and no-SIM explanation.
+      // The subsequent checkbox acceptance remains a real UiDevice screen tap.
+      var nativeUiState = "not-ready"
+      val uiDeadline = System.currentTimeMillis() + 20_000
+      while (System.currentTimeMillis() < uiDeadline) {
+        nativeUiState = evaluateSetupWebView(
+          scenario,
+          "(function(){var visible=function(e){if(!e)return false;var r=e.getBoundingClientRect(),s=window.getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&r.bottom>0&&r.top<window.innerHeight;};var brand=document.querySelector('.brand-name');var native=document.querySelector('#native-setup');var heading=native&&native.querySelector('.step-title h2');var text=native?(native.textContent||''):'';return [document.readyState,brand?(brand.textContent||'').trim().toLowerCase():'missing-brand',visible(brand),visible(native),visible(heading),text.indexOf('No SIM selection and no SMS OTP are required')>=0].join('|');})()"
+        )
+        if (nativeUiState == "complete|server|true|true|true|true") break
+        Thread.sleep(250)
+      }
+      assertEquals("Server's bundled onboarding must render its brand, ID-first setup, and no-SIM explanation visibly in WebView. DOM state: " + nativeUiState,
+        "complete|server|true|true|true|true", nativeUiState)
       assertTrue("The old SIM-selection UI must not appear",
         !device.hasObject(By.textContains("Choose your SIM")))
       assertTrue("The old SIM permission button must not appear",
