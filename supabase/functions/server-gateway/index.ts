@@ -21,7 +21,7 @@ Deno.serve(async(req:Request)=>{
   const {data:allowed,error:le}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_code",p_key_hash:await sha(profile.user_id),p_window_seconds:3600,p_max_hits:5});
   if(le||allowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
   const pairing=code(),expires=new Date(Date.now()+10*60*1000).toISOString();
-  const {error}=await db.from("server_gateway_pairings").insert({code_hash:await sha(pairing),expires_at:expires});
+  const {error}=await db.from("server_gateway_pairings").insert({owner_user_id:session.user_id,code_hash:await sha(pairing),expires_at:expires});
   if(error)return out({error:"PAIRING_CODE_CREATE_FAILED"},503);
   return out({ok:true,pairing_code:pairing,expires_at:expires,instructions:"Enter this one-time code in the Android Server SIM Gateway app within 10 minutes. It is shown only once."});
  }
@@ -31,12 +31,12 @@ Deno.serve(async(req:Request)=>{
   if(claimLimitError||claimAllowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
   const pairingCode=typeof b.pairing_code==="string"?b.pairing_code.trim().toUpperCase():"";
   if(!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(pairingCode))return out({error:"PAIRING_CODE_INVALID"},400);
-  const {data:pair,error:pe}=await db.from("server_gateway_pairings").select("id,expires_at,claimed_at").eq("code_hash",await sha(pairingCode)).is("claimed_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+  const {data:pair,error:pe}=await db.from("server_gateway_pairings").select("id,owner_user_id,expires_at,claimed_at").eq("code_hash",await sha(pairingCode)).is("claimed_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(pe||!pair)return out({error:"PAIRING_CODE_EXPIRED_OR_INVALID"},401);
   const {data:claimed,error:claimErr}=await db.from("server_gateway_pairings").update({claimed_at:new Date().toISOString()}).eq("id",pair.id).is("claimed_at",null).select("id").maybeSingle();
   if(claimErr||!claimed)return out({error:"PAIRING_CODE_ALREADY_USED"},409);
   const deviceToken=token(),label=(typeof b.device_label==="string"?b.device_label:"Server SIM Gateway").trim().slice(0,80)||"Server SIM Gateway";
-  const {data:device,error}=await db.from("server_gateway_devices").insert({label,token_hash:await sha(deviceToken),enabled:true,last_seen_at:new Date().toISOString()}).select("id,label").single();
+  const {data:device,error}=await db.from("server_gateway_devices").insert({owner_user_id:pair.owner_user_id,label,token_hash:await sha(deviceToken),enabled:true,last_seen_at:new Date().toISOString()}).select("id,label").single();
   if(error||!device)return out({error:"GATEWAY_REGISTER_FAILED"},503);
   return out({ok:true,gateway_token:deviceToken,device_id:device.id,device_label:device.label});
  }
