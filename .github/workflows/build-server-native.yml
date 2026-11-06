@@ -326,9 +326,14 @@ jobs:
             # enter Bash so pipefail, [[ ... ]], and the rest of the strict script
             # are interpreted consistently on the GitHub runner.
             bash -euo pipefail <<'BASH'
-            APP_APK='artifacts/server-android-debug-apks/artifacts/physical/server-android-x86_64-debug.apk'
-            TEST_APK='artifacts/server-android-debug-apks/artifacts/physical/server-android-x86_64-androidTest.apk'
-            test -s "$APP_APK" && test -s "$TEST_APK"
+            APP_APK="$(find artifacts/server-android-debug-apks -type f -name 'server-android-x86_64-debug.apk' -print -quit)"
+            TEST_APK="$(find artifacts/server-android-debug-apks -type f -name 'server-android-x86_64-androidTest.apk' -print -quit)"
+            if [[ -z "$APP_APK" || -z "$TEST_APK" || ! -s "$APP_APK" || ! -s "$TEST_APK" ]]; then
+              echo "ERROR: downloaded x86_64 caller/test APK pair is incomplete."
+              echo "Downloaded files:"
+              find artifacts/server-android-debug-apks -type f -print | sort || true
+              exit 1
+            fi
             adb install -r "$APP_APK"
             adb install -r "$TEST_APK"
             adb shell pm grant com.server.caller.debug android.permission.RECORD_AUDIO
@@ -516,7 +521,10 @@ jobs:
           arch: x86_64
           profile: pixel_2
           cores: 2
-          ram-size: 3072M
+          # Android 14's Google APIs image plus the WebView onboarding test
+          # exceeded the 3 GB emulator profile in a prior run (the instrumentation
+          # process was SIGKILLed). Give API 34 extra headroom; other APIs retain 3 GB.
+          ram-size: ${{ matrix.api-level == 34 && '4096M' || '3072M' }}
           emulator-boot-timeout: 360
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
