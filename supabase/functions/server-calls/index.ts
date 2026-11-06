@@ -33,19 +33,70 @@ const BASE_ICE_SERVERS = [
  {urls:"stun:stun.cloudflare.com:3478"},
  {urls:"stun:stun.l.google.com:19302"}
 ];
+type IceServerConfig = {
+ ice_servers:any[];
+ ice_server_mode:"cloudflare-turn"|"coturn-turn"|"stun-only";
+};
+
 /**
- * Optional coturn REST credentials. Configure SERVER_TURN_URLS and
- * SERVER_TURN_SHARED_SECRET together in Supabase secrets. With neither set,
- * Server continues using both public STUN discovery endpoints. TURN URLs and
- * shared credentials are never embedded in a client or committed to source.
+ * Cloudflare managed TURN is optional. Configure CLOUDFLARE_TURN_KEY_ID and
+ * CLOUDFLARE_TURN_API_TOKEN as Edge Function secrets. Short-lived credentials
+ * are generated server-side only; neither secret is returned to calling clients.
+ * Existing coturn REST configuration remains supported as a fallback.
  */
-async function iceServersForCall(identity:string, ttlSeconds:number) {
+async function cloudflareTurnIceServers(ttlSeconds:number) {
+ const keyId=Deno.env.get("CLOUDFLARE_TURN_KEY_ID")||"";
+ const apiToken=Deno.env.get("CLOUDFLARE_TURN_API_TOKEN")||"";
+ if(!keyId||!apiToken)return null;
+ const ttl=Math.max(300,Math.min(3600,ttlSeconds+120));
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),8000);
+ try {
+  const response=await fetch(
+   "https://rtc.live.cloudflare.com/v1/turn/keys/"+encodeURIComponent(keyId)+"/credentials/generate-ice-servers",
+   {
+    method:"POST",
+    headers:{"authorization":"Bearer "+apiToken,"content-type":"application/json"},
+    body:JSON.stringify({ttl}),
+    signal:controller.signal
+   }
+  );
+  if(!response.ok) {
+   console.error("CLOUDFLARE_TURN_CREDENTIALS_HTTP_"+response.status);
+   return null;
+  }
+  const payload=await response.json();
+  const rows=Array.isArray(payload?.iceServers)?payload.iceServers:[];
+  const turnRows=rows.filter((row:any)=>{
+   const urls=Array.isArray(row?.urls)?row.urls:[row?.urls];
+   return urls.some((url:any)=>
+    typeof url==="string"&&/^turns?:turn\.cloudflare\.com:/i.test(url)
+   )&&typeof row.username==="string"&&row.username.length>0&&
+     typeof row.credential==="string"&&row.credential.length>0;
+  });
+  if(!turnRows.length) {
+   console.error("CLOUDFLARE_TURN_RESPONSE_INVALID");
+   return null;
+  }
+  // Our own STUN list remains available even if the provider changes its
+  // response shape. Never include Cloudflare's non-TURN rows twice.
+  return [...turnRows,...BASE_ICE_SERVERS];
+ } catch(_error) {
+  console.error("CLOUDFLARE_TURN_CREDENTIALS_UNAVAILABLE");
+  return null;
+ } finally {
+  clearTimeout(timeout);
+ }
+}
+
+/** Optional coturn REST credentials, retained for self-hosted deployments. */
+async function coturnIceServers(identity:string, ttlSeconds:number) {
  const rawUrls=Deno.env.get("SERVER_TURN_URLS")||"";
  const sharedSecret=Deno.env.get("SERVER_TURN_SHARED_SECRET")||"";
- if(!rawUrls||sharedSecret.length<32)return BASE_ICE_SERVERS;
+ if(!rawUrls||sharedSecret.length<32)return null;
  const turnUrls=rawUrls.split(",").map((url:string)=>url.trim())
   .filter((url:string)=>/^turns?:[^\s@]+$/i.test(url)).slice(0,8);
- if(!turnUrls.length)return BASE_ICE_SERVERS;
+ if(!turnUrls.length)return null;
  const safeIdentity=identity.replace(/[^A-Za-z0-9_.-]/g,"").slice(0,80)||"server";
  const expires=Math.floor(Date.now()/1000)+Math.max(300,Math.min(3600,ttlSeconds+120));
  const username=expires+":"+safeIdentity;
@@ -54,6 +105,14 @@ async function iceServersForCall(identity:string, ttlSeconds:number) {
  const signature=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(username)));
  const credential=btoa(String.fromCharCode(...signature));
  return [{urls:turnUrls,username,credential},...BASE_ICE_SERVERS];
+}
+
+async function iceServersForCall(identity:string, ttlSeconds:number):Promise<IceServerConfig> {
+ const cloudflare=await cloudflareTurnIceServers(ttlSeconds);
+ if(cloudflare)return {ice_servers:cloudflare,ice_server_mode:"cloudflare-turn"};
+ const coturn=await coturnIceServers(identity,ttlSeconds);
+ if(coturn)return {ice_servers:coturn,ice_server_mode:"coturn-turn"};
+ return {ice_servers:BASE_ICE_SERVERS,ice_server_mode:"stun-only"};
 }
 let cachedFcmAccessToken: { token: string; expiresAt: number } | null = null;
 let cachedApnsJwt: { token: string; expiresAt: number } | null = null;
@@ -267,7 +326,8 @@ Deno.serve(async(req:Request)=>{
    });
    if(ce||!created?.call)return out({error:"CALL_CREATE_FAILED"},503);
    const call=created.call;
-   const callIceServers=await iceServersForCall(call.id,callTtlSeconds);
+   const iceConfig=await iceServersForCall(call.id,callTtlSeconds);
+   const callIceServers=iceConfig.ice_servers;
    // Call creation has already committed a durable PGMQ delivery job with
    // the call and membership rows. Never block this request on FCM/APNs.
    const pushDelivery:any=route==="server"
@@ -280,7 +340,7 @@ Deno.serve(async(req:Request)=>{
     const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
     const smsBody=callerLabel+" is trying to call you through Server. You do not need to install the Server app. Open this link in Chrome or Safari while connected to the internet, then tap Answer to enable your microphone: "+guestUrl+"#token="+encodeURIComponent(token)+" (invitation valid for 24 hours; the live call window is 20 minutes, after which the page shows a missed call).";
     const manualDelivery=(reason:string)=>out({
-      ok:true,call_id:call.id,route,ice_servers:callIceServers,call,
+      ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
       invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
       guest_invite_url:guestUrl,invitation_text:smsBody,sms_body:smsBody,delivery_message:reason,
       recipient_availability:{status:"unknown_guest",connected:false},
@@ -291,7 +351,7 @@ Deno.serve(async(req:Request)=>{
     return manualDelivery("Server does not send automatic or paid SMS for guest invitations. Share the secure invitation using an app already on your phone; the recipient needs internet to answer.");
    }
    return out({
-    ok:true,call_id:call.id,route,call,ice_servers:callIceServers,
+    ok:true,call_id:call.id,route,call,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,
     recipient_availability:recipientAvailability,
     push_delivery:pushDelivery
    });
@@ -344,7 +404,8 @@ Deno.serve(async(req:Request)=>{
     if(!call||call.callee_user_id!==uid||!["ringing","connecting"].includes(call.state)||(call.expires_at&&Date.parse(call.expires_at)<=Date.now()))return out({error:"CALL_NOT_ANSWERABLE"},409);
     await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",callId);
     await db.from("server_call_members").update({joined_at:now}).eq("call_id",callId).eq("user_id",uid);
-    return out({ok:true,state:"connecting",ice_servers:await iceServersForCall(callId,SERVER_CALL_TTL_SECONDS)});
+    const iceConfig=await iceServersForCall(callId,SERVER_CALL_TTL_SECONDS);
+    return out({ok:true,state:"connecting",ice_servers:iceConfig.ice_servers,ice_server_mode:iceConfig.ice_server_mode});
    }
    if(action==="set_active"){
     const {error}=await db.from("server_calls").update({state:"active",updated_at:now}).eq("id",callId).in("state",["ringing","connecting"]);
@@ -365,7 +426,10 @@ Deno.serve(async(req:Request)=>{
    if(kind==="hangup"){const now=new Date().toISOString();await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",callId);}
    return out({ok:true,seq:signal.seq,created_at:signal.created_at});
   }
-  if(action==="ice_servers")return out({ice_servers:await iceServersForCall(uid,SERVER_CALL_TTL_SECONDS)});
+  if(action==="ice_servers"){
+   const iceConfig=await iceServersForCall(uid,SERVER_CALL_TTL_SECONDS);
+   return out({ice_servers:iceConfig.ice_servers,ice_server_mode:iceConfig.ice_server_mode});
+  }
   return out({error:"UNKNOWN_ACTION"},400);
  }catch{return out({error:"SERVER_CALLS_INTERNAL_ERROR"},500);}
 });
