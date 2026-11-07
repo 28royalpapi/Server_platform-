@@ -632,12 +632,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       type = "text/plain"
       putExtra(Intent.EXTRA_TEXT, body)
     }
-    val sms = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$recipientPhone")).apply {
-      putExtra("sms_body", body)
-    }
-    val chooser = Intent.createChooser(share, "Share Server invitation to " + mask(recipientPhone)).apply {
-      putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(sms))
-    }
+    // Use Android's general Sharesheet. Server does not preselect or promote
+    // SMS as a guest-call invitation route; the caller chooses WhatsApp or
+    // another sharing app they already use.
+    val chooser = Intent.createChooser(share, "Share Server invitation to " + mask(recipientPhone))
 
     if (pendingSystemDialerReturn) {
       try {
@@ -659,7 +657,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       .setPositiveButton("Share invitation") { _, _ ->
         try {
           startActivity(chooser)
-          setStatus("Invitation ready. The recipient must open the link and tap Answer. SMS may incur your carrier's charge.")
+          setStatus("Invitation ready. Share the preview link through an app you use; the recipient opens it and taps Answer.")
         } catch (_: Exception) {
           setStatus("The invitation is ready, but Android could not open a sharing app.", true)
         }

@@ -535,6 +535,10 @@ assert.match(androidGuestNotifications,/NotificationCompat\.Action|addAction/,
   "the no-install route uses a native notification action rather than opening a caller webpage");
 assert.match(androidGuestShare,/Intent\(Intent\.ACTION_SEND\)/,
   "the caller explicitly opens Android's native share chooser");
+assert.match(androidMain,/Intent\.createChooser\(share, "Share Server invitation to "/,
+  "MainActivity uses Android's general Sharesheet for guest-call links");
+assert.doesNotMatch(androidMain,/Intent\(Intent\.ACTION_SENDTO|smsto:|putExtra\("sms_body"|EXTRA_INITIAL_INTENTS/,
+  "Server does not promote or pre-address SMS as a guest-call invitation action");
 assert.doesNotMatch(androidGuestShare,/Intent\(Intent\.ACTION_SENDTO|smsto/,
   "Server uses the generic share chooser and does not force an addressed SMS invitation");
 assert.doesNotMatch(androidGuestShare,/sendTextMessage|SmsManager\.send/,"the caller app delegates SMS transmission to the paired SIM gateway, not its own process");
@@ -745,7 +749,7 @@ assert.match(androidManifest,/ServerCarrierDialActivity/,
 assert.match(androidMain,/button\("Call using selected SIM"\)/,
   "the main app exposes the caller-confirmed selected-SIM fallback after Server reports unavailable");
 assert.match(androidEngine,/device delivery is not confirmed/,"Android Telecom logs background delivery without claiming that the phone rang");
-assert.match(androidMain,/SMS may incur your carrier's charge/,"Android discloses that a caller-selected SMS may be billable");
+assert.doesNotMatch(androidMain,/SMS may incur your carrier's charge/,"Server does not label an SMS invitation as a supported default guest-call route");
 assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");
 assert.match(androidFirebase,/fcm_registered_server_id/,"push-token registration is scoped to the signed-in Server identity");
 assert.match(androidFirebase,/fun unregister\(context: Context\)/,"FCM endpoint cleanup is attempted when a user signs out");
