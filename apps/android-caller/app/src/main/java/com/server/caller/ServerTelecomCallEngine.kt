@@ -232,15 +232,21 @@ internal class ServerTelecomCallEngine(
       if (route != "server") throw IllegalStateException("Server returned an unsupported call route.")
       val availability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
       val queuedWake = started.optJSONObject("push_delivery")?.optBoolean("queued", false) ?: false
+      val fallbackAvailable = started.optJSONObject("carrier_fallback")?.optBoolean("available", false) ?: false
       if (availability == "online") {
-        connection.updateServerStatus("Available on Server · internet call")
+        connection.updateServerStatus("Available on Server · recent Internet connection · WebRTC")
         Log.i(TAG, "Recipient has a fresh Server presence heartbeat.")
       } else if (availability == "background_reachable" && queuedWake) {
-        connection.updateServerStatus("Server push queued · ringing not confirmed")
+        connection.updateServerStatus("Server background alert queued · ringing not confirmed")
         Log.i(TAG, "Recipient has a registered background endpoint; device delivery is not confirmed.")
       } else {
-        connection.updateServerStatus("Not currently reachable on Server")
-        Log.w(TAG, "Recipient reachability was not confirmed by Server.")
+        connection.updateServerStatus(
+          if (fallbackAvailable)
+            "Not reachable on Server · mobile-data state unknown · selected SIM available"
+          else
+            "Not reachable on Server · mobile-data state unknown"
+        )
+        Log.w(TAG, "Recipient Server reachability was not confirmed; actual mobile-data state is unknown.")
       }
       beginPolling()
     } catch (error: Exception) {
@@ -251,7 +257,7 @@ internal class ServerTelecomCallEngine(
           ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
         val message = apiError.payload.optString(
           "message",
-          "This recipient is not currently reachable on Server. Their mobile data may be off, or the Server receiver may be inactive. Use your preferred SIM for a normal carrier call if you want to continue."
+          "This recipient is not currently reachable through Server. Their mobile-data state is unknown. You can use your selected SIM for an ordinary carrier call if you want to continue."
         )
         failCall(message, dialNumber)
         return
