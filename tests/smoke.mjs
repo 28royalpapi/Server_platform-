@@ -755,9 +755,9 @@ assert.match(androidTelecom,/fun fallbackToCarrier\(callId: String\)/,
 assert.match(androidManifest,/ServerCarrierDialActivity/,
   "the explicit carrier handoff Activity is registered in the Android manifest");
 assert.match(androidMain,/button\("Call using selected SIM"\)/,
+  "the main app exposes the caller-confirmed selected-SIM fallback after Server reports unavailable");
 assert.match(html,/Server cannot read your airtime balance/,"onboarding explains that the carrier checks prepaid balance and returns its normal insufficient-credit message");
 assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
-  "the main app exposes the caller-confirmed selected-SIM fallback after Server reports unavailable");
 assert.match(androidEngine,/device delivery is not confirmed/,"Android Telecom logs background delivery without claiming that the phone rang");
 assert.doesNotMatch(androidMain,/SMS may incur your carrier's charge/,"Server does not label an SMS invitation as a supported default guest-call route");
 assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");
