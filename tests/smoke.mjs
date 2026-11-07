@@ -821,9 +821,9 @@ assert.match(calls,/profile\.allow_number_based_server_calls===true/,"caller pho
 assert.match(guest,/:"Private caller"/,
   "the no-install guest page uses a neutral private-caller label when the number is not shared");
 assert.match(androidTelecom,/if \(address == null\) setCallerDisplayName/,
+  "Android resolves a known caller through the recipient's local Contacts instead of overriding it");
 assert.match(iosModel,/let callerPhone = first\["caller_phone_e164"\]/,"iOS passes the caller's verified phone number to CallKit before any internal Server identity");
 assert.match(iosModel,/update\.remoteHandle = CXHandle\(type: handleType, value: handleValue\)/,"iOS leaves contact-name resolution to CallKit and uses a generic handle only when no verified number exists");
-  "Android resolves a known caller through the recipient's local Contacts instead of overriding it");
 assert.match(androidIncoming,/caller_phone_e164/,
   "incoming Android notifications prefer the verified phone number over a Server ID");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
