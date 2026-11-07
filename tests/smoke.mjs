@@ -40,6 +40,7 @@ const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/s
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
 const androidSessionManager=read("apps/android-caller/app/src/main/java/com/server/caller/ServerDeviceSessionManager.kt");
+const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFirebaseMessagingService.kt");
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const guestBrowserE2eShell=read("scripts/android-guest-browser-e2e.sh");
 const guestBrowserE2e=read("scripts/android-guest-browser-e2e.mjs");
@@ -759,6 +760,12 @@ assert.match(androidCarrierDialer,/TelecomManager\.EXTRA_PHONE_ACCOUNT_HANDLE/,
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
 assert.match(androidMain,/deliveryMode == "manual_share"/);
 assert.match(androidMain,/api\("availability"/,"Android checks recipient availability before the caller presses Call");
+assert.match(androidFirebase,/if \(!ServerCallNotifications\.canPostNotifications\(context\)\)/,
+  "FCM tokens are not advertised as background-call receivers when Android notification permission is disabled");
+assert.match(androidFirebase,/unregister\(context\)/,
+  "Server removes a previously registered push receiver when app entry detects notification permission is revoked");
+assert.match(app,/background incoming-call alerts may not appear/,
+  "onboarding explains that denied Android notifications disable reliable background incoming-call alerts without blocking carrier fallback");
 assert.match(androidMain,/recipientAvailabilityText/,"Android displays a distinct recipient reachability state beside the dialled destination");
 assert.match(androidMain,/does not prove the phone's mobile data is switched off/,"unreachable Server presence is not misreported as mobile data being off");
 assert.match(androidMain,/started\.optString\("invitation_text"/,"Android prefers the explicit manual-share invitation field from the backend");

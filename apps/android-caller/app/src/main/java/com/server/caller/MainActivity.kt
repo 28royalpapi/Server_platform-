@@ -147,6 +147,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     accessExpiry = prefs.getLong("access_expiry", 0L)
     currentPhone = prefs.getString("phone", "") ?: ""
     currentServerId = prefs.getString("server_id", "") ?: ""
+    // Refresh push registration on each app entry. This registers the receiver
+    // after notifications are enabled, and removes it after permission is revoked.
+    if (!accessToken.isNullOrBlank()) ServerPushRegistration.syncFcmToken(this)
     buildUi()
     if (systemCallEntry) {
       // Never replace the user's Phone app with the internal "Server call engine"

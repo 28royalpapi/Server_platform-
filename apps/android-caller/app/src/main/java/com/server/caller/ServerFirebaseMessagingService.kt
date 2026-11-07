@@ -52,6 +52,13 @@ class ServerFirebaseMessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(message: RemoteMessage) {
     super.onMessageReceived(message)
     if (message.data["type"] != "server_incoming_call") return
+    // A data push must not be counted as a usable background receiver if Android
+    // will not allow Server to display the incoming-call notification.
+    if (!ServerCallNotifications.canPostNotifications(this)) {
+      ServerPushRegistration.unregister(this)
+      Log.i("ServerFirebase", "Incoming-call push received while notifications are disabled; removing this background receiver.")
+      return
+    }
     val callId = message.data["call_id"].orEmpty()
     if (callId.isBlank()) return
     getSharedPreferences("server-session", MODE_PRIVATE).edit().putString("fcm_last_wake_call_id", callId).apply()
@@ -65,6 +72,10 @@ internal object ServerPushRegistration {
 
   fun syncFcmToken(context: Context) {
     if (!ServerFirebase.initialize(context)) return
+    if (!ServerCallNotifications.canPostNotifications(context)) {
+      unregister(context)
+      return
+    }
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val saved = prefs.getString("fcm_registration_token", null)
     if (!saved.isNullOrBlank()) { register(context, saved); return }
@@ -87,6 +98,10 @@ internal object ServerPushRegistration {
    * are not retried because they require a valid session or a corrected request.
    */
   fun register(context: Context, token: String) {
+    if (!ServerCallNotifications.canPostNotifications(context)) {
+      unregister(context)
+      return
+    }
     val cleanToken = token.trim()
     if (cleanToken.length !in 40..4096) return
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)

@@ -174,7 +174,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     callStep && callStep.classList.add("hidden");
     fallbackSimStep && fallbackSimStep.classList.remove("hidden");
-    showStatus("Permissions granted. Choose the SIM Server should preselect if you make a normal carrier fallback.", true);
+    const permissionStatus = notificationsGranted === true
+      ? "Incoming-call notifications are allowed. "
+      : "Notifications are disabled. Server internet calls can still work while the receiver is active, but background incoming-call alerts may not appear until you enable Server notifications in Android Settings. "
+    showStatus(permissionStatus + "Choose the SIM Server should preselect if you make a normal carrier fallback.", true);
     loadFallbackSimOptions();
   };
 
