@@ -520,9 +520,12 @@ final class ServerViewModel: ObservableObject {
                     if self.callId == nil, self.incomingCall == nil,
                        let first = rows.first(where: { ($0["state"] as? String) == "ringing" }),
                        let id = first["id"] as? String {
-                        let from = first["caller_server_id"] as? String ?? first["caller_phone_e164"] as? String ?? "Server user"
-                        self.incomingCall = IncomingCall(id: id, phone: from)
-                        try? await self.callKit.reportIncoming(id: id, handle: from)
+                        let callerPhone = first["caller_phone_e164"] as? String
+                        let from = callerPhone.flatMap {
+                            $0.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? $0 : nil
+                        }
+                        self.incomingCall = IncomingCall(id: id, phone: from ?? "Server caller")
+                        try? await self.callKit.reportIncoming(id: id, phoneNumber: from)
                     }
                 } catch { /* keep polling; do not log tokens or request bodies */ }
                 try? await Task.sleep(for: .seconds(2))
@@ -717,17 +720,23 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
     override init() {
         let config = CXProviderConfiguration(localizedName: "Server")
         config.supportsVideo = false; config.maximumCallGroups = 1; config.maximumCallsPerCallGroup = 1
-        config.supportedHandleTypes = [.phoneNumber]
+        config.supportedHandleTypes = [.phoneNumber, .generic]
         provider = CXProvider(configuration: config)
         super.init()
         provider.setDelegate(self, queue: nil)
     }
 
-    func reportIncoming(id: String, handle: String) async throws {
+    func reportIncoming(id: String, phoneNumber: String?) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         if handles[uuid] != nil { return }
-        handles[uuid] = handle
-        let update = CXCallUpdate(); update.remoteHandle = CXHandle(type: .phoneNumber, value: handle); update.hasVideo = false
+        let handleValue = phoneNumber ?? "Server caller"
+        let handleType: CXHandle.HandleType = phoneNumber == nil ? .generic : .phoneNumber
+        handles[uuid] = handleValue
+        // Leave localizedCallerName unset for telephone handles. CallKit then
+        // resolves the recipient's own Contacts entry; an unsaved number stays visible.
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: handleType, value: handleValue)
+        update.hasVideo = false
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             provider.reportNewIncomingCall(with: uuid, update: update) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: ()) }
