@@ -1086,10 +1086,10 @@ class CallerSmokeTest {
         }
         val callId = prefs.getString("debug_last_guest_call_id", null).orEmpty()
         val failureReason = prefs.getString("debug_last_call_failure", null).orEmpty()
-        assertTrue("The real Server backend did not return a secure guest invitation (stage=" +
+        assertTrue("The real Server backend did not return a secure caller-preview invitation (stage=" +
           prefs.getString("debug_last_telecom_stage", "unknown") + "; failure=" + failureReason + ")",
-          invitation.contains("/guest.html#token=") &&
-            Regex("#token=[0-9a-f]{64}").containsMatchIn(invitation))
+          invitation.contains("/server-guest-preview?token=") &&
+            Regex("server-guest-preview[?]token=[0-9a-f]{64}").containsMatchIn(invitation))
         assertTrue("The guest call did not produce a backend call ID", callId.isNotBlank())
         val outputDir = context.getExternalFilesDir(null) ?: context.cacheDir
         File(outputDir, "server-guest-invitation.txt").writeText(invitation)

@@ -433,7 +433,7 @@ Deno.serve(async(req:Request)=>{
     // This endpoint returns caller-specific Open Graph metadata and redirects
     // the recipient to the secure browser call. Sharing is explicit; no SMS is queued.
     const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
-    const callerPhone=profile.phone_verified_at?phone(profile.phone_e164):null;
+    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
     const callerDisplay=callerPhone||callerLabel;
     const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
     const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";

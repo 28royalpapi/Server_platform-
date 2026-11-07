@@ -532,6 +532,7 @@ assert.match(androidEngine,/RTCStatsCollectorCallback/);
 assert.match(guestWeb,/inbound-rtp/);
 assert.match(androidTests,/Caller received no inbound audio RTP packets/);
 assert.match(androidTests,/Recipient received no inbound audio RTP packets/);
+assert.match(androidTests,/server-guest-preview\\[\\?\\]token=/,"native Android guest E2E checks the caller-preview link rather than the old direct guest-page URL");
 assert.match(androidTests,/webRtcPeersExchangeAudioTracksAndConnectOnAndroidDevice/,
   "Android instrumentation negotiates two WebRTC peers, exchanges audio tracks and reaches ICE CONNECTED");
 assert.match(androidMain,/if \(pendingSystemDialerReturn\) payload\.put\("source", "android_telecom"\)/,
@@ -804,6 +805,13 @@ assert.match(guestBrowserE2e,/server-guest-preview/,"the browser E2E accepts the
 assert.match(guestBrowserE2e,/new URL\(invitationCandidate\)/,"the browser E2E parses and opens the exact shared preview link");
 assert.match(guestPreview,/og:title/,"the guest preview publishes a social-card caller title for messaging apps");
 assert.match(guestPreview,/og:image/,"the guest preview publishes incoming-call artwork for rich link cards");
+assert.match(guestPreview,/og:image:alt/,"the preview image alt text names the actual caller identity");
+assert.match(guestPreview,/content-type.*image[\\/]png/,"caller-specific Open Graph artwork is served as PNG rather than SVG");
+assert.match(guestPreview,/image=1&invite_id=/,"each call preview links to a private caller-specific image");
+assert.match(guestPreview,/CALLER IDENTIFICATION/,"the image visibly labels the caller identity");
+assert.match(guestPreview,/allow_number_based_server_calls/,"the OG card only displays a verified phone when the caller opted into number-based calling");
+assert.match(guest,/allow_number_based_server_calls/,"the full-screen guest page observes the caller's phone-sharing consent");
+assert.match(calls,/profile\\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
 assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
 
