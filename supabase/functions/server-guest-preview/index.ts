@@ -102,8 +102,9 @@ async function callerPng(callerLabel:string){
   fillRect(pixels,68,72,1064,486,[27,38,51]);
   fillRect(pixels,78,82,1044,466,[31,46,58]);
   fillRect(pixels,78,82,1044,3,[47,201,132]);
-  fillCircle(pixels,1020,120,190,[19,70,61]);
-  fillCircle(pixels,1020,120,185,[31,46,58]);
+  // Keep the accent ring compact so it never competes with the caller identity.
+  fillCircle(pixels,1068,486,42,[19,70,61]);
+  fillCircle(pixels,1068,486,37,[31,46,58]);
   drawText(pixels,"SERVER",112,112,4,[166,244,203]);
   drawText(pixels,"INCOMING SERVER CALL",770,124,2,[145,170,188]);
   fillCircle(pixels,600,222,62,[30,137,99]);
@@ -114,7 +115,7 @@ async function callerPng(callerLabel:string){
   const identityScale=identity.length>19?4:6;
   drawCenteredText(pixels,identity,361,identityScale,[255,255,255]);
   drawCenteredText(pixels,"IS CALLING YOU",438,4,[255,255,255]);
-  drawCenteredText(pixels,"OPEN THIS PREVIEW AND TAP ANSWER",500,2,[179,207,219]);
+  drawCenteredText(pixels,"OPEN PREVIEW, TAP ANSWER",500,2,[179,207,219]);
   const rowBytes=WIDTH*4+1;
   const raw=new Uint8Array(rowBytes*HEIGHT);
   for(let y=0;y<HEIGHT;y++){
