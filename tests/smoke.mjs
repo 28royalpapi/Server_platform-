@@ -763,7 +763,7 @@ assert.match(androidFirebase,/if \(!ServerCallNotifications\.canPostNotification
   "FCM tokens are not advertised as background-call receivers when Android notification permission is disabled");
 assert.match(androidCallNotifications,/areNotificationsEnabled\(\)/,
   "background call availability checks Android app-wide notification enablement");
-assert.match(androidCallNotifications,/channel\.importance !== NotificationManager\.IMPORTANCE_NONE/,
+assert.match(androidCallNotifications,/channel\.importance != NotificationManager\.IMPORTANCE_NONE/,
   "a disabled incoming-call notification channel prevents the device being advertised as background-reachable");
 assert.match(androidFirebase,/unregister\(context\)/,
   "Server removes a previously registered push receiver when app entry detects notification permission is revoked");
