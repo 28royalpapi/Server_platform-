@@ -282,24 +282,25 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   ) {
     if (!::recipientAvailabilityText.isInitialized) return
     val status = availability?.optString("status").orEmpty()
-    val message = when (status) {
-      "online" ->
-        "AVAILABLE ON SERVER · A recent authenticated Server connection confirms this receiver recently reached the internet. WebRTC can be attempted; ringing is confirmed only when the recipient's device responds."
-      "background_reachable" ->
-        "BACKGROUND ALERT POSSIBLE · A Server push receiver is registered, but there is no fresh active connection. Current mobile-data state and ringing are not confirmed."
-      "offline" ->
-        "NOT REACHABLE ON SERVER · No recent Server connection or registered background receiver was found. This does not prove the phone's mobile data is switched off. You can choose your own SIM for a normal carrier call."
-      "unknown_guest" ->
-        "AVAILABILITY UNKNOWN · This number has no reachable Server receiver. A phone number alone cannot reveal whether mobile data is on. Share the caller-identifying guest preview for a browser WebRTC call, or use your selected SIM."
-      else -> fallbackMessage ?: "Availability has not been confirmed yet. Server will recheck when you place the call."
+    val reachable = status == "online" || status == "background_reachable"
+    val message = when {
+      status.isBlank() -> fallbackMessage ?: "Checking Server reachability…"
+      reachable -> "REACHABLE · SERVER / WEBRTC"
+      else -> "UNREACHABLE · SELECTED SIM"
     }
-    val colour = when (status) {
-      "online" -> 0xFF8DE9B9.toInt()
-      "background_reachable" -> 0xFF9DCBFF.toInt()
-      "offline", "unknown_guest" -> 0xFFFFDFA3.toInt()
-      else -> 0xFF9AABBC.toInt()
+    val detail = when (status) {
+      "online" -> "A fresh Server connection is available; attempting WebRTC."
+      "background_reachable" -> "A background wake receiver exists; Server will attempt delivery, but ringing is not confirmed."
+      "offline" -> "No live Server receiver or background wake endpoint is available."
+      "unknown_guest" -> "This number has no Server receiver. A shared browser invitation remains an optional alternative."
+      else -> ""
     }
-    recipientAvailabilityText.text = message
+    val colour = when {
+      status.isBlank() -> 0xFF9AABBC.toInt()
+      reachable -> 0xFF8DE9B9.toInt()
+      else -> 0xFFFFDFA3.toInt()
+    }
+    recipientAvailabilityText.text = if (detail.isBlank()) message else "$message\n$detail"
     recipientAvailabilityText.setTextColor(colour)
   }
 
@@ -721,23 +722,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     carrierFallbackNumber = null
     if (::carrierFallbackButton.isInitialized) carrierFallbackButton.visibility = View.GONE
     recordTelecomDebugStage("start_call_entered")
-    val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    val activeNetwork = connectivity.activeNetwork
-    val networkCapabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
-    if (!isServerInternetUsable(networkCapabilities)) {
-      recordTelecomDebugStage("start_call_no_internet_capability")
-      ServerTelecomRegistry.markEnded()
-      val message = "Server needs internet to place this call. Turn on mobile data or connect to Wi-Fi, then try again."
-      setStatus(message, true)
-      Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-      return@launch
-    }
-    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-      recordTelecomDebugStage("start_call_microphone_permission_missing")
-      askMic.launch(Manifest.permission.RECORD_AUDIO)
-      setStatus("Allow microphone access and tap Call with Server again.", true)
-      return@launch
-    }
     val typedTarget = targetInput.text.toString().trim()
     val serverId = typedTarget.uppercase()
     val isServerId = Regex("^SVR-[0-9A-F]{10}$").matches(serverId)
@@ -746,6 +730,26 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       recordTelecomDebugStage("start_call_target_invalid")
       ServerTelecomRegistry.markEnded()
       setStatus("The destination country could not be resolved from this contact. Allow Contacts access or use an international number with its country code. No carrier call was placed.", true)
+      return@launch
+    }
+    carrierFallbackNumber = normalizedPhone
+    val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val activeNetwork = connectivity.activeNetwork
+    val networkCapabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+    if (!isServerInternetUsable(networkCapabilities)) {
+      recordTelecomDebugStage("start_call_no_internet_capability")
+      ServerTelecomRegistry.markEnded()
+      if (normalizedPhone != null) {
+        handoffToCarrierDialer(normalizedPhone, null)
+      } else {
+        setStatus("UNREACHABLE · no phone number is available for the selected-SIM fallback.", true)
+      }
+      return@launch
+    }
+    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      recordTelecomDebugStage("start_call_microphone_permission_missing")
+      askMic.launch(Manifest.permission.RECORD_AUDIO)
+      setStatus("Allow microphone access and tap Call with Server again.", true)
       return@launch
     }
     // Debug builds record that Telecom's system-originated tel: request reached
@@ -772,6 +776,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       renderRecipientAvailability(started.optJSONObject("recipient_availability"))
       callId = started.getString("call_id"); ServerTelecomRegistry.setCurrentCallId(callId)
       activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
+      val fallback = started.optJSONObject("carrier_fallback")
+      carrierFallbackNumber = fallback?.takeIf { it.optBoolean("available", false) }
+        ?.optString("destination_e164")?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
+        ?: normalizedPhone
+      carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
@@ -822,8 +831,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           else "This recipient is offline on Server.")
         setStatus(message, true)
         carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
-        if (pendingSystemDialerReturn) {
-          carrierFallbackNumber?.let { ServerCallEngineStatusNotifications.showFailure(this@MainActivity, message, it) }
+        if (carrierFallbackNumber != null) {
+          handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), null)
+        } else if (pendingSystemDialerReturn) {
+          ServerCallEngineStatusNotifications.showFailure(this@MainActivity, message, null)
           Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
           returnToSystemPhoneUi()
         }
@@ -834,10 +845,13 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
       cleanPeer(); callId = null
-      val userMessage = "Server could not start the internet call: " + (e.message ?: "Unknown error") +
-        ". No normal mobile call was placed. Check your internet connection and try again."
-      setStatus(userMessage, true)
-      if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
+      val userMessage = "UNREACHABLE · Server could not establish the internet route: " + (e.message ?: "Unknown error")
+      if (carrierFallbackNumber != null) {
+        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
+      } else {
+        setStatus(userMessage, true)
+        if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
+      }
     } finally { callButton.isEnabled = true }
   }
   private suspend fun incomingLoop() {
@@ -1100,7 +1114,12 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
             }
           }
         }
-        PeerConnection.IceConnectionState.FAILED -> setStatus("ICE failed. A TURN relay may be required on this network.", true)
+        PeerConnection.IceConnectionState.FAILED -> {
+          val message = "UNREACHABLE · Server could not establish the internet voice path."
+          val fallback = carrierFallbackNumber
+          setStatus(message, true)
+          if (fallback != null) handoffToCarrierDialer(fallback, callId)
+        }
         PeerConnection.IceConnectionState.DISCONNECTED -> setStatus("Connection lost. Trying to recover…", true)
         else -> Unit
       }

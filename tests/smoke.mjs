@@ -334,8 +334,8 @@ assert.match(androidMain,/recordTelecomDebugStage\("backend_start_requested"\)/,
    "the outgoing Telecom regression records that a real backend call request was attempted");
 assert.match(androidMain,/recordTelecomDebugStage\("call_setup_failed"\)/,
    "the outgoing Telecom regression records call setup failure rather than silently hiding it");
-assert.match(androidMain,/Server needs internet to place this call/,
-   "offline callers receive a plain instruction to enable mobile data or Wi-Fi");
+assert.match(androidMain,/handoffToCarrierDialer\(normalizedPhone, null\)/,
+   "when the caller has no internet, a known phone destination is handed to the selected SIM");
 assert.match(androidTests,/phoneAccountCanReceiveIncomingCallThroughTelecom/);
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
 assert.match(androidTests,/debug_telecom_connection_engine_started/);
@@ -723,10 +723,9 @@ assert.match(androidMain,/Call using selected SIM/,"Android offers the caller th
 assert.match(androidMain,/Standard call charges may apply/,"Android warns that carrier attempts are operator-dependent and may be chargeable");
 assert.doesNotMatch(androidCarrierDialer,/Intent\\.ACTION_CALL/,"the carrier fallback never silently places the call");
 assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
-assert.match(androidMain,/Not currently reachable on Server/,"the caller is told when Server has no confirmed recipient route");
-assert.match(androidMain,/background wake job is queued/,"the caller is told when its wake job is queued but not delivered");
-assert.match(androidMain,/Available on Server/,"the caller sees when the recipient has fresh Server presence");
-assert.match(androidMain,/background push endpoint is registered/,"the caller sees when only a background push endpoint is available");
+assert.match(androidMain,/REACHABLE · SERVER \/ WEBRTC/,"the caller sees the reachable Server/WebRTC state");
+assert.match(androidMain,/UNREACHABLE · SELECTED SIM/,"the caller sees the unreachable/selected-SIM state");
+assert.match(androidMain,/PeerConnection\.IceConnectionState\.FAILED[\s\S]*?handoffToCarrierDialer\(fallback, callId\)/,"a failed WebRTC media path triggers selected-SIM fallback");
 assert.match(androidMain,/Recipient availability is unknown until their browser connects/,
   "a guest invitation is not misrepresented as an active ring before the guest joins");
 assert.match(androidEngine,/Recipient has a fresh Server presence heartbeat/,"Android Telecom logs the live-presence path");
@@ -793,7 +792,7 @@ assert.match(androidSetup,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegis
 assert.match(app,/background incoming-call alerts may not appear/,
   "onboarding explains that denied Android notifications disable reliable background incoming-call alerts without blocking carrier fallback");
 assert.match(androidMain,/recipientAvailabilityText/,"Android displays a distinct recipient reachability state beside the dialled destination");
-assert.match(androidMain,/does not prove the phone's mobile data is switched off/,"unreachable Server presence is not misreported as mobile data being off");
+assert.match(androidMain,/background wake receiver exists/,"the app does not claim to know the recipient's actual mobile-data state");
 assert.match(androidMain,/started\.optString\("invitation_text"/,"Android prefers the explicit manual-share invitation field from the backend");
 assert.match(iosModel,/guestInviteMessage/);
 assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
