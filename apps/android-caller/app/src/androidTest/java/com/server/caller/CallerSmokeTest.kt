@@ -906,9 +906,31 @@ class CallerSmokeTest {
       assertNotNull("Android did not expose a default system Phone dialer for ACTION_DIAL", dialerPackage)
       val resolvedDialerPackage = dialerPackage!!
       assertTrue("The default Phone app must not be the Server connector itself", resolvedDialerPackage != context.packageName)
-      context.startActivity(dialerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      val dialerReady = device.wait(Until.hasObject(By.pkg(resolvedDialerPackage)), 12_000)
-      assertTrue("Android's system Phone dialer did not open (resolved package: " + resolvedDialerPackage + ")", dialerReady)
+      // Launch the system-owned Phone UI through ActivityManager shell. The
+      // instrumentation process is deliberately backgrounded by pressHome();
+      // Android 14 may block a background app's startActivity request even
+      // though the default dialler resolved successfully. Shell launch keeps
+      // this a real system Phone UI test without giving Server dialler privileges.
+      assertTrue("Resolved Phone package name is invalid",
+        resolvedDialerPackage.matches(Regex("^[A-Za-z0-9._]+$")))
+      val launchResult = runShellCommand(
+        "am start -a android.intent.action.DIAL -p " + resolvedDialerPackage
+      )
+      assertTrue("Android ActivityManager could not launch the resolved Phone dialler: " + launchResult.take(500),
+        launchResult.contains("Status: ok") || launchResult.contains("Starting:"))
+      val dialerReady = device.wait(Until.hasObject(By.pkg(resolvedDialerPackage)), 20_000)
+      if (!dialerReady) {
+        try {
+          val hierarchy = File(context.cacheDir, "server-phone-dialer-launch-hierarchy.txt")
+          device.dumpWindowHierarchy(hierarchy)
+          Log.e("ServerUITest", "ActivityManager launched Phone but it never became foreground. currentPackage=" +
+            device.currentPackageName + "; result=" + launchResult + "; hierarchy:\\n" + hierarchy.readText())
+        } catch (error: Exception) {
+          Log.e("ServerUITest", "Could not capture Phone launch hierarchy: " + error.javaClass.simpleName)
+        }
+      }
+      assertTrue("Android's system Phone dialer did not open (resolved package: " + resolvedDialerPackage +
+        "; current foreground package: " + device.currentPackageName + ")", dialerReady)
       val digitsField = device.wait(
         Until.findObject(By.res(resolvedDialerPackage, "digits")), 5_000
       ) ?: device.wait(Until.findObject(By.clazz("android.widget.EditText")), 2_000)
