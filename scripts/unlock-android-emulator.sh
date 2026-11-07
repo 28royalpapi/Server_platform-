@@ -6,7 +6,10 @@ adb wait-for-device
 
 # API 37 can finish booting while user 0 is still RUNNING_LOCKED. Package
 # Manager readiness does not imply credential-encrypted app storage is ready.
-# Clean CI AVDs have no PIN/pattern, so unlock the primary user explicitly.
+# CI AVDs are disposable and contain no personal data. Disable any swipe/PIN
+# keyguard profile before opening credential-encrypted app storage.
+adb shell cmd lock_settings set-disabled true >/dev/null 2>&1 || true
+adb shell settings put secure lockscreen.disabled 1 >/dev/null 2>&1 || true
 adb shell input keyevent 224 >/dev/null 2>&1 || true
 adb shell am unlock-user 0 >/dev/null 2>&1 || true
 adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
@@ -21,8 +24,9 @@ attempt=1
 while [ "$attempt" -le 30 ]; do
   state="$(adb shell am get-started-user-state 0 2>/dev/null | tr -d '\r' || true)"
   echo "ANDROID_PRIMARY_USER_STATE=$state"
-  if [ "$state" = "RUNNING_UNLOCKED" ]; then
-    echo "ANDROID_USER_UNLOCK_PASS"
+  unlocked="$(adb shell cmd user is-user-unlocked 0 2>/dev/null | tr -d '\r' | tail -1 || true)"
+  if [ "$state" = "RUNNING_UNLOCKED" ] && [ "$unlocked" = "true" ]; then
+    echo "ANDROID_USER_UNLOCK_PASS: credential-encrypted storage is unlocked"
     exit 0
   fi
   sleep 1
