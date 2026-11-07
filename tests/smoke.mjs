@@ -767,6 +767,10 @@ assert.match(androidCallNotifications,/channel\.importance != NotificationManage
   "a disabled incoming-call notification channel prevents the device being advertised as background-reachable");
 assert.match(androidFirebase,/unregister\(context\)/,
   "Server removes a previously registered push receiver when app entry detects notification permission is revoked");
+assert.match(androidMain,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegistration\.syncFcmToken/,
+  "Server refreshes Android push registration after returning from notification settings");
+assert.match(androidSetup,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegistration\.syncFcmToken/,
+  "the website-hosted Android onboarding also refreshes push eligibility when resumed");
 assert.match(app,/background incoming-call alerts may not appear/,
   "onboarding explains that denied Android notifications disable reliable background incoming-call alerts without blocking carrier fallback");
 assert.match(androidMain,/recipientAvailabilityText/,"Android displays a distinct recipient reachability state beside the dialled destination");

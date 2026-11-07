@@ -37,6 +37,9 @@ class ServerSetupWebActivity : Activity() {
 
   override fun onResume() {
     super.onResume()
+    if (prefs.getString("access_token", null)?.isNotBlank() == true) {
+      ServerPushRegistration.syncFcmToken(this)
+    }
     if (!::web.isInitialized || !prefs.getBoolean("server_open_dialer_after_account_enable", false)) return
 
     // The system Calling accounts screen is a mandatory user-consent boundary for a

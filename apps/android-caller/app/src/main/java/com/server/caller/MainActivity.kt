@@ -135,6 +135,15 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
+  override fun onResume() {
+    super.onResume()
+    // Refresh background-call eligibility after the user returns from Android
+    // Settings and changes notification permission or the app call channel.
+    if (prefs.getString("access_token", null)?.isNotBlank() == true) {
+      ServerPushRegistration.syncFcmToken(this)
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     // Android Telecom enters this Activity only as a call-routing bridge. The
     // visible call surface belongs to Android Phone, not Server's internal form.
