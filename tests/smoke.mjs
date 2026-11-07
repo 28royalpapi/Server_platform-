@@ -769,6 +769,8 @@ assert.match(androidFirebase,/unregister\(context\)/,
   "Server removes a previously registered push receiver when app entry detects notification permission is revoked");
 assert.match(androidMain,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegistration\.syncFcmToken/,
   "Server refreshes Android push registration after returning from notification settings");
+assert.equal((androidMain.match(/override fun onResume\(\)/g) || []).length, 1,
+  "the Android caller must have one lifecycle onResume implementation");
 assert.match(androidSetup,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegistration\.syncFcmToken/,
   "the website-hosted Android onboarding also refreshes push eligibility when resumed");
 assert.match(app,/background incoming-call alerts may not appear/,
