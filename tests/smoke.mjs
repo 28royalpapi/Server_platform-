@@ -759,6 +759,9 @@ assert.match(androidMain,/button\("Call using selected SIM"\)/,
 assert.match(html,/Server cannot read your airtime balance/,"onboarding explains that the carrier checks prepaid balance and returns its normal insufficient-credit message");
 assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
 assert.match(androidEngine,/device delivery is not confirmed/,"Android Telecom logs background delivery without claiming that the phone rang");
+assert.match(androidEngine,/carrierFallbackPhone = target\.phoneNumber/,"the Android call engine retains the phone destination so the selected SIM can be offered when the caller has no data");
+assert.match(androidEngine,/ICE path on this network[\s\S]{0,260}carrierFallbackPhone/,"a failed WebRTC network path offers the caller-confirmed carrier SIM fallback");
+
 assert.doesNotMatch(androidMain,/SMS may incur your carrier's charge/,"Server does not label an SMS invitation as a supported default guest-call route");
 assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");
 assert.match(androidFirebase,/fcm_registered_server_id/,"push-token registration is scoped to the signed-in Server identity");

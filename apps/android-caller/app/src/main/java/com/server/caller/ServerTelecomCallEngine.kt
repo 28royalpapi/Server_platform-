@@ -148,17 +148,22 @@ internal class ServerTelecomCallEngine(
         .remove("debug_last_inbound_audio_rtp_packets")
         .apply()
     }
+    var carrierFallbackPhone: String? = null
     try {
+      // Resolve the phone destination before testing the caller's data connection.
+      // If Server cannot even start an internet attempt, Android can still open
+      // the same destination through the user's preferred carrier SIM.
+      val target = ServerCallTarget.parse(rawTarget) { value -> normalizePhone(value) }
+        ?: throw IllegalStateException("The destination could not be resolved. Use a valid Server ID or an international telephone number. No carrier call was placed.")
+      carrierFallbackPhone = target.phoneNumber
       val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
       val capabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
       if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
-        throw IllegalStateException("Server needs mobile data or Wi-Fi to place an internet call.")
+        throw IllegalStateException("Server cannot reach the internet from this phone. You can use your selected SIM for a normal carrier call.")
       }
       if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-        throw IllegalStateException("Microphone permission is missing. Reopen Server setup and allow microphone access.")
+        throw IllegalStateException("Microphone permission is missing for Server internet calling. You can use your selected SIM for a normal carrier call.")
       }
-      val target = ServerCallTarget.parse(rawTarget) { value -> normalizePhone(value) }
-        ?: throw IllegalStateException("The destination could not be resolved. Use a valid Server ID or an international telephone number. No carrier call was placed.")
       if (BuildConfig.DEBUG) {
         prefs.edit()
           .putLong("debug_last_call_engine_entered_at", System.currentTimeMillis())
@@ -266,7 +271,7 @@ internal class ServerTelecomCallEngine(
       val message = if (reason.contains("RECIPIENT_NOT_SERVER_ENABLED")) {
         "This number is not enabled for Server internet calls. Use your carrier SIM for a normal mobile call, or have the recipient enable Server number calling."
       } else reason.ifBlank { "Unknown call-start error" }
-      failCall(message)
+      failCall(message, carrierFallbackPhone)
     }
   }
 
@@ -694,7 +699,7 @@ internal class ServerTelecomCallEngine(
         PeerConnection.IceConnectionState.FAILED -> {
           iceConnected = false
           recordStage("ice_transport_failed")
-          failCall("Server could not establish a peer-to-peer ICE path on this network. This network may require a TURN relay.")
+          failCall("Server could not establish a peer-to-peer ICE path on this network. This network may require a TURN relay. You can use your selected SIM for a normal carrier call.", carrierFallbackPhone)
         }
         else -> Unit
       }
