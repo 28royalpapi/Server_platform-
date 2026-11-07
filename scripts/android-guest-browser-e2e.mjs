@@ -58,6 +58,32 @@ const context = await browser.newContext({
   viewport: { width: 1365, height: 900 },
   recordVideo: { dir: artifactDir }
 });
+
+const previewResponse = await context.request.get(invitationUrl, { maxRedirects: 0 });
+if (!previewResponse.ok()) throw new Error("Caller-identifying Open Graph page returned HTTP " + previewResponse.status());
+const previewHtml = await previewResponse.text();
+const titleMatch = previewHtml.match(/<meta property="og:title" content="([^"]+)"/);
+const imageMatch = previewHtml.match(/<meta property="og:image" content="([^"]+)"/);
+if (!titleMatch || !imageMatch) throw new Error("Guest preview is missing its caller title or Open Graph image.");
+const callerIdentity = titleMatch[1].replace(/ is calling you through Server$/, "");
+if (!callerIdentity || !previewHtml.includes("og:image:alt")) {
+  throw new Error("The Open Graph card did not identify the caller.");
+}
+const imageUrl = new URL(imageMatch[1], invitationUrl).toString();
+const imageResponse = await context.request.get(imageUrl);
+if (!imageResponse.ok()) throw new Error("Caller-specific preview image returned HTTP " + imageResponse.status());
+if (!String(imageResponse.headers()["content-type"] || "").toLowerCase().includes("image/png")) {
+  throw new Error("Caller preview image is not served as image/png.");
+}
+const imageBytes = await imageResponse.body();
+const pngSignature = Buffer.from([137,80,78,71,13,10,26,10]);
+if (imageBytes.length < 256 || !imageBytes.subarray(0,8).equals(pngSignature)) {
+  throw new Error("Caller preview image is not a valid PNG.");
+}
+if (!imageBytes.includes(Buffer.from("Caller="+callerIdentity))) {
+  throw new Error("Open Graph PNG does not contain the same caller identity shown in og:title.");
+}
+process.stdout.write("SERVER_GUEST_OG_CARD_PASS: caller identity is visible in metadata and embedded in the per-invitation PNG.\\n");
 const page = await context.newPage();
 page.setDefaultTimeout(25000);
 page.on("pageerror", error => process.stderr.write("Guest page error: " + error.message + "\n"));

@@ -128,7 +128,10 @@ async function callerPng(callerLabel:string){
   writeU32(ihdr,0,WIDTH);writeU32(ihdr,4,HEIGHT);
   ihdr[8]=8;ihdr[9]=6;ihdr[10]=0;ihdr[11]=0;ihdr[12]=0;
   const signature=new Uint8Array([137,80,78,71,13,10,26,10]);
-  const chunks=[signature,pngChunk("IHDR",ihdr),pngChunk("IDAT",compressed),pngChunk("IEND",new Uint8Array())];
+  // PNG tEXt makes the identity carried by the artwork inspectable in
+  // automated acceptance tests without OCR or an external image service.
+  const callerMetadata=new TextEncoder().encode("Caller="+callerLabel);
+  const chunks=[signature,pngChunk("IHDR",ihdr),pngChunk("tEXt",callerMetadata),pngChunk("IDAT",compressed),pngChunk("IEND",new Uint8Array())];
   const total=chunks.reduce((sum,part)=>sum+part.length,0);
   const result=new Uint8Array(total);let offset=0;
   for(const part of chunks){result.set(part,offset);offset+=part.length;}
