@@ -822,7 +822,7 @@ assert.match(guest,/:"Private caller"/,
   "the no-install guest page uses a neutral private-caller label when the number is not shared");
 assert.match(androidTelecom,/if \(address == null\) setCallerDisplayName/,
   "Android resolves a known caller through the recipient's local Contacts instead of overriding it");
-assert.match(incoming,/caller_phone_e164/,
+assert.match(androidIncoming,/caller_phone_e164/,
   "incoming Android notifications prefer the verified phone number over a Server ID");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
 assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
