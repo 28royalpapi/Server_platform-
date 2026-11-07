@@ -532,7 +532,7 @@ assert.match(androidEngine,/RTCStatsCollectorCallback/);
 assert.match(guestWeb,/inbound-rtp/);
 assert.match(androidTests,/Caller received no inbound audio RTP packets/);
 assert.match(androidTests,/Recipient received no inbound audio RTP packets/);
-assert.match(androidTests,/server-guest-preview\\[\\?\\]token=/,"native Android guest E2E checks the caller-preview link rather than the old direct guest-page URL");
+assert.match(androidTests,/server-guest-preview\[\?\]token=/,"native Android guest E2E checks the caller-preview link rather than the old direct guest-page URL");
 assert.match(androidTests,/webRtcPeersExchangeAudioTracksAndConnectOnAndroidDevice/,
   "Android instrumentation negotiates two WebRTC peers, exchanges audio tracks and reaches ICE CONNECTED");
 assert.match(androidMain,/if \(pendingSystemDialerReturn\) payload\.put\("source", "android_telecom"\)/,
