@@ -819,6 +819,12 @@ assert.match(guestPreview,/pngChunk\("tEXt",callerMetadata\)/,"the PNG embeds in
 assert.match(guestPreview,/allow_number_based_server_calls/,"the OG card only displays a verified phone when the caller opted into number-based calling");
 assert.match(guest,/allow_number_based_server_calls/,"the full-screen guest page observes the caller's phone-sharing consent");
 assert.match(calls,/profile\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
+assert.match(guest,/:"Private caller"/,
+  "the no-install guest page uses a neutral private-caller label when the number is not shared");
+assert.match(connection,/if \(address == null\) setCallerDisplayName/,
+  "Android resolves a known caller through the recipient's local Contacts instead of overriding it");
+assert.match(incoming,/caller_phone_e164/,
+  "incoming Android notifications prefer the verified phone number over a Server ID");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
 assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
 
@@ -836,10 +842,10 @@ assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
 assert.match(calls,/caller-identifying preview link/,
   "non-Server invitation explains that the recipient can answer through the browser without an app");
-assert.match(calls,/profile\.server_id/,
-  "guest invitation identifies the caller's Server ID");
-assert.match(guest,/caller_server_id/,
-  "guest invitation verification returns the Server caller ID");
+assert.match(guestPreview,/"PRIVATE CALLER"/,
+  "the Open Graph preview never exposes an opaque Server ID when caller-number sharing is disabled");
+assert.match(guest,/caller_server_id:callerLabel/,
+  "guest invitation verification returns a human-facing label rather than a Server ID");
 assert.match(guestWeb,/loadInvitation/);
 assert.match(guestWeb,/You do not need to install Server/,
   "browser invitation tells a non-Server recipient no install is required");

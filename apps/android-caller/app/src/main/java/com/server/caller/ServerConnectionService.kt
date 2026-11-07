@@ -221,13 +221,14 @@ class ServerConnectionService : ConnectionService() {
     val requestPhone = request.address?.schemeSpecificPart.orEmpty()
     val phone = (extras.getString("server_remote_phone") ?: requestPhone)
       .takeIf { it.matches(Regex("^\\+[1-9][0-9]{1,14}$")) }.orEmpty()
-    val callerIdentity = extras.getString("server_caller_id").orEmpty()
-      .ifBlank { phone.ifBlank { "Server caller" } }
+    val callerIdentity = phone.ifBlank { "Private caller" }
     val callId = extras.getString("server_call_id").orEmpty()
     val address = phone.takeIf { it.isNotBlank() }?.let { Uri.parse("tel:$it") }
     return ServerTelecomConnection(this).apply {
       setAddress(address, if (address != null) TelecomManager.PRESENTATION_ALLOWED else TelecomManager.PRESENTATION_UNKNOWN)
-      setCallerDisplayName(callerIdentity, TelecomManager.PRESENTATION_ALLOWED)
+      // When a verified number is present, Android Contacts must resolve the
+      // recipient-local name. Do not override it with a Server ID or raw number.
+      if (address == null) setCallerDisplayName(callerIdentity, TelecomManager.PRESENTATION_ALLOWED)
       setAudioModeIsVoip(true)
       setExtras(Bundle().apply {
         putString("server_call_id", callId)

@@ -108,9 +108,9 @@ if(req.method==="GET"||action==="inspect"){
   .eq("user_id",call.caller_user_id).maybeSingle();
  const mayShowPhone=caller?.phone_verified_at&&caller?.allow_number_based_server_calls===true&&
   typeof caller.phone_e164==="string"&&/^\\+[1-9][0-9]{7,14}$/.test(caller.phone_e164);
- const callerLabel=mayShowPhone?caller.phone_e164:(caller?.server_id||"SERVER USER");
+ const callerLabel=mayShowPhone?caller.phone_e164:"Private caller";
  return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,
-  caller_server_id:caller?.server_id||"SERVER USER",caller_label:callerLabel,
+  caller_server_id:callerLabel,caller_label:callerLabel,
   caller_phone:mayShowPhone?caller.phone_e164:null,call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
 }
 if(action==="decline"){

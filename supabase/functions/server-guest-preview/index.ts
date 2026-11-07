@@ -173,7 +173,7 @@ Deno.serve(async (req: Request) => {
     .select("server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",call.caller_user_id).maybeSingle();
   const phoneMayBeShown = profile?.phone_verified_at && profile?.allow_number_based_server_calls === true &&
     typeof profile.phone_e164 === "string" && /^\+[1-9][0-9]{7,14}$/.test(profile.phone_e164);
-  const caller = phoneMayBeShown ? profile.phone_e164 : (profile?.server_id || "SERVER USER");
+  const caller = phoneMayBeShown ? profile.phone_e164 : "PRIVATE CALLER";
 
   if (imageRequest) {
     if (req.method === "HEAD") return new Response(null,{status:200,headers:{
