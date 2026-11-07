@@ -815,7 +815,7 @@ assert.match(guestPreview,/CALLER IDENTIFICATION/,"the image visibly labels the 
 assert.match(guestPreview,/pngChunk\("tEXt",callerMetadata\)/,"the PNG embeds inspectable caller identity metadata for production acceptance tests");
 assert.match(guestPreview,/allow_number_based_server_calls/,"the OG card only displays a verified phone when the caller opted into number-based calling");
 assert.match(guest,/allow_number_based_server_calls/,"the full-screen guest page observes the caller's phone-sharing consent");
-assert.match(calls,/profile\\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
+assert.match(calls,/profile\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
 assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
 
