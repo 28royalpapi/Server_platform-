@@ -43,6 +43,7 @@ const androidSessionManager=read("apps/android-caller/app/src/main/java/com/serv
 const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const guestBrowserE2eShell=read("scripts/android-guest-browser-e2e.sh");
 const guestBrowserE2e=read("scripts/android-guest-browser-e2e.mjs");
+const e2eIdentityScript=read("scripts/create-server-e2e-identity.mjs");
 const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
 const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
 const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
@@ -370,6 +371,12 @@ assert.match(androidTests,/enablePhoneAccountWithTestShell/);
 assert.match(nativeWorkflow,/api-level: 26/, "Android 8 remains a minimum-install compatibility check");
 assert.ok(nativeWorkflow.includes("script: bash scripts/android-guest-browser-e2e.sh"),
   "guest E2E runs a checked-in Bash script as one command instead of passing multi-line Bash through sh");
+assert.match(e2eIdentityScript,/action: "availability"/,
+  "the real Server E2E identity exercises the deployed authenticated availability preflight");
+assert.match(e2eIdentityScript,/status !== "unknown_guest"/,
+  "a first-time non-Server recipient is reported as unknown, not falsely as mobile data off");
+assert.match(e2eIdentityScript,/requires_user_confirmation !== true/,
+  "availability preflight exposes caller-confirmed SIM fallback without placing a carrier call");
 assert.match(guestBrowserE2eShell,/adb shell am instrument -w -r/,
   "the Bash E2E harness launches the real Android Telecom instrumentation test");
 assert.match(guestBrowserE2eShell,/node scripts\/android-guest-browser-e2e\.mjs/,
