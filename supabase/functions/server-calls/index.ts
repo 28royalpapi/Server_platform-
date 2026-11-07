@@ -432,9 +432,8 @@ Deno.serve(async(req:Request)=>{
     const expires=guestInviteExpiresAt as string;
     // This endpoint returns caller-specific Open Graph metadata and redirects
     // the recipient to the secure browser call. Sharing is explicit; no SMS is queued.
-    const callerLabel=typeof profile.server_id==="string"&&profile.server_id?profile.server_id:"A Server user";
     const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
-    const callerDisplay=callerPhone||callerLabel;
+    const callerDisplay=callerPhone||"Private caller";
     const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
     const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";
     return out({
@@ -455,6 +454,7 @@ Deno.serve(async(req:Request)=>{
    return out({
     ok:true,call_id:call.id,route,call,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,
     recipient_availability:recipientAvailability,
+    carrier_fallback:{status:carrierFallbackPhone?"user_confirmed_dialer":"unavailable",available:!!carrierFallbackPhone,destination_e164:carrierFallbackPhone,method:"android_action_dial",requires_user_confirmation:true},
     push_delivery:pushDelivery
    });
   }
