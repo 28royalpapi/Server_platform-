@@ -820,7 +820,7 @@ assert.match(guest,/allow_number_based_server_calls/,"the full-screen guest page
 assert.match(calls,/profile\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
 assert.match(guest,/:"Private caller"/,
   "the no-install guest page uses a neutral private-caller label when the number is not shared");
-assert.match(connection,/if \(address == null\) setCallerDisplayName/,
+assert.match(androidTelecom,/if \(address == null\) setCallerDisplayName/,
   "Android resolves a known caller through the recipient's local Contacts instead of overriding it");
 assert.match(incoming,/caller_phone_e164/,
   "incoming Android notifications prefer the verified phone number over a Server ID");
