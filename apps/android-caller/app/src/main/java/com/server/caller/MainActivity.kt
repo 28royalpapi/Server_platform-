@@ -10,6 +10,8 @@ import android.app.PendingIntent
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.widget.Toast
+import android.text.Editable
+import android.text.TextWatcher
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -102,6 +104,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private lateinit var root: LinearLayout
   private lateinit var targetInput: EditText
+  private lateinit var recipientAvailabilityText: TextView
+  private var availabilityCheckJob: Job? = null
   private lateinit var statusText: TextView
   private lateinit var authPanel: LinearLayout
   private lateinit var callPanel: LinearLayout
@@ -205,6 +209,34 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(label("Server call engine"))
     targetInput = field("Server ID or phone number", "", false).apply { id = R.id.server_target }
     callPanel.addView(targetInput, matchWrap())
+    recipientAvailabilityText = TextView(this).apply {
+      text = "Recipient availability will be checked as you enter a Server ID or phone number."
+      textSize = 12f
+      setTextColor(0xFF9AABBC.toInt())
+      setPadding(dp(13), dp(11), dp(13), dp(11))
+      setBackgroundColor(0xFF152334.toInt())
+      accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    }
+    callPanel.addView(recipientAvailabilityText, matchWrap())
+    targetInput.addTextChangedListener(object : TextWatcher {
+      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+      override fun afterTextChanged(s: Editable?) {
+        availabilityCheckJob?.cancel()
+        val target = s?.toString()?.trim().orEmpty()
+        if (target.isBlank()) {
+          renderRecipientAvailability(null, "Enter a destination to check whether Server can currently reach it.")
+          return
+        }
+        // The system Phone app owns the visible dialling UI for Telecom-originated
+        // calls. Never start an extra availability Activity/request from that path.
+        if (root.visibility != View.VISIBLE || callId != null || accessToken.isNullOrBlank()) return
+        availabilityCheckJob = lifecycleScope.launch {
+          delay(650)
+          checkRecipientAvailability(target)
+        }
+      }
+    })
     callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
@@ -240,6 +272,67 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
   private fun matchWrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
   private fun dp(x: Int) = (x * resources.displayMetrics.density).toInt()
+
+  private fun renderRecipientAvailability(
+    availability: JSONObject?,
+    fallbackMessage: String? = null
+  ) {
+    if (!::recipientAvailabilityText.isInitialized) return
+    val status = availability?.optString("status").orEmpty()
+    val message = when (status) {
+      "online" ->
+        "AVAILABLE ON SERVER · A recent authenticated Server connection confirms this receiver recently reached the internet. WebRTC can be attempted; ringing is confirmed only when the recipient's device responds."
+      "background_reachable" ->
+        "BACKGROUND ALERT POSSIBLE · A Server push receiver is registered, but there is no fresh active connection. Current mobile-data state and ringing are not confirmed."
+      "offline" ->
+        "NOT REACHABLE ON SERVER · No recent Server connection or registered background receiver was found. This does not prove the phone's mobile data is switched off. You can choose your own SIM for a normal carrier call."
+      "unknown_guest" ->
+        "AVAILABILITY UNKNOWN · This number has no reachable Server receiver. A phone number alone cannot reveal whether mobile data is on. Share the caller-identifying guest preview for a browser WebRTC call, or use your selected SIM."
+      else -> fallbackMessage ?: "Availability has not been confirmed yet. Server will recheck when you place the call."
+    }
+    val colour = when (status) {
+      "online" -> 0xFF8DE9B9.toInt()
+      "background_reachable" -> 0xFF9DCBFF.toInt()
+      "offline", "unknown_guest" -> 0xFFFFDFA3.toInt()
+      else -> 0xFF9AABBC.toInt()
+    }
+    recipientAvailabilityText.text = message
+    recipientAvailabilityText.setTextColor(colour)
+  }
+
+  private suspend fun checkRecipientAvailability(rawTarget: String) {
+    val target = rawTarget.trim()
+    if (target.isBlank()) return
+    val serverId = target.uppercase()
+    val isServerId = Regex("^SVR-[0-9A-F]{10}$").matches(serverId)
+    val normalizedPhone = if (isServerId) null else normalizePhoneForServer(target)
+    if (!isServerId && normalizedPhone == null) {
+      renderRecipientAvailability(
+        null,
+        "Enter a valid Server ID or phone number with its country code to check availability."
+      )
+      return
+    }
+    renderRecipientAvailability(null, "Checking the recipient's Server receiver…")
+    try {
+      val payload = if (isServerId) {
+        JSONObject().put("to_server_id", serverId)
+      } else {
+        JSONObject().put("to_phone", normalizedPhone)
+      }
+      val result = api("availability", payload)
+      // Ignore a slower response if the caller has already changed the destination.
+      if (targetInput.text.toString().trim() != target) return
+      renderRecipientAvailability(result.optJSONObject("recipient_availability"))
+    } catch (error: Exception) {
+      if (targetInput.text.toString().trim() == target) {
+        renderRecipientAvailability(
+          null,
+          "Could not confirm availability. Server will check again when you press Call."
+        )
+      }
+    }
+  }
 
   private fun setStatus(message: String, error: Boolean = false) {
     runOnUiThread {
@@ -675,6 +768,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       recordTelecomDebugStage("backend_start_requested")
       val started = api("start", payload)
       recordTelecomDebugStage("backend_call_created")
+      renderRecipientAvailability(started.optJSONObject("recipient_availability"))
       callId = started.getString("call_id"); ServerTelecomRegistry.setCurrentCallId(callId)
       activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
@@ -712,6 +806,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     } catch (e: Exception) {
       val apiError = e as? ServerCallApiException
       if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE") {
+        renderRecipientAvailability(apiError.payload.optJSONObject("recipient_availability"))
         val missedSaved = apiError.payload.optBoolean("missed_call_saved", false)
         recordTelecomDebugStage(if (missedSaved) "recipient_offline_missed_call_saved" else "recipient_offline_no_call_created")
         val fallback = apiError.carrierFallback

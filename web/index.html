@@ -18,7 +18,7 @@
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
       <h1>One identity.<br><span>Call over the internet.</span></h1>
-      <p>Server is a hybrid calling service. When the recipient is reachable on Server, voice travels over the internet using WebRTC. If they are not currently reachable on Server, you can choose a normal call from your own mobile SIM; your mobile operator applies its usual charges.</p>
+      <p>Server is a hybrid calling service. When the recipient's Server receiver is reachable over the internet, voice travels through WebRTC. If Server cannot confirm a reachable receiver, you can choose a normal call from your own mobile SIM; your mobile operator applies its usual charges.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
@@ -39,6 +39,7 @@
         <button class="primary full" id="open-server-app" type="button">I've installed Server — continue setup <span aria-hidden="true">→</span></button>
         <p id="fallback" class="fine-print hidden">The phone integration did not open. A browser cannot register an account with Android's system calling interface by itself; install the Server calling component and try again.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Your Server ID is your internet-calling identity. Your existing mobile number and carrier service remain unchanged. You can optionally verify and link a number later, with your permission, so other Server users can find you that way.</span></div>
+        <div class="next-note"><strong>How recipient availability works</strong><span>Available on Server means a registered Server receiver has recently connected. A registered background receiver may also receive an alert, but delivery is not guaranteed. Not reachable on Server does not prove that mobile data is off: Server cannot read another phone's network state from its number alone. For an unregistered recipient, availability stays unknown until their browser opens the guest invitation.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
         <p id="ios-install-note" class="fine-print">iPhone uses a separate native Server app and Apple's calling-app permissions. The Android APK above cannot be installed on iPhone; the iOS setup will be released separately.</p>
       </div>
@@ -51,9 +52,10 @@
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Allow permissions and continue <span aria-hidden="true">→</span></button>
         </div>
         <div id="fallback-sim-step" class="hidden">
-          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred fallback SIM</h2><p>Server uses WebRTC when the recipient is reachable over Server. If you choose a carrier fallback, Android opens your normal phone dialler using this SIM when it is still available. You review the call and press Call; your mobile operator bills your line.</p></div></div>
+          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred fallback SIM</h2><p>If Server cannot confirm that the recipient's Server receiver is reachable, you can use this SIM for an ordinary mobile call. Android opens your normal phone dialler with this line preselected when it is still active. You review the number and press Call; your mobile operator applies its usual charges, not Server.</p></div></div>
           <div id="fallback-sim-options" class="sim-options" role="group" aria-label="Preferred fallback SIM"></div>
           <p id="fallback-sim-note" class="fine-print" role="status" aria-live="polite">Choose a preferred line, or ask Android to let you choose every time.</p>
+          <p class="fine-print">The preferred SIM is only a dialler preference. Server never starts or charges a carrier call without your confirmation in Android Phone.</p>
           <button class="primary full" id="save-fallback-sim" type="button">Save fallback choice and create my Server ID <span aria-hidden="true">→</span></button>
           <p class="fine-print">SIM labels and slots are used only to identify your selected line. Server never reads or uploads your SIM phone number or serial identifiers.</p>
         </div>
