@@ -92,6 +92,9 @@ internal class ServerTelecomCallEngine(
   private var callId: String? = null
   private var route = "server"
   private var lastSeq = 0L
+  // Retain the E.164 destination for the later ICE callback, which can fail
+  // after placeOutgoing has already returned.
+  private var carrierFallbackPhone: String? = null
   private var activeStateSyncedFor: String? = null
   private var iceConnected = false
   private var remoteAudioTrackReady = false
@@ -148,7 +151,7 @@ internal class ServerTelecomCallEngine(
         .remove("debug_last_inbound_audio_rtp_packets")
         .apply()
     }
-    var carrierFallbackPhone: String? = null
+    carrierFallbackPhone = null
     try {
       // Resolve the phone destination before testing the caller's data connection.
       // If Server cannot even start an internet attempt, Android can still open
