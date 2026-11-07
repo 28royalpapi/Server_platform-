@@ -29,9 +29,23 @@ internal object ServerCallNotifications {
   fun notificationId(callId: String): Int =
     100_000 + (callId.hashCode() and 0x3FFFFFFF)
 
-  internal fun canPostNotifications(context: Context): Boolean =
-    Build.VERSION.SDK_INT < 33 ||
-      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+  internal fun canPostNotifications(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT >= 33 &&
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+      return false
+    }
+    return try {
+      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      if (!manager.areNotificationsEnabled()) return false
+      // The user can disable only Server's incoming-call channel while leaving
+      // the app's other notifications enabled. Do not advertise FCM as a usable
+      // call receiver in that state either.
+      val channel = manager.getNotificationChannel(CHANNEL_ID)
+      channel == null || channel.importance != NotificationManager.IMPORTANCE_NONE
+    } catch (_: Exception) {
+      false
+    }
+  }
 
   fun show(context: Context, callId: String, callerIdentity: String, onlyAlertOnce: Boolean = false, silent: Boolean = false) {
     if (callId.isBlank() || !canPostNotifications(context)) return
