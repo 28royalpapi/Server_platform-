@@ -238,6 +238,100 @@ Deno.serve(async(req:Request)=>{
    const lastSeenAt=await touchSessionPresence(db,session);
    return out({ok:true,presence:"online",last_seen_at:lastSeenAt,fresh_for_seconds:PRESENCE_FRESH_SECONDS});
   }
+  if(action==="availability"){
+   // Availability lookups are authenticated and rate-limited. They never claim
+   // to know a stranger's mobile-data state from a phone number alone.
+   const {data:checkAllowed,error:checkRateError}=await db.rpc("server_rate_limit_allow",{
+    p_scope:"recipient_availability",
+    p_key_hash:await sha(uid),
+    p_window_seconds:60,
+    p_max_hits:30
+   });
+   if(checkRateError)return out({error:"RECIPIENT_AVAILABILITY_RATE_LIMIT_UNAVAILABLE"},503);
+   if(checkAllowed!==true)return out({error:"RECIPIENT_AVAILABILITY_RATE_LIMITED",retry_after_seconds:60},429);
+
+   const serverTarget=typeof b.to_server_id==="string"?b.to_server_id.trim().toUpperCase():"";
+   const to=phone(b.to_phone);
+   if(!serverTarget&&!to)return out({error:"RECIPIENT_REQUIRED"},400);
+
+   let callee:any=null;
+   let carrierFallbackPhone:string|null=to;
+   let targetKind:"server_id"|"phone"=serverTarget?"server_id":"phone";
+   if(serverTarget){
+    if(!/^SVR-[0-9A-F]{10}$/.test(serverTarget))return out({error:"INVALID_SERVER_ID"},400);
+    const {data:found,error:lookupError}=await db.from("server_profiles")
+     .select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls")
+     .eq("server_id",serverTarget).maybeSingle();
+    if(lookupError)return out({error:"SERVER_LOOKUP_FAILED"},503);
+    if(!found)return out({error:"SERVER_ID_NOT_FOUND"},404);
+    if(found.user_id===uid)return out({error:"CANNOT_CALL_SELF"},400);
+    callee=found;
+    carrierFallbackPhone=found.phone_verified_at&&found.allow_number_based_server_calls===true?phone(found.phone_e164):null;
+   }else{
+    if(profile.phone_verified_at&&phone(profile.phone_e164)===to)return out({error:"CANNOT_CALL_SELF"},400);
+    const {data:found,error:lookupError}=await db.from("server_profiles")
+     .select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls")
+     .eq("phone_e164",to).maybeSingle();
+    if(lookupError)return out({error:"SERVER_LOOKUP_FAILED"},503);
+    // A verified number is discoverable through Server only after explicit opt-in.
+    callee=found&&found.phone_verified_at&&found.allow_number_based_server_calls===true?found:null;
+   }
+
+   if(!callee){
+    return out({
+     ok:true,
+     target_kind:targetKind,
+     recipient_availability:{
+      status:"unknown_guest",
+      server_reachable:false,
+      internet_status:"unknown",
+      background_wake_possible:false,
+      last_seen_at:null,
+      explanation:"A phone number alone cannot reveal whether an unregistered recipient currently has mobile data or Wi-Fi. Share the caller-identifying guest preview so they can open the browser and answer over WebRTC."
+     },
+     carrier_fallback:{
+      status:"user_confirmed_dialer",
+      available:!!to,
+      destination_e164:to,
+      method:"android_action_dial",
+      requires_user_confirmation:true
+     }
+    });
+   }
+
+   const {data:availability,error:availabilityError}=await db.rpc("server_recipient_availability",{
+    p_user_id:callee.user_id,
+    p_fresh_seconds:PRESENCE_FRESH_SECONDS
+   });
+   if(availabilityError||!availability)return out({error:"RECIPIENT_AVAILABILITY_UNAVAILABLE"},503);
+   const presenceStatus=String(availability.status||"offline");
+   const serverReachable=presenceStatus==="online";
+   const backgroundPossible=availability.background_wake_possible===true&&presenceStatus==="background_reachable";
+   const explanation=serverReachable
+    ?"A recent authenticated Server heartbeat confirms that this recipient's Server receiver reached the internet recently. The call can attempt WebRTC; ringing is not guaranteed until they answer."
+    :backgroundPossible
+     ?"A Server push receiver is registered, but there is no fresh active heartbeat. Server can attempt a background alert; current mobile-data state and ringing are not confirmed."
+     :"No recent Server session or registered background receiver is available. This does not prove that the phone's mobile data is switched off.";
+   return out({
+    ok:true,
+    target_kind:targetKind,
+    recipient_availability:{
+     status:presenceStatus,
+     server_reachable:serverReachable,
+     internet_status:serverReachable?"recent_server_connection":"unknown",
+     background_wake_possible:backgroundPossible,
+     last_seen_at:availability.last_seen_at||null,
+     explanation
+    },
+    carrier_fallback:{
+     status:carrierFallbackPhone?"user_confirmed_dialer":"unavailable",
+     available:!!carrierFallbackPhone,
+     destination_e164:carrierFallbackPhone,
+     method:"android_action_dial",
+     requires_user_confirmation:true
+    }
+   });
+  }
   if(action==="start"){
    const {data:startAllowed,error:rateError}=await db.rpc("server_rate_limit_allow",{
     p_scope:"call_start",p_key_hash:await sha(uid),
