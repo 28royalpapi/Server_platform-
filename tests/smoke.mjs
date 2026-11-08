@@ -19,6 +19,8 @@ const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push
 const offlineMissedCallMigration=read("supabase/migrations/20261105131000_server_offline_missed_call_inbox.sql");
 const callStateTransitionMigration=read("supabase/migrations/20261108110000_server_atomic_call_state_transitions.sql");
 const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
+const keepAliveMigration=read("supabase/migrations/20261108142000_server_keepalive_probe.sql");
+const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
 const liveGuestTransitionContract=read("scripts/live-guest-transition-contract.mjs");
 const offlineInbox=read("web/offline-inbox.js");
 const guestServiceWorker=read("web/server-guest-sw.js");
@@ -951,6 +953,13 @@ assert.doesNotMatch(liveGuestTransitionContract,/request_otp|verify_otp|server-s
 
 assert.match(callStateTransitionMigration,/revoke all on function public\.server_guest_transition_atomic/);
 assert.match(callStateTransitionMigration,/grant execute on function public\.server_call_transition_atomic/);
+assert.ok(keepAliveMigration.includes("create or replace function public.server_keepalive_probe()"));
+assert.ok(keepAliveMigration.includes("grant execute on function public.server_keepalive_probe() to anon"));
+assert.ok(keepAliveMigration.includes("security invoker"));
+assert.ok(keepAliveWorkflow.includes("13 */8 * * *"));
+assert.ok(keepAliveWorkflow.includes("/rest/v1/rpc/server_keepalive_probe"));
+assert.ok(keepAliveWorkflow.includes("SERVER_SUPABASE_PUBLISHABLE_KEY"));
+assert.doesNotMatch(keepAliveWorkflow,/SERVICE_ROLE|SUPABASE_SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY/);
 assert.match(guest,/db\.rpc\("server_guest_transition_atomic"/,
   "guest join, decline, signal and leave use atomic database state transitions");
 assert.match(calls,/db\.rpc\("server_call_transition_atomic"/,

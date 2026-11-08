@@ -1,0 +1,53 @@
+name: Server Supabase project activity heartbeat
+
+on:
+  # Scheduled workflows are executed from the repository default branch (main).
+  schedule:
+    - cron: '13 */8 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main, android-finish]
+    paths:
+      - '.github/workflows/server-supabase-activity.yml'
+      - 'supabase/migrations/20261108142000_server_keepalive_probe.sql'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-supabase-project-activity
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    name: Read-only Supabase REST activity check
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      SERVER_SUPABASE_URL: https://hzuovekqsjtpvmbuybxs.supabase.co
+      # Publishable key only: a public client key, not a service-role credential.
+      SERVER_SUPABASE_PUBLISHABLE_KEY: sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E
+    steps:
+      - name: Invoke the read-only database probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_status="$(curl --silent --show-error --fail-with-body \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            --connect-timeout 10 --max-time 20 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST \
+            --header "apikey: $SERVER_SUPABASE_PUBLISHABLE_KEY" \
+            --header "content-type: application/json" \
+            --data '{}' \
+            "$SERVER_SUPABASE_URL/rest/v1/rpc/server_keepalive_probe")"
+
+          test "$http_status" = "200"
+          jq --exit-status \
+            '.ok == true and (.database_time | type == "string")' \
+            "$response_file" >/dev/null
+          printf 'SUPABASE_ACTIVITY_PROBE_PASS http=%s database_time=%s\n' \
+            "$http_status" "$(jq -r '.database_time' "$response_file")"
