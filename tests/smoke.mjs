@@ -402,8 +402,8 @@ assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emula
   "the primary Android emulator job uses native macOS virtualization");
 assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("runs-on: macos-15-intel"),
   "the Android 29–36 API matrix uses native macOS virtualization");
-assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"),nativeWorkflow.indexOf("  ios-simulator-build-and-preview:")).includes("runs-on: macos-15-intel"),
-  "Android 17 16 KB acceptance uses native macOS virtualization");
+assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"),nativeWorkflow.indexOf("  ios-simulator-build-and-preview:")).includes("runs-on: macos-15"),
+  "Android 17 16 KB acceptance uses a native Apple Silicon macOS runner for the ARM64 emulator");
 assert.doesNotMatch(nativeWorkflow,/ERROR: this runner does not expose \/dev\/kvm/,
   "Android acceptance jobs do not fail on a Linux-only KVM prerequisite");
 assert.ok(nativeWorkflow.includes("brew install coreutils"), "emulator timeout helpers are available on macOS through GNU coreutils");
