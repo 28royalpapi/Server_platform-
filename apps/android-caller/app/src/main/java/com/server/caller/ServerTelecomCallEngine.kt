@@ -117,6 +117,8 @@ internal class ServerTelecomCallEngine(
   private val pendingIce = mutableListOf<IceCandidate>()
   private var actionJob: Job? = null
   private var pollingJob: Job? = null
+  private var realtimeClient: ServerRealtimeClient? = null
+  @Volatile private var realtimeConnected = false
   private var disposed = false
   private var failCallStarted = false
   @Volatile private var hangupRequested = false
@@ -191,6 +193,7 @@ internal class ServerTelecomCallEngine(
       callId = started.optString("call_id").takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("Server did not return a call ID.")
       ServerTelecomRegistry.setCurrentCallId(callId)
+      connectRealtime(callId.orEmpty())
       if (hangupRequested) {
         finishCall(callId.orEmpty(), "local")
         return
@@ -312,6 +315,7 @@ internal class ServerTelecomCallEngine(
       }
       iceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
       iceServerMode = accepted.optString("ice_server_mode", "stun-only")
+      connectRealtime(id)
       preparePeer(iceServers)
       connection.markConnecting()
       if (hangupRequested) {
@@ -371,6 +375,116 @@ internal class ServerTelecomCallEngine(
     release()
   }
 
+  private suspend fun connectRealtime(id: String) {
+    if (id.isBlank() || disposed) return
+    try {
+      val credentials = api("realtime_token", JSONObject().put("call_id", id))
+      if (!credentials.optBoolean("realtime_available", false)) {
+        realtimeConnected = false
+        return
+      }
+      val endpoint = credentials.optString("url")
+      val token = credentials.optString("token")
+      if (endpoint.isBlank() || token.isBlank()) {
+        realtimeConnected = false
+        Log.w(TAG, "Realtime token response was incomplete; REST signalling remains enabled.")
+        return
+      }
+      realtimeClient?.close()
+      realtimeConnected = false
+      realtimeClient = ServerRealtimeClient(
+        endpoint = endpoint,
+        token = token,
+        onPublication = { publication ->
+          scope.launch {
+            if (!disposed && callId == id) handleRealtimePublication(publication)
+          }
+        },
+        onConnectionChanged = { connected ->
+          scope.launch {
+            if (disposed || callId != id) return@launch
+            if (!connected) {
+              realtimeConnected = false
+              return@launch
+            }
+            try {
+              // Replay durable sequence rows before disabling the compatibility poll.
+              val snapshot = api("poll", JSONObject().put("call_id", id).put("after_seq", lastSeq))
+              processPollResponse(snapshot)
+              if (!disposed && callId == id) {
+                realtimeConnected = true
+                recordStage("realtime_signalling_connected")
+              }
+            } catch (error: Exception) {
+              realtimeConnected = false
+              Log.w(TAG, "Realtime sequence reconciliation failed: " + error.javaClass.simpleName)
+            }
+          }
+        }
+      ).also { it.connect() }
+    } catch (error: Exception) {
+      realtimeConnected = false
+      Log.w(TAG, "Realtime setup unavailable; REST signalling fallback active: " + error.javaClass.simpleName)
+    }
+  }
+
+  private suspend fun handleRealtimePublication(message: JSONObject) {
+    if (message.optString("call_id") != callId) return
+    when (message.optString("type")) {
+      "signal" -> {
+        val localServerId = prefs.getString("server_id", "").orEmpty()
+        // Each call participant receives the same call-channel publication.
+        // Ignore our own persisted signals; process the remote participant's.
+        val senderServerId = message.optString("from_server_id")
+        if (senderServerId.isNotBlank() && senderServerId == localServerId) return
+        val sequence = message.optLong("seq", 0L)
+        if (sequence > 0 && sequence <= lastSeq) return
+        if (sequence > 0) lastSeq = sequence
+        handleSignal(
+          JSONObject()
+            .put("kind", message.optString("kind"))
+            .put("payload", message.optJSONObject("payload") ?: JSONObject())
+            .put("seq", sequence)
+        )
+      }
+      "call_state" -> {
+        val state = message.optString("state")
+        if (state in listOf("ended", "failed", "missed")) {
+          handleRemoteCallEnded()
+        } else if (state == "active") {
+          recordStage("remote_call_active_realtime")
+        }
+      }
+    }
+  }
+
+  private suspend fun processPollResponse(response: JSONObject) {
+    val signals = response.optJSONArray("signals") ?: JSONArray()
+    for (index in 0 until signals.length()) {
+      val signal = signals.optJSONObject(index) ?: continue
+      val sequence = signal.optLong("seq", 0L)
+      if (sequence > 0 && sequence <= lastSeq) continue
+      if (sequence > 0) lastSeq = sequence
+      handleSignal(signal)
+      if (disposed) return
+    }
+    lastSeq = maxOf(lastSeq, response.optLong("next_after_seq", lastSeq))
+    val state = response.optJSONObject("call")?.optString("state").orEmpty()
+    if (state in listOf("ended", "failed", "missed")) handleRemoteCallEnded()
+  }
+
+  private suspend fun handleRemoteCallEnded() {
+    val endedId = callId
+    if (!endedId.isNullOrBlank()) {
+      ServerCallNotifications.cancel(context, endedId)
+      ServerGuestInviteNotifications.cancel(context, endedId)
+      connection.markRemoteEnded()
+      recordStage("remote_call_ended")
+    }
+    cleanupPeer()
+    release()
+  }
+
   private fun beginPolling() {
     if (pollingJob?.isActive == true) return
     pollingJob = scope.launch {
@@ -378,33 +492,18 @@ internal class ServerTelecomCallEngine(
         try {
           val id = callId ?: break
           if (iceConnected && remoteAudioTrackReady) refreshAudioStats()
-          val response = api("poll", JSONObject().put("call_id", id).put("after_seq", lastSeq))
-          val signals = response.optJSONArray("signals") ?: JSONArray()
-          for (index in 0 until signals.length()) {
-            val signal = signals.optJSONObject(index) ?: continue
-            lastSeq = maxOf(lastSeq, signal.optLong("seq", 0L))
-            handleSignal(signal)
-          }
-          lastSeq = maxOf(lastSeq, response.optLong("next_after_seq", lastSeq))
-          val state = response.optJSONObject("call")?.optString("state").orEmpty()
-          if (state in listOf("ended", "failed", "missed")) {
-            val endedId = callId
-            if (!endedId.isNullOrBlank()) {
-              ServerCallNotifications.cancel(context, endedId)
-              ServerGuestInviteNotifications.cancel(context, endedId)
-              connection.markRemoteEnded()
-              recordStage("remote_call_ended")
-            }
-            cleanupPeer()
-            release()
-            break
+          // A healthy WebSocket carries high-frequency SDP/ICE/state events.
+          // Poll only as a compatibility/recovery path when realtime is absent.
+          if (!realtimeConnected) {
+            val response = api("poll", JSONObject().put("call_id", id).put("after_seq", lastSeq))
+            processPollResponse(response)
           }
         } catch (cancelled: CancellationException) {
           throw cancelled
         } catch (error: Exception) {
-          Log.w(TAG, "Server call poll retry: " + error.javaClass.simpleName)
+          Log.w(TAG, "Server call signalling retry: " + error.javaClass.simpleName)
         }
-        delay(700)
+        delay(if (realtimeConnected) 1000 else 700)
       }
     }
   }
@@ -431,17 +530,7 @@ internal class ServerTelecomCallEngine(
           if (peer?.remoteDescription != null) addRemoteIceCandidate(ice) else pendingIce.add(ice)
         }
       }
-      "hangup" -> {
-        val id = callId
-        if (!id.isNullOrBlank()) {
-          ServerCallNotifications.cancel(context, id)
-          ServerGuestInviteNotifications.cancel(context, id)
-          connection.markRemoteEnded()
-          recordStage("remote_call_ended")
-        }
-        cleanupPeer()
-        release()
-      }
+      "hangup" -> handleRemoteCallEnded()
       "state" -> Unit
     }
   }
@@ -740,6 +829,9 @@ internal class ServerTelecomCallEngine(
   private fun cleanupPeer() {
     pollingJob?.cancel()
     pollingJob = null
+    realtimeConnected = false
+    realtimeClient?.close()
+    realtimeClient = null
     try { peer?.close() } catch (_: Exception) {}
     peer = null
     audioTrack = null
