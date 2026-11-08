@@ -563,7 +563,8 @@ class CallerSmokeTest {
     val device = UiDevice.getInstance(instrumentation)
     val handle = ServerTelecomRegistry.handle(context)
     val callId = "incoming-" + UUID.randomUUID().toString()
-    val callerIdentity = "SVR-ABCDEF1234"
+    val callerPhone = "+2348030000001"
+    insertDemoContact(context, "Habib TNC", callerPhone)
 
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
@@ -571,7 +572,7 @@ class CallerSmokeTest {
       // Exercise Android Telecom's actual incoming-call callback. This is not a
       // direct unit construction of ServerTelecomConnection: Telecom must invoke
       // ServerConnectionService.onCreateIncomingConnection for the assertion.
-      ServerTelecomRegistry.reportIncoming(context, callId, callerIdentity)
+      ServerTelecomRegistry.reportIncoming(context, callId, callerPhone)
       val deadline = System.currentTimeMillis() + 12_000
       var state: Int? = null
       while (System.currentTimeMillis() < deadline && state == null) {
@@ -581,11 +582,8 @@ class CallerSmokeTest {
       assertEquals("Android Telecom did not call ServerConnectionService and start a ringing incoming connection",
         Connection.STATE_RINGING, state)
 
-      // Verify the caller label was handed to Telecom's Connection object. Some
-      // OEM/system call surfaces display "Unknown" for an internet call without a
-      // shared telephone number, while still showing the Server call provider UI.
-      assertEquals("Telecom did not receive the caller's Server identity as the display name",
-        callerIdentity, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      assertEquals("Telecom did not resolve the contact name saved by the recipient",
+        "Habib TNC", ServerTelecomRegistry.incomingCallerDisplayName(callId))
       // The default dialer may render a Telecom call as full-screen, heads-up
       // or notification UI depending on Android/OEM. Do not require one exact
       // English string in one surface. The real system Telecom RINGING state and
@@ -603,12 +601,12 @@ class CallerSmokeTest {
     grantTelecomPermissions(context)
     val handle = ServerTelecomRegistry.handle(context)
     val callId = "telecom-incoming-" + UUID.randomUUID().toString()
-    val callerIdentity = "SVR-ANDROID-COMPAT"
+    val callerPhone = "+2348030000002"
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
     try {
       assertTrue("Android must expose the enabled Server PhoneAccount to Telecom", accountEnabled(context, handle))
-      ServerTelecomRegistry.reportIncoming(context, callId, callerIdentity)
+      ServerTelecomRegistry.reportIncoming(context, callId, callerPhone)
       val deadline = System.currentTimeMillis() + 12_000
       var state: Int? = null
       while (System.currentTimeMillis() < deadline && state == null) {
@@ -617,8 +615,8 @@ class CallerSmokeTest {
       }
       assertEquals("Android Telecom did not create a ringing Server incoming Connection",
         Connection.STATE_RINGING, state)
-      assertEquals("Android Telecom did not retain the Server caller identity",
-        callerIdentity, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      assertEquals("An unsaved caller must display the real phone number instead of a private label or Server ID",
+        callerPhone, ServerTelecomRegistry.incomingCallerDisplayName(callId))
     } finally {
       ServerTelecomRegistry.markEnded(callId)
       UiDevice.getInstance(instrumentation).pressHome()

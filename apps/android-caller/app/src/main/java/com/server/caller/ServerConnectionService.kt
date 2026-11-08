@@ -170,14 +170,14 @@ object ServerTelecomRegistry {
 
   fun reportIncoming(context: Context, callId: String, callerIdentity: String) {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+    val callerPhone = callerIdentity.trim().takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
+    val localName = callerPhone?.let { ServerCallerIdentityResolver.resolve(context, it) } ?: "Server caller"
     val extras = Bundle().apply {
       putString("server_call_id", callId)
-      putString("server_caller_id", callerIdentity.take(80))
-      // A Server ID is not a telephone number. Only attach a tel: address when
-      // the backend supplied a valid E.164 number; never create tel:SVR-... URIs.
-      if (callerIdentity.matches(Regex("^\\+[1-9][0-9]{1,14}$"))) {
-        putParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, Uri.parse("tel:$callerIdentity"))
-        putString("server_remote_phone", callerIdentity)
+      putString("server_caller_id", localName.take(80))
+      if (callerPhone != null) {
+        putParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, Uri.parse("tel:$callerPhone"))
+        putString("server_remote_phone", callerPhone)
       }
     }
     telecom.addNewIncomingCall(handle(context), extras)
@@ -220,15 +220,16 @@ class ServerConnectionService : ConnectionService() {
     val extras = request.extras ?: Bundle()
     val requestPhone = request.address?.schemeSpecificPart.orEmpty()
     val phone = (extras.getString("server_remote_phone") ?: requestPhone)
-      .takeIf { it.matches(Regex("^\\+[1-9][0-9]{1,14}$")) }.orEmpty()
-    val callerIdentity = phone.ifBlank { "Private caller" }
+      .takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }.orEmpty()
+    val callerIdentity = phone.takeIf { it.isNotBlank() }
+      ?.let { ServerCallerIdentityResolver.resolve(this, it) } ?: "Server caller"
     val callId = extras.getString("server_call_id").orEmpty()
     val address = phone.takeIf { it.isNotBlank() }?.let { Uri.parse("tel:$it") }
     return ServerTelecomConnection(this).apply {
       setAddress(address, if (address != null) TelecomManager.PRESENTATION_ALLOWED else TelecomManager.PRESENTATION_UNKNOWN)
-      // When a verified number is present, Android Contacts must resolve the
-      // recipient-local name. Do not override it with a Server ID or raw number.
-      if (address == null) setCallerDisplayName(callerIdentity, TelecomManager.PRESENTATION_ALLOWED)
+      // Give Telecom and CallStyle the contact name saved by the recipient.
+      // If the number is not saved, the resolver returns the actual E.164 number.
+      setCallerDisplayName(callerIdentity, TelecomManager.PRESENTATION_ALLOWED)
       setAudioModeIsVoip(true)
       setExtras(Bundle().apply {
         putString("server_call_id", callId)

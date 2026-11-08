@@ -148,7 +148,7 @@ class ServerIncomingCallService : Service() {
             if (callId.isBlank()) continue
             val caller = row.optString("caller_phone_e164")
               .takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-              ?: "Private caller"
+              ?: "Server caller"
 
             if (row.optString("state") == "missed") {
               if (reportedMissedCallIds.add(callId)) {
