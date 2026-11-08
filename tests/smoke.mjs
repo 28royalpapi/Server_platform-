@@ -50,6 +50,8 @@ const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  andr
 const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
 const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
 const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
+const androidUnlock=read("scripts/unlock-android-emulator.sh");
+const androidPackageManagerWait=read("scripts/wait-for-android-package-manager.sh");
 const androidTestCountCheck=read("scripts/assert-android-test-count.py");
 const android17Acceptance=read("scripts/android17-16kb-acceptance.sh");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
@@ -931,6 +933,10 @@ assert.match(androidMain,/missed_call_saved/);
 assert.match(androidEngine,/missed_call_saved/);
 assert.match(offlineArchitecture,/private inbox per Server identity/i);
 assert.match(offlineArchitecture,/contact-wide room/i);
+assert.match(androidUnlock,/run-as "\\$APP_ID" sh -c/,
+  "the emulator unlock gate proves app-private credential-encrypted storage is accessible");
+assert.match(androidPackageManagerWait,/service check activity/,
+  "emulator readiness waits for both activity and package services before installing apps");
 console.log("Server backend/web contract checks: PASS");
 console.log("Checks include hybrid WebRTC/SIM fallback, SIM metadata minimisation, recipient reachability, previewable guest calls, device permissions and public-key hygiene.");
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");
