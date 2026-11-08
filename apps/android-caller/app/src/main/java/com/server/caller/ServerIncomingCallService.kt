@@ -166,7 +166,9 @@ class ServerIncomingCallService : Service() {
             liveCallIds.add(callId)
             if (!reportedCallIds.add(callId)) continue
             try {
-              ServerTelecomRegistry.reportIncoming(this, callId, caller)
+              // Pass the verified E.164 number into Telecom; local display names
+              // are for notification text only and must not replace the tel: address.
+              ServerTelecomRegistry.reportIncoming(this, callId, callerPhone ?: "Server caller")
             } catch (error: Exception) {
               reportedCallIds.remove(callId)
               Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)

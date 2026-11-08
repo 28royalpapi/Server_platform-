@@ -836,7 +836,9 @@ assert.match(guest,/:"Private caller"/,
 assert.match(androidIdentityResolver,/ContactsContract\.PhoneLookup\.CONTENT_FILTER_URI/,
   "Android resolves the verified caller number against the recipient's local Contacts database");
 assert.match(androidIncoming,/ServerCallerIdentityResolver\.resolve/,
-  "background incoming-call alerts also use the recipient's local contact-name lookup");
+  "background incoming-call notifications use the recipient's local contact-name lookup");
+assert.match(androidIncoming,/reportIncoming\(this, callId, callerPhone \?: "Server caller"\)/,
+  "background Telecom handoff preserves the verified caller number instead of passing the resolved display name");
 assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve/,
   "Android supplies the recipient-local contact name to its native incoming-call surfaces");
 assert.match(androidTelecom,/setCallerDisplayName\(callerIdentity, TelecomManager\.PRESENTATION_ALLOWED\)/,
