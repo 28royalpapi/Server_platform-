@@ -463,6 +463,8 @@ jobs:
           script: |
             set -eu
             sh scripts/wait-for-android-package-manager.sh
+            adb install -r apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
+            adb shell pm path com.server.caller.debug | grep -q '^package:'
             sh scripts/unlock-android-emulator.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
@@ -481,7 +483,7 @@ jobs:
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -515,23 +517,24 @@ jobs:
           system-image-api-level: '37.0'
           channel: stable
           target: google_apis_ps16k
-          disk-size: 3G
+          disk-size: 6G
           arch: x86_64
           profile: pixel_2
-          cores: 2
-          ram-size: 4096M
-          emulator-boot-timeout: 480
+          cores: 4
+          # API 37 requires 4 GB minimum; reserve headroom for GMSCore,
+          # the 16 KB runtime and Telecom instrumentation.
+          ram-size: 6144M
+          emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |
             set -eu
             sh scripts/wait-for-android-package-manager.sh
-            sh scripts/unlock-android-emulator.sh
             sh scripts/android17-16kb-acceptance.sh
             # APK installation can re-create the swipe keyguard on API 37.
             # Unlock again and prove app credential storage is usable before instrumentation.
             sh scripts/unlock-android-emulator.sh
-            adb shell run-as com.server.caller.debug sh -c 'touch /data/user/0/com.server.caller.debug/.ce-unlock-check && rm /data/user/0/com.server.caller.debug/.ce-unlock-check'
+            adb shell run-as com.server.caller.debug sh -c 'touch .ce-unlock-check && rm -f .ce-unlock-check'
             echo "ANDROID17_CREDENTIAL_STORAGE_READY"
             sh scripts/recover-android17-system-server.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
