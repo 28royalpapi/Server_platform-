@@ -38,6 +38,7 @@ services:
     depends_on: [centrifugo]
     environment:
       REALTIME_DOMAIN: ${REALTIME_DOMAIN:?set a public DNS name for realtime}
+      ACME_EMAIL: ${ACME_EMAIL:?set an email for TLS certificate expiry notices}
     ports:
       - "80:80"
       - "443:443"
