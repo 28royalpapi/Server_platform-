@@ -91,6 +91,8 @@ The Centrifugo connection JWT `channels` claim is used for automatic server-side
 
 ## 7. Current implementation status
 
-The backend now contains short-lived scoped realtime-token issuance, user/call channel publishing after durable writes, and guest-call WebSocket support. The guest browser uses Centrifugo WebSocket events when a realtime service is configured and falls back to its existing HTTP signalling poll when it is not.
+The backend now issues short-lived scoped realtime tokens and publishes user/call events only after durable call writes. The guest browser, Android Telecom call engine, Android incoming-call foreground service, and iOS CallKit client now have Centrifugo SDK paths. Each client reconciles its durable sequence/incoming-call state after connection and retains an HTTP recovery path when realtime is absent or disconnected.
 
-Android and iOS native clients still need their Centrifugo client SDK integration and incoming push credentials to stop all of their polling. Do not mark the full native app migration complete until those SDK integrations, deployment, authenticated channel tests, and physical-device call tests pass.
+**Deployment is still a separate gate.** The Centrifugo/Redis/Caddy stack in this directory is self-hostable but has not been provisioned for the live Server project in this branch. The `CENTRIFUGO_*` Supabase Edge Function secrets are not assumed to exist. When they are absent, the backend explicitly returns `realtime_available=false` and clients use their REST compatibility paths. No 100,000-call capacity or bandwidth test has been completed.
+
+Android/iOS FCM/APNs credentials and physical background-push acceptance also remain separate gates. A live WebSocket is appropriate for a foreground or process-running call, but it cannot wake a process that the operating system has suspended or terminated. Configure and test FCM on Android and PushKit/APNs on iOS before claiming reliable background incoming-call delivery. Then complete authenticated channel isolation tests, reconnect tests, two-phone audio tests, and staged concurrency tests before a production launch.
