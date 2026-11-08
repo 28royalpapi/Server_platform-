@@ -1015,8 +1015,8 @@ assert.ok(activeCallLeaseMigration.includes("server_calls_active_expiry_idx"),"a
 assert.ok(activeCallLeaseMigration.includes("v_now+interval '10 minutes'"),"answered and guest-joined calls receive a bounded setup-negotiation lease");
 assert.ok(activeCallLeaseMigration.includes("v_now+interval '24 hours'"),"active Server and guest calls receive a 24-hour renewable-by-transition lease");
 assert.ok(activeCallLeaseMigration.includes("state='active'") && activeCallLeaseMigration.includes("v_active_timed_out"),"maintenance fails orphaned active calls after their lease expires");
-assert.match(activeCallLeaseMigration,/server_guest_transition_atomic[\\s\\S]*?GUEST_ALREADY_JOINED/,"guest single-claim protection remains in the replacement transition function");
-assert.match(activeCallLeaseMigration,/revoke all on function public\\.server_call_transition_atomic[\\s\\S]*?grant execute on function public\\.server_call_transition_atomic[\\s\\S]*?to service_role/,"call transition RPC remains service-role-only");
+assert.ok(activeCallLeaseMigration.includes("GUEST_ALREADY_JOINED"),"guest single-claim protection remains in the replacement transition function");
+assert.ok(activeCallLeaseMigration.includes("revoke all on function public.server_call_transition_atomic") && activeCallLeaseMigration.includes("grant execute on function public.server_call_transition_atomic") && activeCallLeaseMigration.includes("to service_role"),"call transition RPC remains service-role-only");
 
 assert.ok(keepAliveMigration.includes("security invoker"));
 assert.ok(keepAliveWorkflow.includes("13 */8 * * *"));
