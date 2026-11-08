@@ -46,6 +46,8 @@ jobs:
         run: npm run check:live
       - name: Exercise live guest call lifecycle and Open Graph invitation without SMS or PSTN
         run: npm run check:live:guest
+      - name: Exercise live Server-to-Server online and offline call lifecycle
+        run: npm run check:live:server
 
   android-build-and-emulator-smoke:
     # Use Linux KVM for repeatable x86_64 Android emulator boot and instrumentation.
