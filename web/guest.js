@@ -89,7 +89,15 @@ async function connectRealtime(){
  try{
   const credentials=await api("realtime_token");
   if(credentials.realtime_available!==true||!credentials.url||!credentials.token)return false;
-  const {Centrifuge}=await import("https://cdn.jsdelivr.net/npm/centrifuge@5.8.0/dist/centrifuge.esm.js");
+  const Centrifuge = await new Promise((resolve, reject) => {
+   if(typeof window.Centrifuge==="function"){resolve(window.Centrifuge);return;}
+   const script=document.createElement("script");
+   script.src="https://unpkg.com/centrifuge@5.8.0/dist/centrifuge.js";
+   script.async=true;
+   script.onload=()=>typeof window.Centrifuge==="function"?resolve(window.Centrifuge):reject(new Error("Centrifuge SDK did not expose its browser client."));
+   script.onerror=()=>reject(new Error("Could not load the Centrifuge browser SDK."));
+   document.head.appendChild(script);
+  });
   if(leaving)return false;
   const client=new Centrifuge(credentials.url,{
    token:credentials.token,
