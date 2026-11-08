@@ -1416,7 +1416,7 @@ class CallerSmokeTest {
     assertEquals(22, ServerFallbackSimManager.resolveActiveSubscriptionId("opaque-account-id", activeSubscriptions, 30, 22))
     assertEquals(22, ServerFallbackSimManager.resolveActiveSubscriptionId("22", activeSubscriptions, 36, -1))
     assertEquals(null, ServerFallbackSimManager.resolveActiveSubscriptionId("not-a-sim", activeSubscriptions, 36, -1))
-    assertEquals(null, ServerFallbackSimManager.resolveActiveSubscriptionId("11", setOf(22), 36, 22))
+    assertEquals(null, ServerFallbackSimManager.resolveActiveSubscriptionId("11", setOf(22), 36, 11))
 
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     grantTelecomPermissions(context)
