@@ -810,8 +810,14 @@ final class ServerViewModel: ObservableObject {
             if let id = callId { callKit.reportEnded(id: id, reason: .remoteEnded) }
             callId = nil
             pollingTask?.cancel()
+            pollingTask = nil
+            realtimeClient?.disconnect()
+            realtimeClient = nil
+            realtimeDelegate = nil
+            realtimeConnected = false
             await endMedia()
             update("The other person ended the call.")
+            if isSignedIn { await connectRealtime() }
         default: break
         }
     }
