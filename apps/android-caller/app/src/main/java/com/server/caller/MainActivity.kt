@@ -861,7 +861,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       cleanPeer(); callId = null
       val userMessage = "UNREACHABLE · Server could not establish the internet route: " + (e.message ?: "Unknown error")
       if (carrierFallbackNumber != null) {
-        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = e is java.io.IOException)
+        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = false)
       } else {
         setStatus(userMessage, true)
         if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()

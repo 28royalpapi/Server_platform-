@@ -289,7 +289,7 @@ internal class ServerTelecomCallEngine(
       val message = if (reason.contains("RECIPIENT_NOT_SERVER_ENABLED")) {
         "This number is not enabled for Server internet calls. Use your carrier SIM for a normal mobile call, or have the recipient enable Server number calling."
       } else reason.ifBlank { "Unknown call-start error" }
-      failCall(message, carrierFallbackPhone, automaticCarrierFallback = error is java.io.IOException)
+      failCall(message, carrierFallbackPhone, automaticCarrierFallback = false)
     }
   }
 

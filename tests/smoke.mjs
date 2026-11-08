@@ -742,6 +742,10 @@ assert.match(androidEngine,/failCall\(message, dialNumber, automaticCarrierFallb
   "the Telecom engine authorizes automatic SIM fallback only for a confirmed-offline recipient");
 assert.match(androidEngine,/automaticCarrierFallback: Boolean = false/,
   "system Telecom attempts automatic carrier placement only for specifically designated fallback cases");
+assert.match(androidEngine,/failCall\(message, carrierFallbackPhone, automaticCarrierFallback = false\)/,
+  "generic backend errors never automatically spend mobile airtime or risk a duplicate carrier call");
+assert.match(androidMain,/allowAutomaticFallback = false/,
+  "generic outgoing API errors retain the manual SIM handoff instead of automatically creating a second call");
 assert.match(androidEngine,/ServerCarrierDialer\.placeAutomatically/,
   "the system Telecom call path routes eligible failures through the selected SIM only after explicit consent");
 assert.match(androidGuestNotifications,/ServerCarrierDialActivity/,
