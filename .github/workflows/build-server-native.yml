@@ -483,7 +483,14 @@ jobs:
       - name: Install Android 17 SDK components
         run: |
           sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools' 'ndk;30.0.16248370'
-          echo "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-arm64/bin" >> "$GITHUB_PATH"
+          LLVM_READELF="$(find "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt" -type f -name llvm-readelf -print -quit)"
+          if [[ -z "$LLVM_READELF" || ! -x "$LLVM_READELF" ]]; then
+            echo "ERROR: Android NDK did not provide a runnable llvm-readelf for this macOS ARM runner." >&2
+            find "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt" -maxdepth 3 -type f -name '*readelf*' -print >&2 || true
+            exit 1
+          fi
+          echo "NDK_LLVM_READELF=$LLVM_READELF"
+          echo "$(dirname "$LLVM_READELF")" >> "$GITHUB_PATH"
       - name: Preinstall Android 17 16 KB system image with integrity retries
         run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;arm64-v8a'
       - name: Confirm native macOS emulator acceleration
