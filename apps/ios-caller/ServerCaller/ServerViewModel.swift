@@ -573,7 +573,7 @@ final class ServerViewModel: ObservableObject {
            let id = first["id"] as? String {
             let callerPhone = first["caller_phone_e164"] as? String
             let from = callerPhone.flatMap {
-                $0.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? $0 : nil
+                $0.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? $0 : nil
             }
             incomingCall = IncomingCall(id: id, phone: from ?? "Server caller")
             try? await callKit.reportIncoming(id: id, phoneNumber: from)
