@@ -424,7 +424,7 @@ assert.doesNotMatch(nativeWorkflow,/bash -euo pipefail <<'BASH'/,
 assert.ok(android17Preview.includes("api-level: '37.0'"), "Android 17 preview job uses the SDK platform 37.0 package identifier");
 assert.ok(android17Preview.includes("system-image-api-level: '37.0'"), "Android 17 preview job uses the 37.0 emulator image namespace");
 assert.ok(android17Preview.includes("target: google_apis_ps16k"), "Android 17 preview job uses the supported 16 KB-page Google APIs image");
-assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36\]/, "Android 10 through Android 16, including Android 12L API 32 and Android 16 API 36, are the stable release matrix");
+assert.match(nativeWorkflow,/api-level:\s*\[27,\s*28,\s*29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36\]/, "Android 8.1/API 27 through Android 16/API 36, including Android 9/API 28, are in the stable release matrix");
 assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
 const androidBuildJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:"));
 const androidGuestJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-guest-browser-e2e:"),nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"));
