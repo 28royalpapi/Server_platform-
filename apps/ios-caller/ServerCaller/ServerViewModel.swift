@@ -726,18 +726,27 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
         provider.setDelegate(self, queue: nil)
     }
 
-    func reportIncoming(id: String, callerName: String?) async throws {
+    func reportIncoming(id: String, phoneNumber: String? = nil, callerName: String? = nil) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         if handles[uuid] != nil { return }
+        let rawPhone = (phoneNumber ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let safePhone = rawPhone.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil
+            ? rawPhone : nil
         let trimmedName = (callerName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = trimmedName.isEmpty ? "Server caller" : String(trimmedName.prefix(80))
-        handles[uuid] = displayName
-        // Push contains the Server display identity, not an assumed telephone number.
-        // Use a generic handle and the explicit localized caller name; never make
-        // CallKit or Contacts interpret a person's name as an E.164 phone number.
+        handles[uuid] = safePhone ?? displayName
+
+        // The backend only supplies phoneNumber after caller verification AND
+        // number-call consent. This preserves recipient Contacts resolution.
+        // PushKit carries a display label, not a phone number: render it as a
+        // generic Server handle so a person's name is never treated as E.164.
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: "Server")
-        update.localizedCallerName = displayName
+        if let safePhone {
+            update.remoteHandle = CXHandle(type: .phoneNumber, value: safePhone)
+        } else {
+            update.remoteHandle = CXHandle(type: .generic, value: "Server")
+            update.localizedCallerName = displayName
+        }
         update.hasVideo = false
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             provider.reportNewIncomingCall(with: uuid, update: update) { error in
