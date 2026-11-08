@@ -48,8 +48,8 @@ jobs:
         run: npm run check:live:guest
 
   android-build-and-emulator-smoke:
-    # Use the supported Intel macOS runner; Android Emulator uses native Hypervisor.Framework.
-    runs-on: macos-15-intel
+    # Use Linux KVM for repeatable x86_64 Android emulator boot and instrumentation.
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
@@ -57,14 +57,11 @@ jobs:
       preview_signing_ready: ${{ steps.server_preview_signing.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare macOS Android emulator tools
-        shell: bash
+      - name: Install Linux build inspection tools
         run: |
-          brew install coreutils llvm
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
-          # The native ARM64 ELF checker also runs in this x86_64 packaging job.
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
-          command -v llvm-readelf
+          sudo apt-get update
+          sudo apt-get install -y coreutils binutils
+          command -v readelf
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -77,8 +74,17 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Preinstall Android 14 emulator image with integrity retries
         run: bash scripts/install-android-system-image.sh 'system-images;android-34;google_apis;x86_64'
-      - name: Confirm native macOS emulator acceleration
-        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
+      - name: Enable Linux KVM access for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
       - name: Prepare persistent Android preview signing key
         id: server_preview_signing
         shell: bash
@@ -267,15 +273,14 @@ jobs:
   android-guest-browser-e2e:
     name: Android Telecom to no-install guest browser end-to-end call
     needs: android-build-and-emulator-smoke
-    runs-on: macos-15-intel
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Install macOS emulator and virtual-audio tools
-        shell: bash
+      - name: Install Linux emulator and virtual-audio tools
         run: |
-          brew install coreutils pulseaudio
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio pulseaudio-utils
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -289,11 +294,22 @@ jobs:
         run: |
           npm install --no-save --package-lock=false playwright
           npx playwright install chromium
-      - name: Confirm native macOS emulator acceleration
-        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
-      - name: Prepare macOS CoreAudio guest-call path
+      - name: Enable Linux KVM access for Android emulator
+        shell: bash
         run: |
-          echo "Android Emulator uses the host CoreAudio backend; Playwright injects a deterministic WAV microphone source."
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+      - name: Prepare Linux PulseAudio guest-call path
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl info >/dev/null
+          echo "Android Emulator uses the host PulseAudio backend; Playwright injects a deterministic WAV microphone source."
       - name: Create a disposable Server test identity through the real auth endpoint
         run: node scripts/create-server-e2e-identity.mjs > "$RUNNER_TEMP/server-e2e-identity.json"
       - name: Run a real Server call from Android Telecom to the no-install guest browser
@@ -320,17 +336,23 @@ jobs:
           if-no-files-found: warn
 
   android-8-minimum-install-smoke:
-    runs-on: macos-15-intel
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare macOS Android emulator tools
+      - name: Enable Linux KVM access for Android emulator
         shell: bash
         run: |
-          brew install coreutils
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -341,8 +363,8 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android 8 SDK components
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Confirm native macOS emulator acceleration
-        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
+      - name: Confirm Linux KVM acceleration
+        run: echo "Using /dev/kvm hardware acceleration for the Android emulator."
       - name: Build caller and Android instrumentation tests
         run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
       - name: Run minimum-install and onboarding acceptance test
@@ -401,15 +423,21 @@ jobs:
       max-parallel: 2
       matrix:
         api-level: [29, 30, 31, 32, 33, 34, 35, 36]
-    runs-on: macos-15-intel
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare macOS Android emulator tools
+      - name: Enable Linux KVM access for Android emulator
         shell: bash
         run: |
-          brew install coreutils
-          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -422,8 +450,8 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Preinstall the selected API emulator image with integrity retries
         run: bash scripts/install-android-system-image.sh 'system-images;android-${{ matrix.api-level }};google_apis;x86_64'
-      - name: Confirm native macOS emulator acceleration
-        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
+      - name: Confirm Linux KVM acceleration
+        run: echo "Using /dev/kvm hardware acceleration for the Android emulator."
       - name: Build caller and Android instrumentation tests
         run: |
           set -euo pipefail
@@ -465,7 +493,10 @@ jobs:
   # Android 17 uses a preview 16 KB-page image and remains independently visible.
   # Its system_server instability must not block release after Android 10–16 pass.
   android-17-preview-compatibility:
-    name: Android 17 16 KB preview compatibility
+    name: Android 17 16 KB preview compatibility (non-blocking preview)
+    # Android 17 is a preview image with known system_server/emulator instability.
+    # Keep its failure visible without blocking stable Android 10–16 release gates.
+    continue-on-error: true
     env:
       SERVER_DEBUG_ABI_FILTERS: arm64-v8a
     runs-on: macos-15
@@ -543,7 +574,6 @@ jobs:
           if-no-files-found: warn
 
   ios-simulator-build-and-preview:
-    if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
