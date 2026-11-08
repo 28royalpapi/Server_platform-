@@ -424,7 +424,7 @@ assert.doesNotMatch(nativeWorkflow,/bash -euo pipefail <<'BASH'/,
 assert.ok(android17Preview.includes("api-level: '37.0'"), "Android 17 preview job uses the SDK platform 37.0 package identifier");
 assert.ok(android17Preview.includes("system-image-api-level: '37.0'"), "Android 17 preview job uses the 37.0 emulator image namespace");
 assert.ok(android17Preview.includes("target: google_apis_ps16k"), "Android 17 preview job uses the supported 16 KB-page Google APIs image");
-assert.match(nativeWorkflow,/api-level:\s*\[27,\s*28,\s*29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36\]/, "Android 8.1/API 27 through Android 16/API 36, including Android 9/API 28, are in the stable release matrix");
+assert.match(nativeWorkflow,/api-level:\s*\[28,\s*29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36\]/, "Android 9/API 28 through Android 16/API 36 are in the stable release matrix; Android 8.0/API 26 has its separate minimum-install job");
 assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
 const androidBuildJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:"));
 const androidGuestJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-guest-browser-e2e:"),nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"));
@@ -451,8 +451,8 @@ assert.ok(android17Preview.includes("runs-on: macos-15") &&
 assert.doesNotMatch(nativeWorkflow,/if: github\.head_ref != 'android-finish' && github\.ref != 'refs\/heads\/android-finish'/,
   "the Android completion branch also runs the iOS simulator build and startup check");
 assert.ok(androidVersionMatrix.includes("channel: stable"), "stable Android 8–16 matrix uses released SDK images");
-assert.match(nativeWorkflow,/api-level: \[27, 28, 29, 30, 31, 32, 33, 34, 35, 36\]/,
-  "Android API 27 (8.1) and API 28 (9) join the full stable Telecom compatibility matrix; API 26 (8.0) retains its minimum-install smoke test");
+assert.match(nativeWorkflow,/api-level: \[28, 29, 30, 31, 32, 33, 34, 35, 36\]/,
+  "Android API 28 through 36 run the full stable Telecom compatibility matrix; API 26 (8.0) retains its separate minimum-install smoke test");
 
 assert.ok(androidVersionMatrix.includes("disk-size: 8G"), "stable Android emulator jobs use an 8 GB userdata partition for system and test app headroom");
 assert.ok(!nativeWorkflow.includes("android-16-stable-compatibility-smoke"), "Android 16 is tested once in the unified version matrix");

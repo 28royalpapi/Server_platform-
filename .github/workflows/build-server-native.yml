@@ -422,7 +422,7 @@ jobs:
       # Avoid booting eight memory-heavy AVDs at once on the hosted macOS pool.
       max-parallel: 2
       matrix:
-        api-level: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+        api-level: [28, 29, 30, 31, 32, 33, 34, 35, 36]
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:

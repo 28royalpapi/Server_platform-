@@ -1,5 +1,11 @@
 # Server Android physical-device validation
 
+## Android OS emulator matrix
+
+The automated compatibility workflow uses Android 8.0/API 26 as a separate minimum-install job and Android 9/API 28 through Android 16/API 36 as the stable Telecom API matrix. Android 17/API 37 remains a preview compatibility job.
+
+Android 8.1/API 27 is not currently in that stable emulator matrix: the GitHub runner's SDK repository returned no package for `system-images;android-27;google_apis;x86_64`, so the test failed before app installation. This is an SDK image availability limitation, not an app runtime failure. API 27 should be covered by a real API 27 handset if one is available; it must not be counted as tested based on the failed image download.
+
 ## Six-device handset matrix
 
 The requested A/B pairing is represented by six **physical Firebase Test Lab catalog devices**. These are not Android Studio AVD skins. TECNO A deliberately uses the TECNO-BF7 model family (Android 12/API 31), matching the user's current TECNO BF7 class; TECNO B moves to the SPARK Go 2024 on Android 13/API 33.
