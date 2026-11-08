@@ -146,16 +146,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
   };
   const normalizePhone = (raw) => {
-    const value = String(raw || "").trim().replace(/[()\s.-]/g, "");
-    let candidate = value;
-    if (candidate.startsWith("00")) candidate = "+" + candidate.slice(2);
-    else if (!candidate.startsWith("+")) {
-      const digits = candidate.replace(/\D/g, "");
-      if (digits.startsWith("234") && digits.length === 13) candidate = "+" + digits;
-      else if (digits.length === 11 && digits.startsWith("0")) candidate = "+234" + digits.slice(1);
-      else if (digits.length === 10 && /^[789]/.test(digits)) candidate = "+234" + digits;
-      else return null;
-    }
+    // The browser has no trustworthy SIM/country context. Require explicit E.164
+    // input here rather than silently treating every national number as Nigerian.
+    const candidate = String(raw || "").trim().replace(/[()\s.-]/g, "");
+    if (!candidate.startsWith("+")) return null;
     return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
   };
   const showPhoneLinkStatus = (message, ok = false) => {
@@ -299,7 +293,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   requestPhoneCodeButton && requestPhoneCodeButton.addEventListener("click", () => {
     const number = normalizePhone(phoneLinkInput && phoneLinkInput.value);
     if (!number) {
-      showPhoneLinkStatus("Enter a valid number such as +2348012345678 or 08012345678.");
+      showPhoneLinkStatus("Enter an international number beginning with + and its country code, e.g. +2348012345678 or +919876543210.");
       phoneLinkInput && phoneLinkInput.focus();
       return;
     }

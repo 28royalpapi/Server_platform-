@@ -262,6 +262,11 @@ assert.match(app,/onServerPhoneOtpRequested/);
 assert.match(app,/onServerPhoneLinkResult/);
 assert.match(app,/skip-phone-link/);
 assert.match(app,/allow-number-calls/);
+assert.match(app,/if \(!candidate\.startsWith\("\+"\)\) return null/,"browser phone linking requires explicit international country-code input rather than assuming Nigeria");
+assert.match(app,/return \/\\\+\[1-9\]\[0-9\]\{7,14\}\$\/\.test\(candidate\) \? candidate : null/,"browser phone linking validates canonical E.164 numbers");
+assert.doesNotMatch(app,/digits\.startsWith\("234"\)|candidate = "\\+234"/,"browser phone linking has no Nigerian-only national-number fallback");
+assert.match(html,/\+919876543210/,"website phone-link placeholder demonstrates a non-Nigerian international destination");
+
 assert.match(app,/isAndroidWebView/);
 assert.match(app,/isNativeSetup/);
 assert.match(app,/userAgent\.toLowerCase\(\)\.includes\("; wv"\)/);
