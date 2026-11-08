@@ -426,7 +426,7 @@ assert.match(androidTests,/launcherShowsHybridOnboardingWithFallbackSimChoice/);
 assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every stable Android 10–16 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
 assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 17"), "every stable Android 10–16 API must execute all 17 acceptance tests without skipped or failed tests");
 assert.ok(android17Preview.includes("scripts/android17-16kb-acceptance.sh") && android17Preview.includes("assert-android-test-count.py --expected-tests 17"), "Android 17 remains separately tested with the full 17-test 16 KB acceptance suite");
-assert.ok(android17Preview.includes("ram-size: 6144M") && android17Preview.includes("emulator-boot-timeout: 600") && android17Preview.includes("timeout-minutes: 50"), "Android 17 preview receives the larger memory and startup budget");
+assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.includes("emulator-boot-timeout: 600") && android17Preview.includes("timeout-minutes: 50") && android17Preview.includes("disk-size: 8G"), "Android 17 ARM64 preview receives the appropriate 4 GB guest RAM, 8 GB storage and 10-minute boot budget on the 7 GB Apple Silicon runner");
 assert.ok(!nativeWorkflow.slice(nativeWorkflow.indexOf("  publish-android-preview-release:")).includes("android-17-preview-compatibility"), "an unstable Android 17 preview emulator does not block publication after the stable Android release matrix passes");
 assert.match(android17Acceptance,/getconf PAGE_SIZE/);
 assert.match(android17Acceptance,/16384/);
