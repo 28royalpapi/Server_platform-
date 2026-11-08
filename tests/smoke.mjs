@@ -739,8 +739,8 @@ assert.match(androidEngine,/throw ServerCallApiException\(status, result, reason
   "the Telecom HTTP client preserves structured recipient-offline responses for SIM fallback");
 assert.match(androidEngine,/apiError\.errorCode == "RECIPIENT_OFFLINE"/,
   "the Telecom call engine recognises a Server-offline recipient before creating a call");
-assert.match(androidEngine,/failCall\(message, dialNumber\)/,
-  "the Telecom engine routes a confirmed-offline Server attempt through its shared failure/fallback handler");
+assert.match(androidEngine,/failCall\(message, dialNumber, automaticCarrierFallback = true\)/,
+  "the Telecom engine authorizes automatic SIM fallback only for a confirmed-offline recipient");
 assert.match(androidEngine,/automaticCarrierFallback: Boolean = false/,
   "system Telecom attempts automatic carrier placement only for specifically designated fallback cases");
 assert.match(androidEngine,/ServerCarrierDialer\.placeAutomatically/,
