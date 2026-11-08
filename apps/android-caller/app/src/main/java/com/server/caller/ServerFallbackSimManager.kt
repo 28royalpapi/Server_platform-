@@ -4,10 +4,8 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
-import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import org.json.JSONArray
@@ -34,6 +32,22 @@ internal object ServerFallbackSimManager {
   private const val ASK_EVERY_TIME = "ask"
   private const val KEY_AUTO_FALLBACK = "automatic_carrier_fallback_enabled"
 
+  /**
+   * Resolve a call-capable Telecom account to an active cellular subscription
+   * without reading any line number or full PhoneAccount metadata.
+   */
+  internal fun resolveActiveSubscriptionId(
+    accountId: String,
+    activeSubscriptionIds: Set<Int>,
+    apiLevel: Int,
+    telephonySubscriptionId: Int?
+  ): Int? {
+    val mappedId = telephonySubscriptionId
+      ?.takeIf { apiLevel >= 30 && it >= 0 }
+      ?: accountId.toIntOrNull()
+    return mappedId?.takeIf { it in activeSubscriptionIds }
+  }
+
   fun options(context: Context): List<ServerFallbackSimOption> {
     if (context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
       return emptyList()
@@ -54,30 +68,31 @@ internal object ServerFallbackSimManager {
     val seen = HashSet<String>()
 
     accounts.forEachIndexed { index, handle ->
-      val account = try { telecom.getPhoneAccount(handle) } catch (_: Exception) { null } ?: return@forEachIndexed
-      if (!account.hasCapabilities(PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION)) return@forEachIndexed
-
-      var info: SubscriptionInfo? = null
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && telephony != null) {
-        info = try {
-          val subId = telephony.getSubscriptionId(handle)
-          byId[subId]
+      // Do not call TelecomManager.getPhoneAccount(): for apps targeting API 31+
+      // it requires READ_PHONE_NUMBERS, which Server deliberately does not request.
+      // Android 11+ maps the call-capable PhoneAccountHandle directly to an active
+      // subscription using READ_PHONE_STATE. Older versions commonly use the
+      // subscription ID as the Telecom account ID.
+      val telephonySubscriptionId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && telephony != null) {
+        try {
+          telephony.getSubscriptionId(handle)
         } catch (_: SecurityException) {
+          null
+        } catch (_: UnsupportedOperationException) {
           null
         } catch (_: Exception) {
           null
         }
-      }
-      // Older Android releases commonly use the subscription ID as the Telecom account ID.
-      if (info == null) {
-        val accountSubscriptionId = handle.id.toIntOrNull()
-        if (accountSubscriptionId != null) info = byId[accountSubscriptionId]
-      }
+      } else null
+      val subscriptionId = resolveActiveSubscriptionId(
+        handle.id, byId.keys, Build.VERSION.SDK_INT, telephonySubscriptionId
+      ) ?: return@forEachIndexed
+      val info = byId[subscriptionId] ?: return@forEachIndexed
 
-      val slot = (info?.simSlotIndex ?: index).coerceAtLeast(0)
-      val carrier = info?.carrierName?.toString()?.trim()
+      val slot = (info.simSlotIndex.takeIf { it >= 0 } ?: index).coerceAtLeast(0)
+      val carrier = info.carrierName?.toString()?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?: account.label?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        ?: info.displayName?.toString()?.trim()?.takeIf { it.isNotBlank() }
         ?: "Mobile network"
       val key = accountKey(handle)
       if (seen.add(key)) {

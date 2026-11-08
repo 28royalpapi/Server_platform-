@@ -63,7 +63,10 @@ jobs:
           brew install coreutils llvm
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
           # The native ARM64 ELF checker also runs in this x86_64 packaging job.
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          LLVM_BIN="$(brew --prefix llvm)/bin"
+          echo "$LLVM_BIN" >> "$GITHUB_PATH"
+          # GITHUB_PATH affects later steps; export it here too for this check.
+          export PATH="$LLVM_BIN:$PATH"
           command -v llvm-readelf
       - uses: actions/setup-java@v4
         with:

@@ -260,7 +260,14 @@ assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeS
   "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
 assert.match(androidSetup,/ServerFallbackSimManager\.optionsJson/);
 assert.match(androidSetup,/ServerFallbackSimManager\.saveSelection/);
-assert.match(androidFallbackSim,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
+assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/);
+assert.match(androidFallbackSim,/resolveActiveSubscriptionId/);
+assert.doesNotMatch(androidFallbackSim,/getPhoneAccount\(handle\)/,
+  "SIM selection must not request READ_PHONE_NUMBERS merely to inspect PhoneAccount metadata");
+assert.doesNotMatch(androidManifest,/READ_PHONE_NUMBERS/,
+  "Server must not request permission to read the line number stored on the SIM");
+assert.match(androidTests,/resolveActiveSubscriptionId\("opaque-account-id", activeSubscriptions, 30, 22\)/,
+  "SIM account mapping is regression-tested through Android's API 30+ subscription API");
 assert.match(androidFallbackSim,/Manifest\.permission\.READ_PHONE_STATE/);
 assert.doesNotMatch(androidFallbackSim,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
   "SIM fallback selection never invokes APIs that read subscriber phone numbers or serial identifiers");
@@ -674,7 +681,14 @@ assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"inc
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
 assert.doesNotMatch(androidTelecom,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
-assert.match(androidFallbackSim,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
+assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/);
+assert.match(androidFallbackSim,/resolveActiveSubscriptionId/);
+assert.doesNotMatch(androidFallbackSim,/getPhoneAccount\(handle\)/,
+  "SIM selection must not request READ_PHONE_NUMBERS merely to inspect PhoneAccount metadata");
+assert.doesNotMatch(androidManifest,/READ_PHONE_NUMBERS/,
+  "Server must not request permission to read the line number stored on the SIM");
+assert.match(androidTests,/resolveActiveSubscriptionId\("opaque-account-id", activeSubscriptions, 30, 22\)/,
+  "SIM account mapping is regression-tested through Android's API 30+ subscription API");
 assert.match(iosView,/model.handleAppHandoff/);
 assert.match(iosView,/Set up Server on this iPhone/);
 assert.match(iosView,/How iPhone calling works/);
