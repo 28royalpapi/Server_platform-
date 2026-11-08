@@ -901,9 +901,14 @@ assert.match(androidTests,/Habib TNC/,
   "Android Telecom instrumentation covers a recipient-saved contact name");
 assert.match(androidTests,/An unsaved caller must display the real phone number/,
   "Android Telecom instrumentation covers an unsaved number fallback");
-assert.match(iosModel,/let callerPhone = first\["caller_phone_e164"\]/,"iOS passes the caller's verified phone number to CallKit before any internal Server identity");
-assert.match(iosModel,/update\.remoteHandle = CXHandle\(type: handleType, value: handleValue\)/,"iOS leaves contact-name resolution to CallKit and uses a generic handle only when no verified number exists");
-assert.match(androidIncoming,/caller_phone_e164/,
+assert.match(iosModel,/reportIncoming\(id: id, callerName: caller\)/,
+  "iOS passes the actual Server caller display identity to CallKit");
+assert.match(iosModel,/update\.localizedCallerName = displayName/,
+  "CallKit presents the Server caller's display name instead of treating it as a phone number");
+assert.match(iosModel,/CXHandle\(type: \.generic, value: "Server"\)/,
+  "the caller display label uses a generic CallKit handle and does not impersonate a cellular number");
+assert.doesNotMatch(iosModel,/caller_phone_e164/,
+  "iOS incoming push presentation does not expose a phone number without explicit number-sharing consent");assert.match(androidIncoming,/caller_phone_e164/,
   "incoming Android notifications prefer the verified phone number over a Server ID");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
 assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
