@@ -29,6 +29,7 @@ const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const androidFallbackSim=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFallbackSimManager.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
+const androidIdentityResolver=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallerIdentityResolver.kt");
 const androidEngine=read("apps/android-caller/app/src/main/java/com/server/caller/ServerTelecomCallEngine.kt");
 const androidPhoneNormalizer=read("apps/android-caller/app/src/main/java/com/server/caller/ServerPhoneNumberNormalizer.kt");
 const androidGuestNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteNotifications.kt");
@@ -498,8 +499,12 @@ assert.match(calls,/APNS_TEAM_ID/);
 assert.match(calls,/apns-push-type/);
 assert.match(pushMigration,/create table if not exists public.server_push_devices/);
 assert.match(pushMigration,/add column if not exists expires_at/);
-assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
-  "Server opens Android's user-controlled dialer and does not place direct carrier calls");
+assert.match(androidManifest,/android\.permission\.CALL_PHONE/,
+  "automatic carrier fallback declares the Android permission but requests it only after explicit opt-in");
+assert.match(androidSetup,/REQUEST_AUTO_CARRIER_FALLBACK/,
+  "Android requests carrier-call permission separately after the user enables automatic fallback");
+assert.match(androidFallbackSim,/automaticFallbackEnabled\(context\)/,
+  "automatic carrier calls require saved consent, CALL_PHONE and a still-active selected SIM");
 
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
@@ -734,7 +739,9 @@ assert.match(androidEngine,/throw ServerCallApiException\(status, result, reason
 assert.match(androidEngine,/apiError\.errorCode == "RECIPIENT_OFFLINE"/,
   "the Telecom call engine recognises a Server-offline recipient before creating a call");
 assert.match(androidEngine,/failCall\(message, dialNumber\)/,
-  "the Telecom engine shows the user-confirmed carrier handoff after ending the failed Server attempt");
+  "the Telecom engine routes a confirmed-offline Server attempt through its shared failure/fallback handler");
+assert.match(androidEngine,/ServerCarrierDialer\.placeAutomatically/,
+  "the system Telecom call path automatically requests the selected SIM only after explicit consent");
 assert.match(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest invitation notification exposes the same carrier handoff as the app UI");
 assert.match(androidGuestNotifications,/"Call using selected SIM"/,
@@ -744,7 +751,11 @@ assert.match(androidCarrierActivity,/ServerTelecomRegistry\.fallbackToCarrier\(c
 assert.match(androidCarrierActivity,/ServerCarrierDialer\.createIntent\(this, phone\)/,
   "the notification SIM action opens the platform dialler with the selected calling account when available");
 assert.match(androidCarrierDialer,/EXTRA_PHONE_ACCOUNT_HANDLE/,
-  "the caller-selected SIM is passed to Android's normal dialler where supported");
+  "the caller-selected SIM account is passed to Android Telecom for the carrier route");
+assert.match(androidCarrierDialer,/telecom\.placeCall\(/,
+  "automatic carrier fallback is submitted through Android Telecom without a second dialler tap");
+assert.match(androidCarrierDialer,/hasAutomaticFallbackConsent/,
+  "automatic carrier fallback is gated by explicit saved user consent");
 assert.match(androidCarrierDialer,/Intent\.ACTION_DIAL/,
   "carrier fallback uses Android's user-confirmed dialler");
 assert.doesNotMatch(androidCarrierDialer,/Intent\.ACTION_CALL/,
@@ -820,8 +831,16 @@ assert.match(guest,/allow_number_based_server_calls/,"the full-screen guest page
 assert.match(calls,/profile\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
 assert.match(guest,/:"Private caller"/,
   "the no-install guest page uses a neutral private-caller label when the number is not shared");
-assert.match(androidTelecom,/if \(address == null\) setCallerDisplayName/,
-  "Android resolves a known caller through the recipient's local Contacts instead of overriding it");
+assert.match(androidIdentityResolver,/ContactsContract\.PhoneLookup\.CONTENT_FILTER_URI/,
+  "Android resolves the verified caller number against the recipient's local Contacts database");
+assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve/,
+  "Android supplies the recipient-local contact name to its native incoming-call surfaces");
+assert.match(androidTelecom,/setCallerDisplayName\(callerIdentity, TelecomManager\.PRESENTATION_ALLOWED\)/,
+  "an unsaved caller is presented using the actual E.164 number instead of a private label or Server ID");
+assert.match(androidTests,/Habib TNC/,
+  "Android Telecom instrumentation covers a recipient-saved contact name");
+assert.match(androidTests,/An unsaved caller must display its real phone number/,
+  "Android Telecom instrumentation covers an unsaved number fallback");
 assert.match(iosModel,/let callerPhone = first\["caller_phone_e164"\]/,"iOS passes the caller's verified phone number to CallKit before any internal Server identity");
 assert.match(iosModel,/update\.remoteHandle = CXHandle\(type: handleType, value: handleValue\)/,"iOS leaves contact-name resolution to CallKit and uses a generic handle only when no verified number exists");
 assert.match(androidIncoming,/caller_phone_e164/,
