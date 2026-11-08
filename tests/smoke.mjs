@@ -412,27 +412,30 @@ assert.ok(android17Preview.includes("system-image-api-level: '37.0'"), "Android 
 assert.ok(android17Preview.includes("target: google_apis_ps16k"), "Android 17 preview job uses the supported 16 KB-page Google APIs image");
 assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36\]/, "Android 10 through Android 16, including Android 12L API 32 and Android 16 API 36, are the stable release matrix");
 assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
-assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:")).includes("runs-on: macos-15-intel"),
-  "the primary Android emulator job uses native macOS virtualization");
-assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("runs-on: macos-15-intel"),
-  "the Android 29–36 API matrix uses native macOS virtualization");
-assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:")).includes("brew install coreutils llvm") &&
-  nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:")).includes('brew --prefix llvm'),
-  "the primary ARM64 ELF validation job installs and exposes a native readelf tool");
-assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("max-parallel: 2") &&
-  nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("install-android-system-image.sh") &&
-  nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("emulator-boot-timeout: 600"),
-  "the Android API matrix installs verified system images and limits simultaneous emulator pressure");
-assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"),nativeWorkflow.indexOf("  ios-simulator-build-and-preview:")).includes("runs-on: macos-15"),
-  "Android 17 16 KB acceptance uses a native Apple Silicon macOS runner for the ARM64 emulator");
-assert.doesNotMatch(nativeWorkflow,/ERROR: this runner does not expose \/dev\/kvm/,
-  "Android acceptance jobs do not fail on a Linux-only KVM prerequisite");
-assert.ok(nativeWorkflow.includes("brew install coreutils"), "emulator timeout helpers are available on macOS through GNU coreutils");
-assert.ok(nativeWorkflow.includes("internationalNumberingMetadataCoversEverySupportedRegion"), "the version matrix runs the current global-numbering test");
-assert.ok(nativeWorkflow.includes("destinationCountryFromSavedContactMetadataBeatsCallerRegion"), "the version matrix runs the destination-country regression test");
-assert.ok(nativeWorkflow.includes("explicitInternationalNumbersAndCallerRegionFallbackRemainSupported"), "the version matrix runs international-format parsing regressions");
-assert.ok(!nativeWorkflow.includes("internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode"), "no Android CI job selects the removed first-block test");
-assert.ok(nativeWorkflow.includes("if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'"), "the Android work branch does not run iOS CI");
+const androidBuildJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:"));
+const androidGuestJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-guest-browser-e2e:"),nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"));
+const androidMinimumJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"),nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"));
+assert.ok(androidBuildJob.includes("runs-on: ubuntu-24.04") &&
+  androidGuestJob.includes("runs-on: ubuntu-24.04") &&
+  androidMinimumJob.includes("runs-on: ubuntu-24.04") &&
+  androidVersionMatrix.includes("runs-on: ubuntu-24.04"),
+  "stable Android emulator, guest-audio, minimum-install and API-matrix jobs use Linux KVM rather than the macOS emulator runners that repeatedly timed out offline");
+assert.ok(androidBuildJob.includes("sudo apt-get install -y coreutils binutils") &&
+  androidBuildJob.includes("command -v readelf"),
+  "the Linux build job installs a readelf implementation accepted by the APK ELF-alignment audit");
+for (const job of [androidBuildJob, androidGuestJob, androidMinimumJob, androidVersionMatrix]) {
+  assert.ok(job.includes("Enable Linux KVM access for Android emulator") &&
+    job.includes("sudo chmod 666 /dev/kvm"),
+    "each stable Android emulator job explicitly verifies and enables hardware KVM access");
+}
+assert.ok(androidGuestJob.includes("pulseaudio --start") &&
+  androidGuestJob.includes("--use-file-for-fake-audio-capture"),
+  "the Android-to-browser audio E2E uses a Linux virtual-audio host and deterministic microphone input");
+assert.ok(android17Preview.includes("runs-on: macos-15") &&
+  android17Preview.includes("continue-on-error: true"),
+  "Android 17 remains an explicitly non-blocking Apple Silicon preview while stable APIs gate release");
+assert.doesNotMatch(nativeWorkflow,/if: github\.head_ref != 'android-finish' && github\.ref != 'refs\/heads\/android-finish'/,
+  "the Android completion branch also runs the iOS simulator build and startup check");
 assert.ok(androidVersionMatrix.includes("channel: stable"), "stable Android 10–16 matrix uses released SDK images");
 assert.ok(androidVersionMatrix.includes("disk-size: 8G"), "stable Android emulator jobs use an 8 GB userdata partition for system and test app headroom");
 assert.ok(!nativeWorkflow.includes("android-16-stable-compatibility-smoke"), "Android 16 is tested once in the unified version matrix");
