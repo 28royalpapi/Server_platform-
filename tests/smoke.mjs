@@ -866,6 +866,9 @@ assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwor
 
  assert.match(guestWeb,/iceTransportPolicy:joined\.ice_server_mode&&joined\.ice_server_mode!=="stun-only"\?"relay":"all"/,"guest browser forces TURN relay when valid TURN credentials are provisioned");
  assert.match(androidEngine,/iceTransportsType = PeerConnection\.IceTransportsType\.RELAY/,"Android forces TURN relay when valid TURN credentials are provisioned");
+assert.match(androidMain,/callIceServerMode == "cloudflare-turn" \|\| callIceServerMode == "coturn-turn"/,
+  "the standalone Android caller also forces TURN relay when backend mode requires it");
+
 
 const configCode=config.split("\n").filter(line=>!line.trim().startsWith("//")).join("\n");
 assert.doesNotMatch(configCode,/service[_-]?role|sb_secret/i,"browser config contains no privileged key");

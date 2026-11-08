@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var incomingJob: Job? = null
   private val shownIncoming = mutableSetOf<String>()
   private var callIceServers = JSONArray()
+  private var callIceServerMode = "stun-only"
   private val pendingIce = mutableListOf<IceCandidate>()
 
   private lateinit var root: LinearLayout
@@ -796,6 +797,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         return@launch
       }
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
+      callIceServerMode = started.optString("ice_server_mode", "stun-only")
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
@@ -914,6 +916,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       callId = id; activeStateSyncedFor = null; currentRoute = "server"; lastSeq = 0
       val accepted = api("accept", JSONObject().put("call_id", id))
       callIceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
+      callIceServerMode = accepted.optString("ice_server_mode", "stun-only")
       preparePeer(callIceServers)
       callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       setStatus("Incoming call accepted. Connecting audio…")
@@ -946,7 +949,12 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       servers.add(builder.createIceServer())
     }
     if (servers.isEmpty()) servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
-    val cfg = PeerConnection.RTCConfiguration(servers).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN }
+    val cfg = PeerConnection.RTCConfiguration(servers).apply {
+      sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+      if (callIceServerMode == "cloudflare-turn" || callIceServerMode == "coturn-turn") {
+        iceTransportsType = PeerConnection.IceTransportsType.RELAY
+      }
+    }
     peer = peerFactory?.createPeerConnection(cfg, this) ?: throw IllegalStateException("WebRTC peer could not be created.")
     audioSource = peerFactory?.createAudioSource(MediaConstraints())
     audioTrack = peerFactory?.createAudioTrack("server-audio", audioSource)
