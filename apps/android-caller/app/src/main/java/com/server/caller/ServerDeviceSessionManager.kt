@@ -34,6 +34,8 @@ internal object ServerDeviceSessionManager {
     currentToken: String?,
     currentExpiry: Long,
     preferences: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
+    forceRefresh: Boolean = false,
+    onSessionRestored: () -> Unit = { ServerPushRegistration.syncFcmToken(context) },
     request: ((JSONObject, String?) -> ServerAuthResponse)? = null
   ): ServerDeviceSession {
     val storedToken = preferences.getString("access_token", null)
@@ -43,7 +45,7 @@ internal object ServerDeviceSessionManager {
     val expiry = maxOf(currentExpiry, preferences.getLong("access_expiry", 0L))
     val now = System.currentTimeMillis() / 1000L
 
-    if (expiry > now + 90L) {
+    if (!forceRefresh && expiry > now + 90L) {
       return ServerDeviceSession(
         token,
         expiry,
@@ -82,7 +84,7 @@ internal object ServerDeviceSessionManager {
       throw apiError(recovered, "Server could not restore this device session")
     }
     val session = persistSession(preferences, recovered.body, preferences.getString("server_id", null), expiry)
-    ServerPushRegistration.syncFcmToken(context)
+    onSessionRestored()
     return session
   }
 
