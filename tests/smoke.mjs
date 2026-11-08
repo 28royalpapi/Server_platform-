@@ -59,7 +59,6 @@ const iosProject=read("apps/ios-caller/ServerCaller.xcodeproj/project.pbxproj");
 const iosModel=read("apps/ios-caller/ServerCaller/ServerViewModel.swift");
 const iosView=read("apps/ios-caller/ServerCaller/ContentView.swift");
 const auth=read("supabase/functions/server-auth/index.ts");
-const androidIncoming=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallService.kt");
 const androidIncomingAlert=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallAlertService.kt");
 const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFirebaseMessagingService.kt");
 const androidProguard=read("apps/android-caller/app/proguard-rules.pro");
