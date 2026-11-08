@@ -178,6 +178,12 @@ class CallerSmokeTest {
       "+2348012345678", ServerPhoneNumberNormalizer.toE164WithContactMetadata("08012345678", "NG", null, null, contactMatched = false))
     assertEquals("A number with non-phone text is rejected",
       null, ServerPhoneNumberNormalizer.toE164("not a phone number", "NG"))
+    assertEquals("A national-format number is rejected when the device has no reliable country context",
+      null, ServerPhoneNumberNormalizer.toE164("08012345678", null))
+    assertEquals("An explicit international number remains resolvable without SIM or locale country data",
+      "+447911123456", ServerPhoneNumberNormalizer.toE164("+447911123456", null))
+    assertEquals("A national-format number is not guessed from Nigeria when country context is absent",
+      null, ServerPhoneNumberNormalizer.toE164WithContactMetadata("08012345678", null, null, null, contactMatched = false))
   }
 
   @Test fun guestCallInvitationNotificationOffersShareAndSelectedSimActions() {
