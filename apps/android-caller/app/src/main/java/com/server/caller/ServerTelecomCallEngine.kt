@@ -163,7 +163,12 @@ internal class ServerTelecomCallEngine(
       val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
       val capabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
       if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
-        throw IllegalStateException("Server cannot reach the internet from this phone. You can use your selected SIM for a normal carrier call.")
+        failCall(
+          "Server cannot reach the internet from this phone. Continuing through the selected SIM if automatic fallback is enabled.",
+          carrierFallbackPhone,
+          automaticCarrierFallback = true
+        )
+        return
       }
       if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
         throw IllegalStateException("Microphone permission is missing for Server internet calling. You can use your selected SIM for a normal carrier call.")
@@ -196,7 +201,7 @@ internal class ServerTelecomCallEngine(
       if (route == "guest") {
         connection.updateServerStatus("Guest recipient not yet connected · preview link ready")
         if (carrierFallbackPhone != null && ServerFallbackSimManager.automaticFallbackEnabled(context)) {
-          failCall("No Server receiver is registered for this number. Continuing through your selected SIM.", carrierFallbackPhone)
+          failCall("No Server receiver is registered for this number. Continuing through your selected SIM.", carrierFallbackPhone, automaticCarrierFallback = true)
           return
         }
       }
@@ -277,14 +282,14 @@ internal class ServerTelecomCallEngine(
           "message",
           "This recipient is not currently reachable through Server. Their mobile-data state is unknown. You can use your selected SIM for an ordinary carrier call if you want to continue."
         )
-        failCall(message, dialNumber)
+        failCall(message, dialNumber, automaticCarrierFallback = true)
         return
       }
       val reason = error.message.orEmpty()
       val message = if (reason.contains("RECIPIENT_NOT_SERVER_ENABLED")) {
         "This number is not enabled for Server internet calls. Use your carrier SIM for a normal mobile call, or have the recipient enable Server number calling."
       } else reason.ifBlank { "Unknown call-start error" }
-      failCall(message, carrierFallbackPhone)
+      failCall(message, carrierFallbackPhone, automaticCarrierFallback = error is java.io.IOException)
     }
   }
 
@@ -330,7 +335,11 @@ internal class ServerTelecomCallEngine(
     }
   }
 
-  private suspend fun failCall(message: String, carrierFallbackPhone: String? = null) {
+  private suspend fun failCall(
+    message: String,
+    carrierFallbackPhone: String? = null,
+    automaticCarrierFallback: Boolean = false
+  ) {
     if (disposed || failCallStarted) return
     failCallStarted = true
     recordStage("call_setup_failed")
@@ -344,7 +353,9 @@ internal class ServerTelecomCallEngine(
     cleanupPeer()
     ServerCallNotifications.cancel(context, id.orEmpty())
     ServerGuestInviteNotifications.cancel(context, id.orEmpty())
-    val carrierResult = carrierFallbackPhone?.let { ServerCarrierDialer.placeAutomatically(context, it) }
+    val carrierResult = if (automaticCarrierFallback) {
+      carrierFallbackPhone?.let { ServerCarrierDialer.placeAutomatically(context, it) }
+    } else null
     if (carrierResult == AutomaticCarrierFallbackResult.PLACED) {
       recordStage("automatic_carrier_fallback_requested")
       Log.i(TAG, "Server leg ended; Telecom accepted the selected-SIM carrier-call request.")
@@ -721,7 +732,11 @@ internal class ServerTelecomCallEngine(
         PeerConnection.IceConnectionState.FAILED -> {
           iceConnected = false
           recordStage("ice_transport_failed")
-          failCall("Server could not establish a peer-to-peer ICE path on this network. This network may require a TURN relay. You can use your selected SIM for a normal carrier call.", carrierFallbackPhone)
+          failCall(
+            "Server could not establish a peer-to-peer ICE path on this network. Continuing through the selected SIM if automatic fallback is enabled.",
+            carrierFallbackPhone,
+            automaticCarrierFallback = true
+          )
         }
         else -> Unit
       }

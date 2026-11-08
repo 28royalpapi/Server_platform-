@@ -688,7 +688,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
-  private fun handoffToCarrierDialer(rawNumber: String, pendingCallId: String?) {
+  private fun handoffToCarrierDialer(rawNumber: String, pendingCallId: String?, allowAutomaticFallback: Boolean = true) {
     val number = rawNumber.trim()
     if (!number.matches(Regex("^\\+[1-9][0-9]{7,14}$"))) {
       setStatus("A verified or caller-provided phone number is required for a SIM handoff. No carrier call was placed.", true)
@@ -709,7 +709,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       callButton.visibility = View.VISIBLE
       hangupButton.visibility = View.GONE
       ServerTelecomRegistry.markEnded(pendingCallId)
-      val automaticResult = ServerCarrierDialer.placeAutomatically(this@MainActivity, number)
+      val automaticResult = if (allowAutomaticFallback) {
+        ServerCarrierDialer.placeAutomatically(this@MainActivity, number)
+      } else AutomaticCarrierFallbackResult.NOT_OPTED_IN
       if (automaticResult == AutomaticCarrierFallbackResult.PLACED) {
         setStatus("Server cannot reach this recipient. Android is continuing the call through your selected SIM; your mobile operator applies its normal charges.")
       } else {
@@ -859,7 +861,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       cleanPeer(); callId = null
       val userMessage = "UNREACHABLE · Server could not establish the internet route: " + (e.message ?: "Unknown error")
       if (carrierFallbackNumber != null) {
-        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
+        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = e is java.io.IOException)
       } else {
         setStatus(userMessage, true)
         if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
