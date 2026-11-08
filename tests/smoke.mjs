@@ -955,6 +955,7 @@ assert.match(callStateTransitionMigration,/revoke all on function public\.server
 assert.match(callStateTransitionMigration,/grant execute on function public\.server_call_transition_atomic/);
 assert.ok(keepAliveMigration.includes("create or replace function public.server_keepalive_probe()"));
 assert.ok(keepAliveMigration.includes("grant execute on function public.server_keepalive_probe() to anon"));
+assert.ok(keepAliveMigration.includes("notify pgrst, 'reload schema'"));
 assert.ok(keepAliveMigration.includes("security invoker"));
 assert.ok(keepAliveWorkflow.includes("13 */8 * * *"));
 assert.ok(keepAliveWorkflow.includes("/rest/v1/rpc/server_keepalive_probe"));

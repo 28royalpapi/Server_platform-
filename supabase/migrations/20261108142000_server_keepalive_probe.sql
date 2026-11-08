@@ -16,3 +16,6 @@ $function$;
 revoke all on function public.server_keepalive_probe() from public;
 revoke all on function public.server_keepalive_probe() from anon, authenticated;
 grant execute on function public.server_keepalive_probe() to anon;
+
+-- Ensure PostgREST can see the newly-created RPC immediately.
+notify pgrst, 'reload schema';
