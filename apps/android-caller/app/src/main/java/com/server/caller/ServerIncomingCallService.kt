@@ -146,9 +146,9 @@ class ServerIncomingCallService : Service() {
             val row = rows.optJSONObject(i) ?: continue
             val callId = row.optString("id")
             if (callId.isBlank()) continue
-            val caller = row.optString("caller_phone_e164")
+            val callerPhone = row.optString("caller_phone_e164")
               .takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-              ?: "Server caller"
+            val caller = callerPhone?.let { ServerCallerIdentityResolver.resolve(this, it) } ?: "Server caller"
 
             if (row.optString("state") == "missed") {
               if (reportedMissedCallIds.add(callId)) {

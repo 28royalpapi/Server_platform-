@@ -69,7 +69,7 @@
           <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
           <section id="phone-link-step" class="phone-link-step hidden">
             <h3>Link your mobile number</h3>
-            <p class="fine-print">Verify the same number already on your SIM. When enabled below, other Server users can ring you through Server internet calling using this verified number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
+            <p class="fine-print">Verify the same number already on your SIM. When enabled below, other Server users can call you using this number, and Server can share it as your caller ID so recipients can match it to the name saved in their own Contacts. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
             <div class="gateway-setup">
               <h4>Set up SMS verification</h4>
               <p class="fine-print">Phone-number verification is optional and uses a separate SMS gateway. You do not need to complete it to use your Server ID. The code expires after 10 minutes.</p>
@@ -80,7 +80,7 @@
                 <p id="sms-gateway-pairing-expiry" class="fine-print"></p>
               </div>
             </div>
-            <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow other Server users to call me over the internet using this verified number.</span></label>
+            <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow other Server users to call me using this verified number, and show this number as my caller ID when I call through Server.</span></label>
             <label for="link-phone-number">Mobile number</label>
             <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or 08012345678">
             <button class="primary full" id="request-phone-link-code" type="button">Send verification code</button>

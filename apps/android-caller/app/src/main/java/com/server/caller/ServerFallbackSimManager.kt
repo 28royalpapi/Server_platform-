@@ -99,6 +99,7 @@ internal object ServerFallbackSimManager {
     val savedKey = preferences.getString(KEY_SELECTED, ASK_EVERY_TIME) ?: ASK_EVERY_TIME
     val selectionAvailable = savedKey == ASK_EVERY_TIME || all.any { it.key == savedKey }
     val selectedKey = if (selectionAvailable) savedKey else ASK_EVERY_TIME
+    if (!selectionAvailable) preferences.edit().putBoolean(KEY_AUTO_FALLBACK, false).apply()
     val array = JSONArray()
     all.forEach { option ->
       array.put(JSONObject()

@@ -5,9 +5,8 @@ import android.os.Bundle
 import android.widget.Toast
 
 /**
- * User-tapped notification action that ends a pending guest WebRTC attempt,
- * then opens Android's normal dialler. The caller chooses the SIM and presses
- * Call; Server never starts a carrier call silently.
+ * Notification fallback action. If automatic carrier calling is enabled by
+ * the user, continue through the selected SIM; otherwise open the normal dialler.
  */
 class ServerCarrierDialActivity : Activity() {
   companion object {
@@ -23,6 +22,12 @@ class ServerCarrierDialActivity : Activity() {
     if (callId.isNotBlank()) {
       ServerGuestInviteNotifications.cancel(this, callId)
       ServerTelecomRegistry.fallbackToCarrier(callId)
+    }
+
+    if (ServerFallbackSimManager.automaticFallbackEnabled(this) &&
+      ServerCarrierDialer.placeAutomatically(this, phone) == AutomaticCarrierFallbackResult.PLACED) {
+      finish()
+      return
     }
 
     val dialIntent = ServerCarrierDialer.createIntent(this, phone)
