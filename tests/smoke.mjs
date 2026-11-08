@@ -934,6 +934,16 @@ assert.match(guestPreview,/location\.replace/,"opening the preview forwards the 
 assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
 
  assert.match(guestWeb,/iceTransportPolicy:joined\.ice_server_mode&&joined\.ice_server_mode!=="stun-only"\?"relay":"all"/,"guest browser forces TURN relay when valid TURN credentials are provisioned");
+assert.match(androidEngine,/"outbound-rtp"/,"Android does not call audio ready from inbound RTP alone");
+assert.match(androidEngine,/totalAudioEnergy/,"Android requires non-zero inbound and outbound audio energy");
+assert.match(guestWeb,/outbound-rtp/,"guest browser verifies browser microphone RTP is sent to Android");
+assert.match(guestWeb,/totalAudioEnergy/,"guest browser requires non-zero audio energy in both directions");
+assert.match(guestBrowserE2e,/guest-audio-stats\.json/,"browser E2E persists bidirectional audio statistics");
+assert.match(guestBrowserE2eShell,/module-null-sink/,"browser E2E injects a deterministic audio pilot into the Android emulator microphone path");
+assert.match(guestBrowserE2eShell,/server-android-mic-tone\.wav/,"Android microphone pilot is a generated test WAV rather than ambient host silence");
+assert.match(androidTests,/debug_last_outbound_audio_rtp_packets/,"Android E2E asserts locally transmitted microphone packets");
+assert.match(androidTests,/debug_last_outbound_audio_rtp_energy/,"Android E2E asserts non-zero microphone audio energy");
+
  assert.match(androidEngine,/iceTransportsType = PeerConnection\.IceTransportsType\.RELAY/,"Android forces TURN relay when valid TURN credentials are provisioned");
 assert.match(androidMain,/callIceServerMode == "cloudflare-turn" \|\| callIceServerMode == "coturn-turn"/,
   "the standalone Android caller also forces TURN relay when backend mode requires it");
