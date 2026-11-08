@@ -36,9 +36,13 @@ async function maybeReportMediaReady(){
    if(stat.kind!=="audio"&&stat.mediaType!=="audio")return;
    if(stat.type==="inbound-rtp"){
     inboundAudioPackets+=Number(stat.packetsReceived)||0;
+    // Received-track energy is part of inbound-rtp statistics.
     inboundAudioEnergy+=Number(stat.totalAudioEnergy)||0;
    }else if(stat.type==="outbound-rtp"){
+    // Outbound RTP exposes packetsSent, but not totalAudioEnergy.
     outboundAudioPackets+=Number(stat.packetsSent)||0;
+   }else if(stat.type==="media-source"){
+    // Local microphone capture energy is exposed as RTCAudioSourceStats.
     outboundAudioEnergy+=Number(stat.totalAudioEnergy)||0;
    }
   });

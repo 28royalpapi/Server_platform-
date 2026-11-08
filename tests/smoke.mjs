@@ -942,6 +942,10 @@ assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwor
  assert.match(guestWeb,/iceTransportPolicy:joined\.ice_server_mode&&joined\.ice_server_mode!=="stun-only"\?"relay":"all"/,"guest browser forces TURN relay when valid TURN credentials are provisioned");
 assert.match(androidEngine,/"outbound-rtp"/,"Android does not call audio ready from inbound RTP alone");
 assert.match(androidEngine,/totalAudioEnergy/,"Android requires non-zero inbound and outbound audio energy");
+assert.match(androidEngine,/"media-source"/,"Android reads local microphone energy from WebRTC media-source statistics, not outbound-rtp");
+assert.match(guestWeb,/stat\.type==="media-source"/,"guest browser reads local microphone energy from media-source statistics");
+assert.match(guestBrowserE2e,/stat\.type === "media-source"/,"browser E2E validates local audio energy using the WebRTC media-source report");
+
 assert.match(guestWeb,/outbound-rtp/,"guest browser verifies browser microphone RTP is sent to Android");
 assert.match(guestWeb,/totalAudioEnergy/,"guest browser requires non-zero audio energy in both directions");
 assert.match(guestBrowserE2e,/guest-audio-stats\.json/,"browser E2E persists bidirectional audio statistics");

@@ -492,7 +492,7 @@ internal class ServerTelecomCallEngine(
               var inboundPackets = 0L
               var outboundPackets = 0L
               var inboundEnergy = 0.0
-              var outboundEnergy = 0.0
+              var outboundSourceEnergy = 0.0
               report.getStatsMap().values.forEach { stat ->
                 val members = stat.getMembers()
                 val isAudio = (members["kind"] ?: members["mediaType"])?.toString() == "audio"
@@ -500,16 +500,22 @@ internal class ServerTelecomCallEngine(
                 when (stat.type) {
                   "inbound-rtp" -> {
                     inboundPackets += members["packetsReceived"]?.toString()?.toLongOrNull() ?: 0L
+                    // Received-track energy belongs to RTCInboundRtpStreamStats.
                     inboundEnergy += members["totalAudioEnergy"]?.toString()?.toDoubleOrNull() ?: 0.0
                   }
                   "outbound-rtp" -> {
+                    // Outbound RTP proves packets were sent; its stats object does
+                    // not define totalAudioEnergy.
                     outboundPackets += members["packetsSent"]?.toString()?.toLongOrNull() ?: 0L
-                    outboundEnergy += members["totalAudioEnergy"]?.toString()?.toDoubleOrNull() ?: 0.0
+                  }
+                  "media-source" -> {
+                    // Local microphone capture energy is reported by RTCAudioSourceStats.
+                    outboundSourceEnergy += members["totalAudioEnergy"]?.toString()?.toDoubleOrNull() ?: 0.0
                   }
                 }
               }
               if (continuation.isActive) continuation.resume(
-                AudioRtpEvidence(inboundPackets, outboundPackets, inboundEnergy, outboundEnergy)
+                AudioRtpEvidence(inboundPackets, outboundPackets, inboundEnergy, outboundSourceEnergy)
               )
             }
           })
@@ -522,7 +528,7 @@ internal class ServerTelecomCallEngine(
     inboundAudioRtpPacketsReceived = maxOf(inboundAudioRtpPacketsReceived, evidence.inboundPackets)
     outboundAudioRtpPacketsSent = maxOf(outboundAudioRtpPacketsSent, evidence.outboundPackets)
     inboundAudioRtpEnergy = maxOf(inboundAudioRtpEnergy, evidence.inboundEnergy)
-    outboundAudioRtpEnergy = maxOf(outboundAudioRtpEnergy, evidence.outboundEnergy)
+    outboundAudioRtpEnergy = maxOf(outboundAudioRtpEnergy, evidence.outboundSourceEnergy)
     if (BuildConfig.DEBUG) {
       prefs.edit()
         .putLong("debug_last_inbound_audio_rtp_packets", inboundAudioRtpPacketsReceived)

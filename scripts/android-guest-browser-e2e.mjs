@@ -118,6 +118,7 @@ try {
         result.inboundEnergy += Number(stat.totalAudioEnergy) || 0;
       } else if (stat.type === "outbound-rtp") {
         result.outboundPackets += Number(stat.packetsSent) || 0;
+      } else if (stat.type === "media-source") {
         result.outboundEnergy += Number(stat.totalAudioEnergy) || 0;
       }
     });
