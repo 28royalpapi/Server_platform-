@@ -4,7 +4,7 @@ const fragmentToken=url.hash.startsWith("#token=")?decodeURIComponent(url.hash.s
 const inviteToken=url.searchParams.get("token")||fragmentToken||"";
 history.replaceState(null,"",location.pathname);
 const statusEl=document.querySelector("#guest-status"),joinButton=document.querySelector("#join-call"),leaveButton=document.querySelector("#leave-call"),declineButton=document.querySelector("#decline-call"),audioEl=document.querySelector("#remote-audio"),descriptionEl=document.querySelector("#guest-description");
-let pc=null,localStream=null,lastSeq=0,polling=false,leaving=false,pendingIce=[],callId="",iceConnected=false,remoteAudioReceived=false,activeReported=false;
+let pc=null,localStream=null,lastSeq=0,polling=false,leaving=false,pendingIce=[],callId="",iceConnected=false,remoteAudioReceived=false,activeReported=false,realtimeClient=null,realtimeConnected=false;
 let inviteFingerprint="",lastInviteDoc=null,lastMediaStatsAt=0,mediaStatsCheckPending=false;
 const titleEl=document.querySelector("#guest-title");
 function fallbackCacheKey(){return "server.guest.inbox.v1."+inviteFingerprint;}
@@ -65,10 +65,70 @@ async function loadInvitation(){
  catch(err){const latest=await readInviteLocally();if(latest){lastInviteDoc=latest;renderInvite(latest,true);status("Server could not be reached. Showing the invitation saved on this device.",true);}else{status("This Server invitation could not be verified: "+err.message,true);joinButton.disabled=true;}}
 }
 async function onSignal(signal){if(signal.kind==="hangup"){status("The other person ended the call.");await cleanup(false);return;}if(!pc)return;try{if(signal.kind==="offer"){await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));for(const candidate of pendingIce)await pc.addIceCandidate(new RTCIceCandidate(candidate));pendingIce=[];const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await sendSignal("answer",pc.localDescription.toJSON());status("Negotiating audio connection…");}else if(signal.kind==="ice"&&signal.payload?.candidate){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(signal.payload));else pendingIce.push(signal.payload);}else if(signal.kind==="state"&&signal.payload?.state==="active")status("Audio connection active. Keep this page open.");}catch(err){status("Call negotiation failed: "+err.message,true);}}
-async function pollLoop(){if(polling)return;polling=true;while(!leaving){try{await maybeReportMediaReady();const result=await api("poll",{after_seq:lastSeq});for(const signal of result.signals||[]){lastSeq=Math.max(lastSeq,Number(signal.seq)||0);await onSignal(signal);}if(result.call?.state==="ended"||result.call?.state==="failed"||result.call?.state==="missed"){status("This call has ended.");await cleanup(false);break;}}catch(err){status("Connection interrupted: "+err.message,true);await new Promise(r=>setTimeout(r,1800));}await new Promise(r=>setTimeout(r,650));}polling=false;}
-async function cleanup(notify){if(leaving)return;leaving=true;iceConnected=false;remoteAudioReceived=false;activeReported=false;if(notify&&inviteToken){try{await api("leave");}catch{}}try{pc?.close();}catch{}localStream?.getTracks().forEach(t=>t.stop());pc=null;localStream=null;joinButton.classList.remove("hidden");leaveButton.classList.add("hidden");joinButton.disabled=true;}
+async function applyRealtimeEvent(message){
+ if(!message||message.call_id&&message.call_id!==callId)return;
+ if(message.type==="signal"){
+  const seq=Number(message.seq)||0;if(seq<=lastSeq)return;lastSeq=seq;
+  await onSignal({kind:message.kind,payload:message.payload||{},seq});
+ }else if(message.type==="call_state"){
+  if(["ended","failed","missed"].includes(String(message.state||""))||message.kind==="hangup"){
+   status("The other person ended the call.");await cleanup(false);
+  }else if(message.state==="active"){status("Audio connection active. Keep this page open.");}
+ }
+}
+async function pollOnce(){
+ const result=await api("poll",{after_seq:lastSeq});
+ for(const signal of result.signals||[]){
+  const seq=Number(signal.seq)||0;if(seq<=lastSeq)continue;lastSeq=seq;await onSignal(signal);
+ }
+ if(result.call?.state==="ended"||result.call?.state==="failed"||result.call?.state==="missed"){
+  status("This call has ended.");await cleanup(false);
+ }
+}
+async function connectRealtime(){
+ try{
+  const credentials=await api("realtime_token");
+  if(credentials.realtime_available!==true||!credentials.url||!credentials.token)return false;
+  const {Centrifuge}=await import("https://cdn.jsdelivr.net/npm/centrifuge@5.8.0/dist/centrifuge.esm.js");
+  if(leaving)return false;
+  const client=new Centrifuge(credentials.url,{
+   token:credentials.token,
+   getToken:async()=>{const refreshed=await api("realtime_token");if(refreshed.realtime_available!==true||!refreshed.token)throw new Error("Realtime token refresh is unavailable.");return refreshed.token;}
+  });
+  realtimeClient=client;
+  client.on("publication",ctx=>{void applyRealtimeEvent(ctx.data).catch(err=>status("Realtime event error: "+err.message,true));});
+  client.on("connected",async()=>{
+   try{
+    await pollOnce();
+    if(!leaving&&realtimeClient===client){realtimeConnected=true;status("Secure realtime channel connected. Waiting for call audio…");}
+   }catch(err){realtimeConnected=false;status("Realtime connected; reconciling saved call events…",true);}
+  });
+  client.on("disconnected",()=>{
+   realtimeConnected=false;
+   status("Realtime connection interrupted. Reconnecting…",true);
+  });
+  client.connect();
+  return true;
+ }catch(err){
+  realtimeConnected=false;
+  status("Realtime service unavailable; using compatibility signalling: "+err.message,true);
+  return false;
+ }
+}
+async function pollLoop(){
+ if(polling)return;polling=true;
+ while(!leaving){
+  try{
+   await maybeReportMediaReady();
+   if(!realtimeConnected)await pollOnce();
+  }catch(err){status("Connection interrupted: "+err.message,true);}
+  await new Promise(r=>setTimeout(r,realtimeConnected?1000:650));
+ }
+ polling=false;
+}
+async function cleanup(notify){if(leaving)return;leaving=true;realtimeConnected=false;iceConnected=false;remoteAudioReceived=false;activeReported=false;if(notify&&inviteToken){try{await api("leave");}catch{}}try{realtimeClient?.disconnect();realtimeClient?.close();}catch{}realtimeClient=null;try{pc?.close();}catch{}localStream?.getTracks().forEach(t=>t.stop());pc=null;localStream=null;joinButton.classList.remove("hidden");leaveButton.classList.add("hidden");joinButton.disabled=true;}
 declineButton.addEventListener("click",async()=>{declineButton.disabled=true;joinButton.disabled=true;status("Declining call…");try{await api("decline");titleEl.textContent="Call declined";descriptionEl.textContent="You declined this Server call.";status("The caller has been notified.");}catch(err){status("Could not decline the call: "+err.message,true);declineButton.disabled=false;joinButton.disabled=false;}});
-joinButton.addEventListener("click",async()=>{joinButton.disabled=true;try{if(inviteToken.length<48)throw new Error("This invitation link is missing or invalid.");if(!navigator.mediaDevices?.getUserMedia)throw new Error("Open this link in an up-to-date browser over HTTPS.");status("Requesting microphone permission…");localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});const joined=await api("join");callId=joined.call.id;activeReported=false;pc=new RTCPeerConnection({iceServers:joined.ice_servers||[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],iceTransportPolicy:joined.ice_server_mode&&joined.ice_server_mode!=="stun-only"?"relay":"all"});localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));window.__serverGuestPeerConnection=pc;pc.ontrack=e=>{if(e.track.kind!=="audio")return;audioEl.srcObject=e.streams[0]||new MediaStream([e.track]);e.track.onunmute=()=>{remoteAudioReceived=true;maybeReportMediaReady();};audioEl.play().catch(()=>status("Tap the page once to allow audio playback."));};pc.onicecandidate=e=>{if(e.candidate)void sendSignal("ice",e.candidate.toJSON());};pc.onconnectionstatechange=()=>{if(pc?.connectionState==="connected"){iceConnected=true;status(remoteAudioReceived?"Connected. Two-way audio is ready.":"Network connected; waiting for remote audio…");maybeReportMediaReady();}if(pc?.connectionState==="disconnected"){iceConnected=false;status("Connection interrupted. Trying to recover…",true);}if(pc?.connectionState==="failed"){iceConnected=false;status("The network could not establish a peer connection. A TURN relay may be required on this network.",true);}};joinButton.classList.add("hidden");declineButton.classList.add("hidden");leaveButton.classList.remove("hidden");leaveButton.disabled=false;status("Waiting for the Server caller. Internet access is required.");leaving=false;void pollLoop();}catch(err){status(err.message||"Could not join this call.",true);localStream?.getTracks().forEach(t=>t.stop());localStream=null;joinButton.disabled=false;}});
+joinButton.addEventListener("click",async()=>{joinButton.disabled=true;try{if(inviteToken.length<48)throw new Error("This invitation link is missing or invalid.");if(!navigator.mediaDevices?.getUserMedia)throw new Error("Open this link in an up-to-date browser over HTTPS.");status("Requesting microphone permission…");localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});const joined=await api("join");callId=joined.call.id;activeReported=false;pc=new RTCPeerConnection({iceServers:joined.ice_servers||[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],iceTransportPolicy:joined.ice_server_mode&&joined.ice_server_mode!=="stun-only"?"relay":"all"});localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));window.__serverGuestPeerConnection=pc;pc.ontrack=e=>{if(e.track.kind!=="audio")return;audioEl.srcObject=e.streams[0]||new MediaStream([e.track]);e.track.onunmute=()=>{remoteAudioReceived=true;maybeReportMediaReady();};audioEl.play().catch(()=>status("Tap the page once to allow audio playback."));};pc.onicecandidate=e=>{if(e.candidate)void sendSignal("ice",e.candidate.toJSON());};pc.onconnectionstatechange=()=>{if(pc?.connectionState==="connected"){iceConnected=true;status(remoteAudioReceived?"Connected. Two-way audio is ready.":"Network connected; waiting for remote audio…");maybeReportMediaReady();}if(pc?.connectionState==="disconnected"){iceConnected=false;status("Connection interrupted. Trying to recover…",true);}if(pc?.connectionState==="failed"){iceConnected=false;status("The network could not establish a peer connection. A TURN relay may be required on this network.",true);}};joinButton.classList.add("hidden");declineButton.classList.add("hidden");leaveButton.classList.remove("hidden");leaveButton.disabled=false;status("Waiting for the Server caller. Internet access is required.");leaving=false;void connectRealtime();void pollLoop();}catch(err){status(err.message||"Could not join this call.",true);localStream?.getTracks().forEach(t=>t.stop());localStream=null;joinButton.disabled=false;}});
 leaveButton.addEventListener("click",async()=>{leaveButton.disabled=true;status("Leaving call…");await cleanup(true);status("You left the call.");});
 if("serviceWorker" in navigator && location.protocol==="https:")navigator.serviceWorker.register("/server-guest-sw.js",{scope:"/"}).catch(()=>{});
 void loadInvitation();
