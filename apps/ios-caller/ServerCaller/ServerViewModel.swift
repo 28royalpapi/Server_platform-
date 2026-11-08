@@ -729,8 +729,8 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
     func reportIncoming(id: String, callerName: String?) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         if handles[uuid] != nil { return }
-        let displayName = callerName?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty } ?? "Server caller"
+        let trimmedName = (callerName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = trimmedName.isEmpty ? "Server caller" : String(trimmedName.prefix(80))
         handles[uuid] = displayName
         // Push contains the Server display identity, not an assumed telephone number.
         // Use a generic handle and the explicit localized caller name; never make
