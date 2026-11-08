@@ -265,10 +265,10 @@ assert.match(app,/allow-number-calls/);
 assert.match(androidSetup,/fun normalizePhoneNumber\(raw: String\): String/,"Android onboarding exposes its device-region phone normalizer to the website");
 assert.match(androidSetup,/ServerPhoneNumberNormalizer\.deviceRegion/,"Android local-number parsing uses the actual device country context");
 assert.match(app,/window\.ServerAndroid\.normalizePhoneNumber/,"Android web onboarding delegates national-number parsing to native metadata");
-assert.match(app,/if \(!candidate\.startsWith\("\+"\)\) return null/,"browser phone linking requires explicit international country-code input rather than assuming Nigeria");
-assert.match(app,/return \/\\\+\[1-9\]\[0-9\]\{7,14\}\$\/\.test\(candidate\) \? candidate : null/,"browser phone linking validates canonical E.164 numbers");
-assert.doesNotMatch(app,/digits\.startsWith\("234"\)|candidate = "\\+234"/,"browser phone linking has no Nigerian-only national-number fallback");
-assert.match(html,/\+919876543210/,"website phone-link placeholder demonstrates a non-Nigerian international destination");
+assert.ok(app.includes('if (!candidate.startsWith("+")) return null;'),"browser phone linking requires explicit international country-code input when native country metadata is unavailable");
+assert.ok(app.includes(String.raw`return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;`),"browser phone linking validates canonical E.164 numbers");
+assert.ok(!app.includes('digits.startsWith("234")') && !app.includes('candidate = "+234"'),"browser phone linking has no Nigerian-only national-number fallback");
+assert.ok(html.includes("+919876543210"),"website phone-link placeholder demonstrates a non-Nigerian international destination");
 
 assert.match(app,/isAndroidWebView/);
 assert.match(app,/isNativeSetup/);
