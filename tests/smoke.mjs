@@ -21,6 +21,7 @@ const callStateTransitionMigration=read("supabase/migrations/20261108110000_serv
 const guestSingleClaimMigration=read("supabase/migrations/20261108152000_server_guest_single_claim.sql");
 const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
 const keepAliveMigration=read("supabase/migrations/20261108142000_server_keepalive_probe.sql");
+const signalRetentionMigration=read("supabase/migrations/20261108170000_server_call_signal_retention.sql");
 const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
 const elfAlignmentScript=read("scripts/check-16kb-elf-alignment.py");
 const android17InstallScript=read("scripts/android17-16kb-acceptance.sh");
@@ -231,6 +232,18 @@ assert.match(callExpiryMigration,/expires_at <= now\(\)/,
   "the maintenance worker must reconcile calls at their own configured expiry");
 assert.match(callExpiryMigration,/cron\.schedule\('server-maintenance-every-minute'/,
   "call expiry is reconciled on a one-minute background schedule");
+assert.match(signalRetentionMigration,/server_calls_terminal_signal_cleanup_idx/,
+  "terminal calls have an index for bounded signalling-payload retention");
+assert.match(signalRetentionMigration,/delete from public\.server_call_signals/i,
+  "maintenance deletes transient call signalling separately from call history");
+assert.match(signalRetentionMigration,/interval '10 minutes'/,
+  "SDP and ICE signalling payloads are eligible for deletion ten minutes after a terminal call");
+assert.match(signalRetentionMigration,/limit 25000/i,
+  "signalling retention is bounded per maintenance run to control locks and WAL growth");
+assert.match(signalRetentionMigration,/'signals_purged'/,
+  "maintenance exposes the count of removed signalling rows for operational monitoring");
+assert.match(signalRetentionMigration,/revoke all on function public\.server_maintenance\(\) from public, anon, authenticated/i,
+  "the replaced maintenance routine remains unavailable to public client roles");
 assert.match(calls,/state\.eq\.missed,expires_at\.gt\./,
   "incoming-call lookup must never ring a call after its expiry, even before the cron sweep runs");
 assert.match(atomicCallMigration,/'id',v_call\.id[\s\S]*?'expires_at',v_call\.expires_at/,
