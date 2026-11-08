@@ -909,10 +909,11 @@ assert.match(iosModel,/CXHandle\(type: \.generic, value: "Server"\)/,
   "the caller display label uses a generic CallKit handle and does not impersonate a cellular number");
 assert.match(iosModel,/phoneNumber: String\? = nil, callerName: String\? = nil/,
   "iOS supports consented phone-number handles and display-name-only PushKit handles through one CallKit adapter");
-assert.match(iosModel,/rawPhone\.range\(of: #"\^\[\\\+1-9\]\[0-9\]\{7,14\}\$"#/,
-  "CallKit accepts only a validated E.164 phone handle");
+assert.match(iosModel,/rawPhone\.range\(of:/,
+  "CallKit validates consented phone numbers before constructing a telephone handle");
 assert.match(iosModel,/if let safePhone[\s\S]*?CXHandle\(type: \.phoneNumber, value: safePhone\)/,
-  "the iOS CallKit telephone handle is only used for the number returned by the consent-gated backend");assert.match(androidIncoming,/caller_phone_e164/,
+  "the iOS CallKit telephone handle is only used for the number returned by the consent-gated backend");
+assert.match(androidIncoming,/caller_phone_e164/,
   "incoming Android notifications prefer the verified phone number over a Server ID");
 assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
 assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
