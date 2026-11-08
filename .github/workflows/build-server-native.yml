@@ -44,6 +44,8 @@ jobs:
           npm run check:web
       - name: Probe deployed Supabase functions without triggering real SMS
         run: npm run check:live
+      - name: Exercise live guest call lifecycle and Open Graph invitation without SMS or PSTN
+        run: npm run check:live:guest
 
   android-build-and-emulator-smoke:
     # GitHub Ubuntu runners expose /dev/kvm; grant the job user access before emulator-runner probes it.

@@ -18,6 +18,7 @@ const presenceMigration=read("supabase/migrations/20261105124000_server_recipien
 const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push_devices_custom_identity_fk.sql");
 const offlineMissedCallMigration=read("supabase/migrations/20261105131000_server_offline_missed_call_inbox.sql");
 const callStateTransitionMigration=read("supabase/migrations/20261108110000_server_atomic_call_state_transitions.sql");
+const liveGuestTransitionContract=read("scripts/live-guest-transition-contract.mjs");
 const offlineInbox=read("web/offline-inbox.js");
 const guestServiceWorker=read("web/server-guest-sw.js");
 const offlineArchitecture=read("docs/offline-delivery.md");
@@ -922,6 +923,13 @@ assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
 assert.match(calls,/server_create_missed_call_atomic/);
 assert.match(callStateTransitionMigration,/server_guest_transition_atomic/);
 assert.match(callStateTransitionMigration,/server_call_transition_atomic/);
+assert.match(liveGuestTransitionContract,/"join"/);
+assert.match(liveGuestTransitionContract,/og:title/);
+assert.match(liveGuestTransitionContract,/Caller=PRIVATE CALLER/);
+assert.match(liveGuestTransitionContract,/server-terms-1\\.0/);
+assert.doesNotMatch(liveGuestTransitionContract,/request_otp|verify_otp|server-send-sms/,
+  "the live guest lifecycle test must never queue SMS or contact a real carrier number");
+
 assert.match(callStateTransitionMigration,/revoke all on function public\.server_guest_transition_atomic/);
 assert.match(callStateTransitionMigration,/grant execute on function public\.server_call_transition_atomic/);
 assert.match(guest,/db\.rpc\("server_guest_transition_atomic"/,
