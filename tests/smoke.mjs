@@ -22,6 +22,7 @@ const guestSingleClaimMigration=read("supabase/migrations/20261108152000_server_
 const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
 const keepAliveMigration=read("supabase/migrations/20261108142000_server_keepalive_probe.sql");
 const signalRetentionMigration=read("supabase/migrations/20261108170000_server_call_signal_retention.sql");
+const activeCallLeaseMigration=read("supabase/migrations/20261108180000_server_active_call_lease.sql");
 const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
 const elfAlignmentScript=read("scripts/check-16kb-elf-alignment.py");
 const android17InstallScript=read("scripts/android17-16kb-acceptance.sh");
@@ -1004,6 +1005,13 @@ assert.match(callStateTransitionMigration,/grant execute on function public\.ser
 assert.ok(keepAliveMigration.includes("create or replace function public.server_keepalive_probe()"));
 assert.ok(keepAliveMigration.includes("grant execute on function public.server_keepalive_probe() to anon"));
 assert.ok(keepAliveMigration.includes("notify pgrst, 'reload schema'"));
+assert.ok(activeCallLeaseMigration.includes("server_calls_active_expiry_idx"),"active call expiry is indexed for the minute maintenance worker");
+assert.ok(activeCallLeaseMigration.includes("v_now+interval '10 minutes'"),"answered and guest-joined calls receive a bounded setup-negotiation lease");
+assert.ok(activeCallLeaseMigration.includes("v_now+interval '24 hours'"),"active Server and guest calls receive a 24-hour renewable-by-transition lease");
+assert.ok(activeCallLeaseMigration.includes("state='active'") && activeCallLeaseMigration.includes("v_active_timed_out"),"maintenance fails orphaned active calls after their lease expires");
+assert.match(activeCallLeaseMigration,/server_guest_transition_atomic[\\s\\S]*?GUEST_ALREADY_JOINED/,"guest single-claim protection remains in the replacement transition function");
+assert.match(activeCallLeaseMigration,/revoke all on function public\\.server_call_transition_atomic[\\s\\S]*?grant execute on function public\\.server_call_transition_atomic[\\s\\S]*?to service_role/,"call transition RPC remains service-role-only");
+
 assert.ok(keepAliveMigration.includes("security invoker"));
 assert.ok(keepAliveWorkflow.includes("13 */8 * * *"));
 assert.ok(keepAliveWorkflow.includes("/rest/v1/rpc/server_keepalive_probe"));
