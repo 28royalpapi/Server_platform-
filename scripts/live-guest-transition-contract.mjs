@@ -108,7 +108,7 @@ try {
   assert.match(previewHtml, /property="og:title"/);
   assert.match(previewHtml, /property="og:image"/);
   assert.match(previewHtml, /PRIVATE CALLER/i, "unlinked test identity must not leak its Server ID");
-  const imageHref = previewHtml.match(/property="og:image" content="([^"]+)"/)?.[1];
+  const imageHref = previewHtml.match(/property="og:image" content="([^"]+)"/)?.[1]?.replace(/&amp;/g, "&");
   assert.ok(imageHref, "OG image URL must be present");
   const imageResponse = await fetch(new URL(imageHref, created.guest_invite_url), {
     signal: AbortSignal.timeout(15000)
