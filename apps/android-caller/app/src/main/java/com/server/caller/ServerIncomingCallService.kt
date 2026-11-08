@@ -36,6 +36,7 @@ class ServerIncomingCallService : Service() {
   private var pollingJob: Job? = null
   private var realtimeClient: ServerRealtimeClient? = null
   @Volatile private var realtimeConnected = false
+  @Volatile private var realtimeCallId: String? = null
   private var incomingCallId: String? = null
   // Process-local by design: if Android recreates the service, active calls must be
   // re-reported to Telecom instead of being suppressed by stale persisted IDs.
@@ -127,6 +128,7 @@ class ServerIncomingCallService : Service() {
   override fun onDestroy() {
     pollingJob?.cancel()
     realtimeConnected = false
+    realtimeCallId = null
     realtimeClient?.close()
     realtimeClient = null
     scope.cancel()
@@ -146,12 +148,7 @@ class ServerIncomingCallService : Service() {
         if (realtimeClient == null) connectRealtime(token)
         if (!realtimeConnected) {
           val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
-          processIncomingResponse(result)
-        } else {
-          // Realtime carries call starts; this low-frequency check reconciles
-          // missed-call/terminal state without 2.2-second REST polling.
-          val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
-          processIncomingResponse(result)
+          processIncomingResponse(result, token)
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -185,28 +182,29 @@ class ServerIncomingCallService : Service() {
           Log.w(TAG, "Server incoming-call listener failed: " + error.javaClass.simpleName)
         }
       }
-      delay(if (realtimeConnected) REALTIME_RECONCILE_INTERVAL_MS else POLL_INTERVAL_MS)
+      delay(if (realtimeConnected) REALTIME_IDLE_DELAY_MS else POLL_INTERVAL_MS)
     }
   }
 
-  private fun connectRealtime(accessToken: String) {
+  private fun connectRealtime(accessToken: String, callId: String? = null) {
+    if (realtimeClient != null && realtimeCallId == callId) return
     try {
-      val credentials = postJson(
-        "/functions/v1/server-calls",
-        JSONObject().put("action", "realtime_token"),
-        accessToken
-      )
+      val request = JSONObject().put("action", "realtime_token")
+      if (!callId.isNullOrBlank()) request.put("call_id", callId)
+      val credentials = postJson("/functions/v1/server-calls", request, accessToken)
       if (!credentials.optBoolean("realtime_available", false)) return
       val endpoint = credentials.optString("url")
       val realtimeToken = credentials.optString("token")
       if (!endpoint.startsWith("wss://") || realtimeToken.isBlank()) return
       realtimeClient?.close()
       realtimeConnected = false
+      realtimeCallId = callId
       realtimeClient = ServerRealtimeClient(
         endpoint = endpoint,
         token = realtimeToken,
         onPublication = { publication ->
-          if (publication.optString("type") == "incoming_call") {
+          val type = publication.optString("type")
+          if (type == "incoming_call" || type == "call_state") {
             scope.launch { reconcileIncomingFromBackend() }
           }
         },
@@ -216,11 +214,9 @@ class ServerIncomingCallService : Service() {
         },
         fetchFreshToken = {
           val current = freshAccessToken() ?: throw IllegalStateException("Server session is unavailable.")
-          val refreshed = postJson(
-            "/functions/v1/server-calls",
-            JSONObject().put("action", "realtime_token"),
-            current
-          )
+          val refreshRequest = JSONObject().put("action", "realtime_token")
+          if (!callId.isNullOrBlank()) refreshRequest.put("call_id", callId)
+          val refreshed = postJson("/functions/v1/server-calls", refreshRequest, current)
           refreshed.optString("token").takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Server realtime token refresh returned no token.")
         }
@@ -235,15 +231,16 @@ class ServerIncomingCallService : Service() {
     try {
       val token = freshAccessToken() ?: return
       val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
-      processIncomingResponse(result)
+      processIncomingResponse(result, token)
     } catch (error: Exception) {
       Log.w(TAG, "Realtime incoming-call reconciliation deferred: " + error.javaClass.simpleName)
     }
   }
 
-  private fun processIncomingResponse(result: JSONObject) {
+  private fun processIncomingResponse(result: JSONObject, accessToken: String) {
     val rows = result.optJSONArray("calls") ?: return
     val liveCallIds = mutableSetOf<String>()
+    var nextCallChannel: String? = null
     for (i in 0 until rows.length()) {
       val row = rows.optJSONObject(i) ?: continue
       val callId = row.optString("id")
@@ -265,6 +262,7 @@ class ServerIncomingCallService : Service() {
       }
       if (row.optString("state") != "ringing" && row.optString("state") != "connecting") continue
       liveCallIds.add(callId)
+      if (nextCallChannel == null) nextCallChannel = callId
       if (!reportedCallIds.add(callId)) continue
       try {
         ServerTelecomRegistry.reportIncoming(this, callId, callerPhone ?: "Server caller")
@@ -274,6 +272,9 @@ class ServerIncomingCallService : Service() {
       }
     }
     ServerTelecomRegistry.reconcileIncoming(liveCallIds)
+    if (realtimeClient != null && nextCallChannel != realtimeCallId) {
+      connectRealtime(accessToken, nextCallChannel)
+    }
   }
 
   private fun freshAccessToken(): String? {
@@ -359,7 +360,7 @@ class ServerIncomingCallService : Service() {
     private const val CHANNEL_ID = "server-incoming-calls"
     internal const val FOREGROUND_NOTIFICATION_ID = 7338
     private const val POLL_INTERVAL_MS = 2200L
-    private const val REALTIME_RECONCILE_INTERVAL_MS = 30000L
+    private const val REALTIME_IDLE_DELAY_MS = 15000L
     private const val ACTION_SHOW_INCOMING_CALL = "com.server.caller.action.FGS_SHOW_INCOMING"
     private const val ACTION_SILENCE_INCOMING_CALL = "com.server.caller.action.FGS_SILENCE_INCOMING"
     private const val ACTION_CLEAR_INCOMING_CALL = "com.server.caller.action.FGS_CLEAR_INCOMING"
