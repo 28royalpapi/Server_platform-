@@ -317,6 +317,12 @@ class ServerSetupWebActivity : Activity() {
     @JavascriptInterface fun getFallbackSimOptions(): String =
       ServerFallbackSimManager.optionsJson(this@ServerSetupWebActivity).toString()
 
+    @JavascriptInterface fun normalizePhoneNumber(raw: String): String =
+      ServerPhoneNumberNormalizer.toE164(
+        raw,
+        ServerPhoneNumberNormalizer.deviceRegion(this@ServerSetupWebActivity)
+      ).orEmpty()
+
     @JavascriptInterface fun setFallbackSimSelection(optionKey: String): String =
       ServerFallbackSimManager.saveSelection(this@ServerSetupWebActivity, optionKey).toString()
 

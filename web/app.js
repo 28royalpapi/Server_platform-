@@ -146,9 +146,16 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
   };
   const normalizePhone = (raw) => {
-    // The browser has no trustworthy SIM/country context. Require explicit E.164
-    // input here rather than silently treating every national number as Nigerian.
-    const candidate = String(raw || "").trim().replace(/[()\s.-]/g, "");
+    const value = String(raw || "").trim();
+    // The Android bridge can use real SIM/network/locale country metadata. If
+    // unavailable (desktop browser or missing country context), require E.164.
+    if (window.ServerAndroid && typeof window.ServerAndroid.normalizePhoneNumber === "function") {
+      try {
+        const nativeNumber = String(window.ServerAndroid.normalizePhoneNumber(value) || "").trim();
+        if (/^\+[1-9][0-9]{7,14}$/.test(nativeNumber)) return nativeNumber;
+      } catch {}
+    }
+    const candidate = value.replace(/[()\s.-]/g, "");
     if (!candidate.startsWith("+")) return null;
     return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;
   };
@@ -293,7 +300,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   requestPhoneCodeButton && requestPhoneCodeButton.addEventListener("click", () => {
     const number = normalizePhone(phoneLinkInput && phoneLinkInput.value);
     if (!number) {
-      showPhoneLinkStatus("Enter an international number beginning with + and its country code, e.g. +2348012345678 or +919876543210.");
+      showPhoneLinkStatus("Enter a number for your device's country, or use international format with +country code (e.g. +2348012345678 or +919876543210).");
       phoneLinkInput && phoneLinkInput.focus();
       return;
     }
