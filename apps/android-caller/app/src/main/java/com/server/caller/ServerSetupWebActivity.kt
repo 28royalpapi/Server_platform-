@@ -151,12 +151,22 @@ class ServerSetupWebActivity : Activity() {
       val phoneStateGranted = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
       val contactsGranted = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
       runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, $phoneStateGranted, $contactsGranted)")
+    } else if (requestCode == REQUEST_AUTO_CARRIER_FALLBACK) {
+      val granted = checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+      val saved = ServerFallbackSimManager.setAutomaticFallback(this, granted)
+      val enabled = granted && saved.optBoolean("ok") && saved.optBoolean("automatic_fallback_enabled")
+      val reason = if (enabled) "" else saved.optString("error").ifBlank { "CALL_PHONE_PERMISSION_DENIED" }
+      notifyAutoCarrierFallback(enabled, reason)
     }
   }
 
   private fun runJs(script: String) {
     if (!::web.isInitialized) return
     runOnUiThread { web.evaluateJavascript(script, null) }
+  }
+
+  private fun notifyAutoCarrierFallback(enabled: Boolean, error: String = "") {
+    runJs("window.onServerAutoCarrierFallbackPermissionResult && window.onServerAutoCarrierFallbackPermissionResult(" + enabled + "," + JSONObject.quote(error) + ")")
   }
 
   /**
@@ -310,6 +320,27 @@ class ServerSetupWebActivity : Activity() {
     @JavascriptInterface fun setFallbackSimSelection(optionKey: String): String =
       ServerFallbackSimManager.saveSelection(this@ServerSetupWebActivity, optionKey).toString()
 
+    @JavascriptInterface fun setAutomaticCarrierFallback(enabled: Boolean) {
+      runOnUiThread {
+        if (!enabled) {
+          val saved = ServerFallbackSimManager.setAutomaticFallback(this@ServerSetupWebActivity, false)
+          notifyAutoCarrierFallback(false, saved.optString("error"))
+          return@runOnUiThread
+        }
+        if (ServerFallbackSimManager.selectedOption(this@ServerSetupWebActivity) == null) {
+          notifyAutoCarrierFallback(false, "SELECTED_SIM_REQUIRED")
+          return@runOnUiThread
+        }
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+          requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQUEST_AUTO_CARRIER_FALLBACK)
+          return@runOnUiThread
+        }
+        val saved = ServerFallbackSimManager.setAutomaticFallback(this@ServerSetupWebActivity, true)
+        val enabledNow = saved.optBoolean("ok") && saved.optBoolean("automatic_fallback_enabled")
+        notifyAutoCarrierFallback(enabledNow, saved.optString("error"))
+      }
+    }
+
     @JavascriptInterface fun completeSetup(acceptedTerms: Boolean) {
       Thread {
         val result = registerDevice(acceptedTerms)
@@ -449,5 +480,6 @@ class ServerSetupWebActivity : Activity() {
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
     private const val REQUEST_CALL = 5102
+    private const val REQUEST_AUTO_CARRIER_FALLBACK = 5103
   }
 }

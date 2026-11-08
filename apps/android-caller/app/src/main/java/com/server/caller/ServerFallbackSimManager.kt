@@ -32,6 +32,7 @@ internal object ServerFallbackSimManager {
   private const val PREFS = "server-session"
   private const val KEY_SELECTED = "fallback_sim_account_key"
   private const val ASK_EVERY_TIME = "ask"
+  private const val KEY_AUTO_FALLBACK = "automatic_carrier_fallback_enabled"
 
   fun options(context: Context): List<ServerFallbackSimOption> {
     if (context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
@@ -112,6 +113,7 @@ internal object ServerFallbackSimManager {
       .put("selected_key", selectedKey)
       .put("selected_sim_unavailable", !selectionAvailable)
       .put("permission_granted", context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED)
+      .put("automatic_fallback_enabled", automaticFallbackEnabled(context))
   }
 
   fun saveSelection(context: Context, requestedKey: String): JSONObject {
@@ -120,6 +122,7 @@ internal object ServerFallbackSimManager {
     if (key == ASK_EVERY_TIME) {
       val saved = preferences.edit()
         .putString(KEY_SELECTED, ASK_EVERY_TIME)
+        .putBoolean(KEY_AUTO_FALLBACK, false)
         .remove("selected_sim_slot")
         .remove("selected_sim_carrier")
         .commit()
@@ -127,11 +130,13 @@ internal object ServerFallbackSimManager {
     }
     val option = options(context).firstOrNull { it.key == key }
       ?: return JSONObject().put("ok", false).put("error", "The selected SIM is no longer available. Refresh the list and choose an active line.")
-    val saved = preferences.edit()
+    val oldKey = preferences.getString(KEY_SELECTED, ASK_EVERY_TIME) ?: ASK_EVERY_TIME
+    val editor = preferences.edit()
       .putString(KEY_SELECTED, option.key)
       .putInt("selected_sim_slot", option.slotIndex)
       .putString("selected_sim_carrier", option.carrierName)
-      .commit()
+    if (oldKey != option.key) editor.putBoolean(KEY_AUTO_FALLBACK, false)
+    val saved = editor.commit()
     return JSONObject()
       .put("ok", saved)
       .put("selected_key", option.key)
@@ -144,6 +149,32 @@ internal object ServerFallbackSimManager {
       .getString(KEY_SELECTED, ASK_EVERY_TIME) ?: ASK_EVERY_TIME
     if (key == ASK_EVERY_TIME) return null
     return options(context).firstOrNull { it.key == key }
+  }
+
+  fun hasAutomaticFallbackConsent(context: Context): Boolean =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_AUTO_FALLBACK, false)
+
+  fun automaticFallbackEnabled(context: Context): Boolean =
+    hasAutomaticFallbackConsent(context) &&
+      context.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED &&
+      selectedOption(context) != null
+
+  fun setAutomaticFallback(context: Context, enabled: Boolean): JSONObject {
+    val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    if (!enabled) {
+      val saved = preferences.edit().putBoolean(KEY_AUTO_FALLBACK, false).commit()
+      return JSONObject().put("ok", saved).put("automatic_fallback_enabled", false)
+    }
+    if (context.checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+      return JSONObject().put("ok", false).put("automatic_fallback_enabled", false)
+        .put("error", "CALL_PHONE_PERMISSION_REQUIRED")
+    }
+    val selected = selectedOption(context)
+      ?: return JSONObject().put("ok", false).put("automatic_fallback_enabled", false)
+        .put("error", "SELECTED_SIM_REQUIRED")
+    val saved = preferences.edit().putBoolean(KEY_AUTO_FALLBACK, true).commit()
+    return JSONObject().put("ok", saved).put("automatic_fallback_enabled", saved)
+      .put("selected_sim_slot", selected.slotIndex).put("selected_sim_carrier", selected.carrierName)
   }
 
   fun selectedPhoneAccount(context: Context): PhoneAccountHandle? =

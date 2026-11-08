@@ -709,11 +709,16 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       callButton.visibility = View.VISIBLE
       hangupButton.visibility = View.GONE
       ServerTelecomRegistry.markEnded(pendingCallId)
-      val opened = ServerCarrierDialer.open(this@MainActivity, number)
-      if (opened) {
-        setStatus("Opened your normal phone dialler. Server preselected your preferred SIM when that line was still active. Review the number and press Call; your mobile operator applies its normal charges.")
+      val automaticResult = ServerCarrierDialer.placeAutomatically(this@MainActivity, number)
+      if (automaticResult == AutomaticCarrierFallbackResult.PLACED) {
+        setStatus("Server cannot reach this recipient. Android is continuing the call through your selected SIM; your mobile operator applies its normal charges.")
       } else {
-        setStatus("Android could not open the phone dialler. No carrier call was placed.", true)
+        val opened = ServerCarrierDialer.open(this@MainActivity, number)
+        if (opened) {
+          setStatus("Opened your normal phone dialler. Server preselected your preferred SIM when that line was still active. Review the number and press Call; your mobile operator applies its normal charges.")
+        } else {
+          setStatus("Android could not open the phone dialler. No carrier call was placed.", true)
+        }
       }
     }
   }
@@ -781,6 +786,13 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         ?.optString("destination_e164")?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
         ?: normalizedPhone
       carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
+      // No Server receiver exists for a guest route. Honour the user's saved
+      // automatic SIM choice before creating a browser invitation/WebRTC leg.
+      if (currentRoute == "guest" && carrierFallbackNumber != null &&
+          ServerFallbackSimManager.automaticFallbackEnabled(this@MainActivity)) {
+        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
+        return@launch
+      }
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
@@ -867,11 +879,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
             val sharedPhone = call.optString("caller_phone_e164").takeIf {
               Regex("^\\+[1-9][0-9]{1,14}$").matches(it)
             }
-            // Prefer only a verified, consented number so Android may resolve the
-            // caller from the user's contacts. Otherwise display the Server ID.
-            val caller = sharedPhone
-              ?: call.optString("caller_server_id").takeIf { it.isNotBlank() }
-              ?: "Server caller"
+            // Never show the opaque Server ID as an incoming caller identity.
+            val caller = sharedPhone ?: "Server caller"
             if (call.optString("state") == "missed") {
               if (!ServerCallNotifications.showMissed(this@MainActivity, id, caller)) shownIncoming.remove(id)
               continue

@@ -5,6 +5,8 @@
   <uses-permission android:name="android.permission.READ_PHONE_STATE" />
   <!-- Read only the selected contact match locally to resolve its E.164 number/country. -->
   <uses-permission android:name="android.permission.READ_CONTACTS" />
+  <!-- Requested at runtime only after explicit consent to automatic SIM calls. -->
+  <uses-permission android:name="android.permission.CALL_PHONE" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

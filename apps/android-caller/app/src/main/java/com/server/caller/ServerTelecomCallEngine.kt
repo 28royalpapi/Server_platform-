@@ -115,6 +115,7 @@ internal class ServerTelecomCallEngine(
   private var actionJob: Job? = null
   private var pollingJob: Job? = null
   private var disposed = false
+  private var failCallStarted = false
   @Volatile private var hangupRequested = false
 
   init {
@@ -184,11 +185,20 @@ internal class ServerTelecomCallEngine(
         return
       }
       route = started.optString("route", "guest")
+      val backendFallback = started.optJSONObject("carrier_fallback")
+        ?.takeIf { it.optBoolean("available", false) }
+        ?.optString("destination_e164")
+        ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
+      if (backendFallback != null) carrierFallbackPhone = backendFallback
       // Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
       connection.setRingbackRequested(route == "server")
       if (route == "guest") {
         connection.updateServerStatus("Guest recipient not yet connected · preview link ready")
+        if (carrierFallbackPhone != null && ServerFallbackSimManager.automaticFallbackEnabled(context)) {
+          failCall("No Server receiver is registered for this number. Continuing through your selected SIM.", carrierFallbackPhone)
+          return
+        }
       }
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
@@ -321,17 +331,26 @@ internal class ServerTelecomCallEngine(
   }
 
   private suspend fun failCall(message: String, carrierFallbackPhone: String? = null) {
+    if (disposed || failCallStarted) return
+    failCallStarted = true
     recordStage("call_setup_failed")
     if (BuildConfig.DEBUG) prefs.edit().putString("debug_last_call_failure", message.take(240)).apply()
     val id = callId
     if (!id.isNullOrBlank()) {
       try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
     }
+    // End and release the Server/WebRTC leg before requesting a new cellular call.
     connection.markEnded()
     cleanupPeer()
     ServerCallNotifications.cancel(context, id.orEmpty())
     ServerGuestInviteNotifications.cancel(context, id.orEmpty())
-    ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
+    val carrierResult = carrierFallbackPhone?.let { ServerCarrierDialer.placeAutomatically(context, it) }
+    if (carrierResult == AutomaticCarrierFallbackResult.PLACED) {
+      recordStage("automatic_carrier_fallback_requested")
+      Log.i(TAG, "Server leg ended; Telecom accepted the selected-SIM carrier-call request.")
+    } else {
+      ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
+    }
     release()
   }
 
