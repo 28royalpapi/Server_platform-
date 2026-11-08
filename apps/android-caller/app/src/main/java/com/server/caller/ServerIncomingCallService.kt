@@ -223,6 +223,9 @@ class ServerIncomingCallService : Service() {
       ).also { it.connect() }
     } catch (error: Exception) {
       realtimeConnected = false
+      realtimeClient?.close()
+      realtimeClient = null
+      realtimeCallId = null
       Log.w(TAG, "Realtime incoming-call channel unavailable: " + error.javaClass.simpleName)
     }
   }
