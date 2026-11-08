@@ -933,15 +933,15 @@ assert.match(androidMain,/missed_call_saved/);
 assert.match(androidEngine,/missed_call_saved/);
 assert.match(offlineArchitecture,/private inbox per Server identity/i);
 assert.match(offlineArchitecture,/contact-wide room/i);
-assert.match(androidUnlock,/run-as "\\$APP_ID" sh -c/,
+assert.ok(androidUnlock.includes('run-as "$APP_ID" sh -c'),
   "the emulator unlock gate proves app-private credential-encrypted storage is accessible");
-assert.match(androidPackageManagerWait,/service check activity/,
+assert.ok(androidPackageManagerWait.includes("service check activity"),
   "emulator readiness waits for both activity and package services before installing apps");
-assert.match(androidEmulatorSmoke,/adb install -r artifacts\\/server-caller-debug-for-reinstall\\.apk/,
+assert.ok(androidEmulatorSmoke.includes("adb install -r artifacts/server-caller-debug-for-reinstall.apk"),
   "the main API 34 emulator installs Server before proving CE storage access");
-assert.match(nativeWorkflow,/adb install -r apps\\/android-caller\\/app\\/build\\/outputs\\/apk\\/debug\\/app-universal-debug\\.apk/,
+assert.ok(nativeWorkflow.includes("adb install -r apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"),
   "the API 29–36 matrix installs the app before the credential-encrypted storage check");
-assert.match(android17Preview,/ram-size: 6144M/,
+assert.ok(android17Preview.includes("ram-size: 6144M"),
   "Android 17 runs with extra memory headroom for the preview system image");
 console.log("Server backend/web contract checks: PASS");
 console.log("Checks include hybrid WebRTC/SIM fallback, SIM metadata minimisation, recipient reachability, previewable guest calls, device permissions and public-key hygiene.");
