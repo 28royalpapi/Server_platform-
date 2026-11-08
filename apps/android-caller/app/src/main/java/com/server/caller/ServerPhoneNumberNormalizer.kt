@@ -36,16 +36,16 @@ internal object ServerPhoneNumberNormalizer {
     simRegion: String?,
     networkRegion: String?,
     localeRegion: String?,
-    fallback: String = "NG"
-  ): String {
+    fallback: String? = null
+  ): String? {
     return listOf(simRegion, networkRegion, localeRegion, fallback)
       .firstNotNullOfOrNull { value ->
         value?.trim()?.takeIf { REGION.matches(it) }?.uppercase(Locale.ROOT)
-      } ?: "NG"
+      }
   }
 
   @Suppress("DEPRECATION")
-  fun deviceRegion(context: Context): String {
+  fun deviceRegion(context: Context): String? {
     val telephony = try {
       context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
     } catch (_: Exception) {
@@ -60,8 +60,12 @@ internal object ServerPhoneNumberNormalizer {
     val value = raw.trim()
     if (value.isEmpty()) return null
     val defaultRegion = resolveRegion(region, null, null)
+    // An explicit + number is globally unambiguous. A national-format number is
+    // not: never silently interpret it as Nigerian (or any other country) when
+    // this device has no SIM, network, locale, or user-supplied region context.
+    if (defaultRegion == null && !value.startsWith("+")) return null
     return try {
-      val parsed = phoneUtil.parse(value, defaultRegion)
+      val parsed = phoneUtil.parse(value, defaultRegion ?: "ZZ")
       if (!phoneUtil.isPossibleNumber(parsed)) return null
       phoneUtil.format(parsed, PhoneNumberUtil.PhoneNumberFormat.E164)
         .takeIf(E164::matches)
@@ -84,7 +88,7 @@ internal object ServerPhoneNumberNormalizer {
    * E.164 value or its contact country. If a saved contact exists but has no usable
    * country metadata, fail closed rather than silently calling a different country.
    */
-  fun toE164FromContact(context: Context, raw: String, fallbackRegion: String): String? {
+  fun toE164FromContact(context: Context, raw: String, fallbackRegion: String?): String? {
     val value = raw.trim()
     if (value.isEmpty()) return null
     if (value.startsWith("+")) return toE164(value, "ZZ")
@@ -126,7 +130,7 @@ internal object ServerPhoneNumberNormalizer {
    */
   fun toE164WithContactMetadata(
     raw: String,
-    fallbackRegion: String,
+    fallbackRegion: String?,
     normalizedNumber: String?,
     contactCountry: String?,
     normalizedNumberIsExplicitInternational: Boolean = false,
