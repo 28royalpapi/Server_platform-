@@ -413,7 +413,7 @@ jobs:
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
-  android-8-to-16-platform-matrix:
+  android-10-to-16-platform-matrix:
     name: Android API ${{ matrix.api-level }} calling-account compatibility
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
