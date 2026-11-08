@@ -17,6 +17,7 @@ const workerAuditMigration=read("supabase/migrations/20261105120000_server_call_
 const presenceMigration=read("supabase/migrations/20261105124000_server_recipient_presence_and_reachability.sql");
 const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push_devices_custom_identity_fk.sql");
 const offlineMissedCallMigration=read("supabase/migrations/20261105131000_server_offline_missed_call_inbox.sql");
+const callStateTransitionMigration=read("supabase/migrations/20261108110000_server_atomic_call_state_transitions.sql");
 const offlineInbox=read("web/offline-inbox.js");
 const guestServiceWorker=read("web/server-guest-sw.js");
 const offlineArchitecture=read("docs/offline-delivery.md");
@@ -919,6 +920,19 @@ assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
 assert.match(calls,/server_create_missed_call_atomic/);
+assert.match(callStateTransitionMigration,/server_guest_transition_atomic/);
+assert.match(callStateTransitionMigration,/server_call_transition_atomic/);
+assert.match(callStateTransitionMigration,/revoke all on function public\.server_guest_transition_atomic/);
+assert.match(callStateTransitionMigration,/grant execute on function public\.server_call_transition_atomic/);
+assert.match(guest,/db\.rpc\("server_guest_transition_atomic"/,
+  "guest join, decline, signal and leave use atomic database state transitions");
+assert.match(calls,/db\.rpc\("server_call_transition_atomic"/,
+  "Server answer, end, active state and signalling use atomic database transitions");
+assert.match(calls,/CALL_ACCESS_LOOKUP_FAILED/,
+  "TURN credentials are only issued after verifying membership in the target call");
+assert.match(guest,/CALLER_PROFILE_LOOKUP_FAILED/,
+  "guest caller-profile database errors are surfaced as service failures, not hidden");
+
 assert.match(calls,/missed_call_saved:true/);
 assert.match(calls,/GUEST_INVITE_TTL_SECONDS = 24 \* 60 \* 60/);
 assert.match(offlineInbox,/replicateRxCollection/);
