@@ -6,6 +6,8 @@
 
 - The live call path in the Android caller, Telecom connection engine, and guest browser polls the server-calls / server-guest Edge Functions approximately every 650–700 ms while a call is active.
 - Both participants poll. At 700 ms, one two-party call therefore generates about 2.86 poll requests/second. At 100,000 concurrent calls this is approximately **286,000 poll requests/second**; at 10 million concurrent calls it is approximately **28.6 million/second**. These estimates exclude incoming-call discovery, presence writes, login, retries, call setup, and other application traffic.
+- A target of 100 million call starts per 30-day month averages about **38.6 call starts/second** (1.2 billion/year). At a three-minute mean duration, that would imply about **6,944 average concurrent calls** before peak-hour and regional concentration. **100,000 new call starts every second** is a different workload: 8.64 billion call starts/day. It must not be confused with 100,000 concurrent calls.
+- Each two-party call represents two connected endpoints: 100,000 concurrent calls require about **200,000 live endpoints**. The Android 2,200 ms incoming-discovery loop adds another potential 0.455 requests/second per installed device while its receiver service is active (about 45,455 requests/second for 100,000 such devices).
 - The live Server Backend project is in eu-west-1, running Postgres 17.11. Its current max_connections setting is 60. A current snapshot showed a 17 MB database and 13 Postgres sessions; that is a development/test footprint, not a load test.
 - The live server_push_devices table currently has zero registered devices. Background incoming-call delivery has not been demonstrated on real installed devices.
 - The live guest call path recently passed its API and lifecycle integration checks, but returned STUN-only ICE configuration. TURN relay is not yet a production-verified path.
@@ -34,6 +36,8 @@ Supabase's current hosted-plan limits are also below that target by default:
 - Android and browser clients keep one authenticated signalling connection while foreground/reachable.
 - Offer, answer, ICE, hang-up and call-state events travel through the signalling service, not repeated PostgREST/Edge Function reads.
 - Route each call to a shard/region with reconnect tokens, sequence numbers, bounded buffers, heartbeats and back-pressure.
+- Supabase Realtime Broadcast may be a smaller-scale option, but Server's current 64-character opaque device tokens are not JWTs. Private Realtime channels require a valid JWT and RLS policy; mint a short-lived call-scoped authorisation token or validate the existing Server session at a dedicated WebSocket gateway. Never expose a service-role key to a client.
+- An open-source candidate for the separate signalling plane is [Centrifugo](https://github.com/centrifugal/centrifugo), which supports WebSocket/pub-sub and horizontal scaling through Redis or NATS. It is a candidate to benchmark and deploy, not a currently configured Server service or a 100k-capacity guarantee. It does not replace WebRTC media or regional TURN infrastructure.
 - Supabase Realtime Broadcast can be a useful early stage, but its hosted per-project quotas do not prove 100k or multi-million concurrent endpoints. At larger scale, use a separately scaled signalling service or a support-approved, measured Realtime deployment.
 
 **Media plane — WebRTC**
