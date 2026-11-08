@@ -588,7 +588,10 @@ assert.match(androidEngine,/toStartPayload\("android_telecom"\)/,
   "system Phone calls use the explicit native source payload when creating a backend call");
 assert.match(androidEngine,/two_way_audio_media_ready/);
 assert.match(androidEngine,/remote_audio_track_received/);
-assert.match(androidEngine,/inbound_audio_rtp_packets_received/);
+assert.match(androidEngine,/audio_rtp_packets_both_directions/);
+assert.match(androidEngine,/outboundAudioRtpPacketsSent/);
+assert.match(androidEngine,/inboundAudioRtpEnergy/);
+assert.match(androidEngine,/outboundAudioRtpEnergy/);
 assert.match(androidEngine,/RTCStatsCollectorCallback/);
 assert.match(guestWeb,/inbound-rtp/);
 assert.match(androidTests,/Caller received no inbound audio RTP packets/);
