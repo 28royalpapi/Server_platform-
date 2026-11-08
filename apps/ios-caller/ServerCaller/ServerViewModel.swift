@@ -91,7 +91,7 @@ final class ServerViewModel: ObservableObject {
                 let incoming = IncomingCall(id: id, phone: caller)
                 self.incomingCall = incoming
                 do {
-                    try await self.callKit.reportIncoming(id: id, handle: caller)
+                    try await self.callKit.reportIncoming(id: id, callerName: caller)
                     self.startIncomingPolling()
                 } catch {
                     self.update("iPhone received a Server call alert but could not present it through CallKit: \(error.localizedDescription)", error: true)
@@ -726,16 +726,18 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
         provider.setDelegate(self, queue: nil)
     }
 
-    func reportIncoming(id: String, phoneNumber: String?) async throws {
+    func reportIncoming(id: String, callerName: String?) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         if handles[uuid] != nil { return }
-        let handleValue = phoneNumber ?? "Server caller"
-        let handleType: CXHandle.HandleType = phoneNumber == nil ? .generic : .phoneNumber
-        handles[uuid] = handleValue
-        // Leave localizedCallerName unset for telephone handles. CallKit then
-        // resolves the recipient's own Contacts entry; an unsaved number stays visible.
+        let displayName = callerName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty } ?? "Server caller"
+        handles[uuid] = displayName
+        // Push contains the Server display identity, not an assumed telephone number.
+        // Use a generic handle and the explicit localized caller name; never make
+        // CallKit or Contacts interpret a person's name as an E.164 phone number.
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: handleType, value: handleValue)
+        update.remoteHandle = CXHandle(type: .generic, value: "Server")
+        update.localizedCallerName = displayName
         update.hasVideo = false
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             provider.reportNewIncomingCall(with: uuid, update: update) { error in
