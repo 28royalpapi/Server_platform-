@@ -394,6 +394,15 @@ assert.ok(android17Preview.includes("system-image-api-level: '37.0'"), "Android 
 assert.ok(android17Preview.includes("target: google_apis_ps16k"), "Android 17 preview job uses the supported 16 KB-page Google APIs image");
 assert.match(nativeWorkflow,/api-level:\s*\[29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36\]/, "Android 10 through Android 16, including Android 12L API 32 and Android 16 API 36, are the stable release matrix");
 assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
+assert.match(nativeWorkflow,/android-build-and-emulator-smoke:[\\s\\S]*?runs-on: macos-15-intel/,
+  "the primary Android emulator job uses native macOS virtualization");
+assert.match(nativeWorkflow,/android-10-to-16-platform-matrix:[\\s\\S]*?runs-on: macos-15-intel/,
+  "the Android 29–36 API matrix uses native macOS virtualization");
+assert.match(nativeWorkflow,/android-17-preview-compatibility:[\\s\\S]*?runs-on: macos-15-intel/,
+  "Android 17 16 KB acceptance uses native macOS virtualization");
+assert.doesNotMatch(nativeWorkflow,/ERROR: this runner does not expose \/dev\/kvm/,
+  "Android acceptance jobs do not fail on a Linux-only KVM prerequisite");
+assert.ok(nativeWorkflow.includes("brew install coreutils"), "emulator timeout helpers are available on macOS through GNU coreutils");
 assert.ok(nativeWorkflow.includes("internationalNumberingMetadataCoversEverySupportedRegion"), "the version matrix runs the current global-numbering test");
 assert.ok(nativeWorkflow.includes("destinationCountryFromSavedContactMetadataBeatsCallerRegion"), "the version matrix runs the destination-country regression test");
 assert.ok(nativeWorkflow.includes("explicitInternationalNumbersAndCallerRegionFallbackRemainSupported"), "the version matrix runs international-format parsing regressions");

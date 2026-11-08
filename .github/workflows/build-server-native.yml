@@ -48,8 +48,8 @@ jobs:
         run: npm run check:live:guest
 
   android-build-and-emulator-smoke:
-    # GitHub Ubuntu runners expose /dev/kvm; grant the job user access before emulator-runner probes it.
-    runs-on: ubuntu-24.04
+    # Use the supported Intel macOS runner; Android Emulator uses native Hypervisor.Framework.
+    runs-on: macos-15-intel
     timeout-minutes: 50
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
@@ -57,6 +57,11 @@ jobs:
       preview_signing_ready: ${{ steps.server_preview_signing.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare macOS Android emulator tools
+        shell: bash
+        run: |
+          brew install coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -69,17 +74,8 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
       - name: Preinstall Android 14 emulator image with integrity retries
         run: bash scripts/install-android-system-image.sh 'system-images;android-34;google_apis;x86_64'
-      - name: Enable KVM access for Android emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
-            exit 1
-          fi
-          sudo chmod 666 /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
-          ls -l /dev/kvm
+      - name: Confirm native macOS emulator acceleration
+        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
       - name: Prepare persistent Android preview signing key
         id: server_preview_signing
         shell: bash
@@ -220,8 +216,8 @@ jobs:
           arch: x86_64
           profile: pixel_2
           cores: 2
-          ram-size: ${{ matrix.api-level == 37 && '4096M' || '3072M' }}
-          emulator-boot-timeout: ${{ matrix.api-level == 37 && 480 || 360 }}
+          ram-size: 4096M
+          emulator-boot-timeout: 480
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           pre-emulator-launch-script: |
@@ -255,10 +251,15 @@ jobs:
   android-guest-browser-e2e:
     name: Android Telecom to no-install guest browser end-to-end call
     needs: android-build-and-emulator-smoke
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Install macOS emulator and virtual-audio tools
+        shell: bash
+        run: |
+          brew install coreutils pulseaudio
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -268,28 +269,17 @@ jobs:
         with:
           name: server-android-debug-apks
           path: artifacts/server-android-debug-apks
-      - name: Install Playwright Chromium and system dependencies
+      - name: Install Playwright Chromium
         run: |
           npm install --no-save --package-lock=false playwright
-          npx playwright install --with-deps chromium
-      - name: Enable KVM access for the guest-call Android emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this runner does not expose /dev/kvm for the guest-call Android emulator." >&2
-            exit 1
-          fi
-          sudo chmod 666 /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
-          ls -l /dev/kvm
+          npx playwright install chromium
+      - name: Confirm native macOS emulator acceleration
+        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
       - name: Prepare virtual microphone and speaker for WebRTC
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y pulseaudio
-          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$RUNNER_TEMP/pulse-runtime}"
           mkdir -p "$XDG_RUNTIME_DIR"
           pulseaudio --start --exit-idle-time=-1
           READY=0
@@ -334,12 +324,17 @@ jobs:
           if-no-files-found: warn
 
   android-8-minimum-install-smoke:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 30
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare macOS Android emulator tools
+        shell: bash
+        run: |
+          brew install coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -350,16 +345,8 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android 8 SDK components
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Enable KVM access for Android 8 emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -e /dev/kvm ]]; then
-            echo "ERROR: this runner does not expose /dev/kvm for the Android 8 emulator." >&2
-            exit 1
-          fi
-          sudo chmod 666 /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
+      - name: Confirm native macOS emulator acceleration
+        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
       - name: Build caller and Android instrumentation tests
         run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
       - name: Run minimum-install and onboarding acceptance test
@@ -416,10 +403,15 @@ jobs:
       fail-fast: false
       matrix:
         api-level: [29, 30, 31, 32, 33, 34, 35, 36]
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare macOS Android emulator tools
+        shell: bash
+        run: |
+          brew install coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -430,16 +422,8 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK components for API ${{ matrix.api-level }} test
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Enable KVM access for Android API ${{ matrix.api-level }} emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -e /dev/kvm ]]; then
-            echo 'ERROR: this runner does not expose /dev/kvm for stable Android.' >&2
-            exit 1
-          fi
-          sudo chmod 666 /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
+      - name: Confirm native macOS emulator acceleration
+        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
       - name: Build caller and Android instrumentation tests
         run: |
           set -euo pipefail
@@ -484,10 +468,15 @@ jobs:
     name: Android 17 16 KB preview compatibility
     env:
       SERVER_DEBUG_ABI_FILTERS: x86_64
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare macOS Android emulator tools
+        shell: bash
+        run: |
+          brew install coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -500,16 +489,8 @@ jobs:
         run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools'
       - name: Preinstall Android 17 16 KB system image with integrity retries
         run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;x86_64'
-      - name: Enable KVM access for Android 17 emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -e /dev/kvm ]]; then
-            echo 'ERROR: this runner does not expose /dev/kvm for Android 17.' >&2
-            exit 1
-          fi
-          sudo chmod 666 /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
+      - name: Confirm native macOS emulator acceleration
+        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
       - name: Build caller and Android instrumentation tests
         run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
       - name: Run Android 17 16 KB Telecom and phone-picker acceptance tests
