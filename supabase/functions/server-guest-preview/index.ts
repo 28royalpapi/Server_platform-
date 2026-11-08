@@ -162,15 +162,27 @@ Deno.serve(async (req: Request) => {
     .select("id,call_id,expires_at,revoked_at").is("revoked_at",null).gt("expires_at",new Date().toISOString());
   inviteQuery = imageRequest ? inviteQuery.eq("id",inviteId) : inviteQuery.eq("token_hash",await sha(token));
   const {data: invite,error: inviteError} = await inviteQuery.maybeSingle();
-  if (inviteError || !invite) return new Response("This Server call invitation has expired.",{status:410,headers});
+  if (inviteError) {
+    console.error("GUEST_PREVIEW_INVITE_LOOKUP_FAILED");
+    return new Response("Server call preview temporarily unavailable.",{status:503,headers});
+  }
+  if (!invite) return new Response("This Server call invitation has expired.",{status:410,headers});
   const {data: call,error: callError} = await db.from("server_calls")
     .select("state,expires_at,caller_user_id").eq("id",invite.call_id).maybeSingle();
-  if (callError || !call || !["ringing","connecting"].includes(call.state) ||
+  if (callError) {
+    console.error("GUEST_PREVIEW_CALL_LOOKUP_FAILED");
+    return new Response("Server call preview temporarily unavailable.",{status:503,headers});
+  }
+  if (!call || !["ringing","connecting"].includes(call.state) ||
       (call.expires_at && Date.parse(call.expires_at) <= Date.now())) {
     return new Response("This Server call is no longer ringing.",{status:410,headers});
   }
-  const {data: profile} = await db.from("server_profiles")
+  const {data: profile,error:profileError} = await db.from("server_profiles")
     .select("server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",call.caller_user_id).maybeSingle();
+  if (profileError) {
+    console.error("GUEST_PREVIEW_CALLER_PROFILE_LOOKUP_FAILED");
+    return new Response("Server call preview temporarily unavailable.",{status:503,headers});
+  }
   const phoneMayBeShown = profile?.phone_verified_at && profile?.allow_number_based_server_calls === true &&
     typeof profile.phone_e164 === "string" && /^\+[1-9][0-9]{7,14}$/.test(profile.phone_e164);
   const caller = phoneMayBeShown ? profile.phone_e164 : "PRIVATE CALLER";
