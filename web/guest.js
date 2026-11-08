@@ -30,17 +30,26 @@ async function maybeReportMediaReady(){
  const now=Date.now();if(now-lastMediaStatsAt<1000)return;
  lastMediaStatsAt=now;mediaStatsCheckPending=true;
  try{
-  const report=await pc.getStats();let inboundAudioPackets=0;
+  const report=await pc.getStats();
+  let inboundAudioPackets=0,outboundAudioPackets=0,inboundAudioEnergy=0,outboundAudioEnergy=0;
   report.forEach(stat=>{
-   if(stat.type==="inbound-rtp"&&(stat.kind==="audio"||stat.mediaType==="audio"))
+   if(stat.kind!=="audio"&&stat.mediaType!=="audio")return;
+   if(stat.type==="inbound-rtp"){
     inboundAudioPackets+=Number(stat.packetsReceived)||0;
+    inboundAudioEnergy+=Number(stat.totalAudioEnergy)||0;
+   }else if(stat.type==="outbound-rtp"){
+    outboundAudioPackets+=Number(stat.packetsSent)||0;
+    outboundAudioEnergy+=Number(stat.totalAudioEnergy)||0;
+   }
   });
-  if(inboundAudioPackets>0&&!activeReported){
+  if(inboundAudioPackets>0&&outboundAudioPackets>0&&inboundAudioEnergy>0&&outboundAudioEnergy>0&&!activeReported){
    activeReported=true;
-   status("Connected. Two-way audio packets are flowing.");
+   status("Connected. Audio is flowing in both directions.");
    void sendSignal("state",{state:"active"});
+  }else{
+   status("Checking microphone capture and incoming audio…");
   }
- }catch(err){status("Checking incoming audio…");}
+ }catch(err){status("Checking microphone capture and incoming audio…");}
  finally{mediaStatsCheckPending=false;}
 }
 async function loadInvitation(){
@@ -55,7 +64,7 @@ async function onSignal(signal){if(signal.kind==="hangup"){status("The other per
 async function pollLoop(){if(polling)return;polling=true;while(!leaving){try{await maybeReportMediaReady();const result=await api("poll",{after_seq:lastSeq});for(const signal of result.signals||[]){lastSeq=Math.max(lastSeq,Number(signal.seq)||0);await onSignal(signal);}if(result.call?.state==="ended"||result.call?.state==="failed"||result.call?.state==="missed"){status("This call has ended.");await cleanup(false);break;}}catch(err){status("Connection interrupted: "+err.message,true);await new Promise(r=>setTimeout(r,1800));}await new Promise(r=>setTimeout(r,650));}polling=false;}
 async function cleanup(notify){if(leaving)return;leaving=true;iceConnected=false;remoteAudioReceived=false;activeReported=false;if(notify&&inviteToken){try{await api("leave");}catch{}}try{pc?.close();}catch{}localStream?.getTracks().forEach(t=>t.stop());pc=null;localStream=null;joinButton.classList.remove("hidden");leaveButton.classList.add("hidden");joinButton.disabled=true;}
 declineButton.addEventListener("click",async()=>{declineButton.disabled=true;joinButton.disabled=true;status("Declining call…");try{await api("decline");titleEl.textContent="Call declined";descriptionEl.textContent="You declined this Server call.";status("The caller has been notified.");}catch(err){status("Could not decline the call: "+err.message,true);declineButton.disabled=false;joinButton.disabled=false;}});
-joinButton.addEventListener("click",async()=>{joinButton.disabled=true;try{if(inviteToken.length<48)throw new Error("This invitation link is missing or invalid.");if(!navigator.mediaDevices?.getUserMedia)throw new Error("Open this link in an up-to-date browser over HTTPS.");status("Requesting microphone permission…");localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});const joined=await api("join");callId=joined.call.id;activeReported=false;pc=new RTCPeerConnection({iceServers:joined.ice_servers||[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],iceTransportPolicy:joined.ice_server_mode&&joined.ice_server_mode!=="stun-only"?"relay":"all"});localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.ontrack=e=>{if(e.track.kind!=="audio")return;audioEl.srcObject=e.streams[0]||new MediaStream([e.track]);e.track.onunmute=()=>{remoteAudioReceived=true;maybeReportMediaReady();};audioEl.play().catch(()=>status("Tap the page once to allow audio playback."));};pc.onicecandidate=e=>{if(e.candidate)void sendSignal("ice",e.candidate.toJSON());};pc.onconnectionstatechange=()=>{if(pc?.connectionState==="connected"){iceConnected=true;status(remoteAudioReceived?"Connected. Two-way audio is ready.":"Network connected; waiting for remote audio…");maybeReportMediaReady();}if(pc?.connectionState==="disconnected"){iceConnected=false;status("Connection interrupted. Trying to recover…",true);}if(pc?.connectionState==="failed"){iceConnected=false;status("The network could not establish a peer connection. A TURN relay may be required on this network.",true);}};joinButton.classList.add("hidden");declineButton.classList.add("hidden");leaveButton.classList.remove("hidden");leaveButton.disabled=false;status("Waiting for the Server caller. Internet access is required.");leaving=false;void pollLoop();}catch(err){status(err.message||"Could not join this call.",true);localStream?.getTracks().forEach(t=>t.stop());localStream=null;joinButton.disabled=false;}});
+joinButton.addEventListener("click",async()=>{joinButton.disabled=true;try{if(inviteToken.length<48)throw new Error("This invitation link is missing or invalid.");if(!navigator.mediaDevices?.getUserMedia)throw new Error("Open this link in an up-to-date browser over HTTPS.");status("Requesting microphone permission…");localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});const joined=await api("join");callId=joined.call.id;activeReported=false;pc=new RTCPeerConnection({iceServers:joined.ice_servers||[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],iceTransportPolicy:joined.ice_server_mode&&joined.ice_server_mode!=="stun-only"?"relay":"all"});localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));window.__serverGuestPeerConnection=pc;pc.ontrack=e=>{if(e.track.kind!=="audio")return;audioEl.srcObject=e.streams[0]||new MediaStream([e.track]);e.track.onunmute=()=>{remoteAudioReceived=true;maybeReportMediaReady();};audioEl.play().catch(()=>status("Tap the page once to allow audio playback."));};pc.onicecandidate=e=>{if(e.candidate)void sendSignal("ice",e.candidate.toJSON());};pc.onconnectionstatechange=()=>{if(pc?.connectionState==="connected"){iceConnected=true;status(remoteAudioReceived?"Connected. Two-way audio is ready.":"Network connected; waiting for remote audio…");maybeReportMediaReady();}if(pc?.connectionState==="disconnected"){iceConnected=false;status("Connection interrupted. Trying to recover…",true);}if(pc?.connectionState==="failed"){iceConnected=false;status("The network could not establish a peer connection. A TURN relay may be required on this network.",true);}};joinButton.classList.add("hidden");declineButton.classList.add("hidden");leaveButton.classList.remove("hidden");leaveButton.disabled=false;status("Waiting for the Server caller. Internet access is required.");leaving=false;void pollLoop();}catch(err){status(err.message||"Could not join this call.",true);localStream?.getTracks().forEach(t=>t.stop());localStream=null;joinButton.disabled=false;}});
 leaveButton.addEventListener("click",async()=>{leaveButton.disabled=true;status("Leaving call…");await cleanup(true);status("You left the call.");});
 if("serviceWorker" in navigator && location.protocol==="https:")navigator.serviceWorker.register("/server-guest-sw.js",{scope:"/"}).catch(()=>{});
 void loadInvitation();
