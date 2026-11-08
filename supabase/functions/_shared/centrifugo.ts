@@ -93,3 +93,19 @@ export async function publishRealtime(
 
 export const userRealtimeChannel = (userId: string) => "$server-user:" + userId;
 export const callRealtimeChannel = (callId: string) => "$server-call:" + callId;
+
+/** Keep best-effort realtime delivery out of the call-setup/ICE response path. */
+export function deferRealtime(task: Promise<unknown>): void {
+  try {
+    const runtime = (globalThis as unknown as {
+      EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void }
+    }).EdgeRuntime;
+    if (runtime?.waitUntil) {
+      runtime.waitUntil(task.catch(() => undefined));
+      return;
+    }
+  } catch {
+    // A local Deno test process may not expose the Supabase EdgeRuntime global.
+  }
+  void task.catch(() => undefined);
+}
