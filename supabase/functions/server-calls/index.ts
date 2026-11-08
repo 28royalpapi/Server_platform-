@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { callRealtimeChannel, deferRealtime, issueRealtimeToken, publishRealtime, userRealtimeChannel } from "../_shared/centrifugo.ts";
 
 const cors = {"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
 const out=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:cors});
@@ -215,6 +216,24 @@ Deno.serve(async(req:Request)=>{
  if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
+  if(action==="realtime_token"){
+   const requestedCallId=typeof b.call_id==="string"?b.call_id.trim():"";
+   const channels=[userRealtimeChannel(uid)];
+   if(requestedCallId){
+    const {data:member,error:memberError}=await db.from("server_call_members")
+     .select("call_id").eq("call_id",requestedCallId).eq("user_id",uid).maybeSingle();
+    if(memberError)return out({error:"CALL_ACCESS_LOOKUP_FAILED"},503);
+    if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
+    const {data:call,error:callError}=await db.from("server_calls")
+     .select("id,state").eq("id",requestedCallId).maybeSingle();
+    if(callError)return out({error:"CALL_LOOKUP_FAILED"},503);
+    if(!call||!["ringing","connecting","active"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
+    channels.push(callRealtimeChannel(requestedCallId));
+   }
+   const issued=await issueRealtimeToken(uid,channels,900);
+   if(!issued)return out({ok:true,realtime_available:false,reason:"CENTRIFUGO_NOT_CONFIGURED"});
+   return out({ok:true,realtime_available:true,url:issued.url,token:issued.token,expires_in:900,channels});
+  }
   if(action==="register_push_token"){
    const pushToken=typeof b.push_token==="string"?b.push_token.trim():"";
    const platform=typeof b.platform==="string"?b.platform:"";
@@ -428,6 +447,15 @@ Deno.serve(async(req:Request)=>{
    });
    if(ce||!created?.call)return out({error:"CALL_CREATE_FAILED"},503);
    const call=created.call;
+   if(route==="server"){
+    const callerLabel=profile.phone_verified_at&&profile.allow_number_based_server_calls===true
+     ?phone(profile.phone_e164)||"Private caller":"Private caller";
+    deferRealtime(publishRealtime(userRealtimeChannel(callee.user_id),{
+     type:"incoming_call",
+     call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,expires_at:call.expires_at},
+     caller:{label:callerLabel,server_id:profile.server_id}
+    },"incoming:"+call.id));
+   }
    const iceConfig=await iceServersForCall(call.id,callTtlSeconds);
    const callIceServers=iceConfig.ice_servers;
    // Call creation has already committed a durable PGMQ delivery job with
@@ -516,6 +544,10 @@ Deno.serve(async(req:Request)=>{
    });
    if(transitionError||!transition)return out({error:"CALL_TRANSITION_FAILED"},503);
    if(transition.error)return callTransitionFailure(transition);
+   deferRealtime(publishRealtime(callRealtimeChannel(callId),{
+    type:"call_state",call_id:callId,state:transition.state||transition.call?.state||"connecting",
+    action:transitionAction,seq:transition.seq||null
+   },callId+":"+transitionAction+":"+(transition.seq||"state")));
    if(transitionAction==="answer"){
     const expiresAt=Date.parse(transition.call?.expires_at||"");
     const ttl=Number.isFinite(expiresAt)?Math.max(300,Math.ceil((expiresAt-Date.now())/1000)):SERVER_CALL_TTL_SECONDS;
@@ -535,6 +567,10 @@ Deno.serve(async(req:Request)=>{
    });
    if(transitionError||!transition)return out({error:"SIGNAL_SAVE_FAILED"},503);
    if(transition.error)return callTransitionFailure(transition);
+   deferRealtime(publishRealtime(callRealtimeChannel(callId),{
+    type:"signal",call_id:callId,seq:transition.seq,kind,payload,
+    from_user_id:uid,created_at:transition.created_at,state:transition.state
+   },callId+":"+transition.seq));
    return out({ok:true,seq:transition.seq,created_at:transition.created_at,state:transition.state});
   }
   if(action==="ice_servers"){
