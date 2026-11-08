@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { callRealtimeChannel, deferRealtime, issueRealtimeToken, publishRealtime } from "../_shared/centrifugo.ts";
 const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,GET,OPTIONS","content-type":"application/json","cache-control":"no-store"};
 const out=(x:unknown,s=200)=>new Response(JSON.stringify(x),{status:s,headers:cors});
 const BASE_ICE_SERVERS = [
@@ -130,6 +131,15 @@ if(req.method==="GET"||action==="inspect"){
   caller_server_id:callerLabel,caller_label:callerLabel,caller_phone:mayShowPhone?caller.phone_e164:null,
   call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
 }
+if(action==="realtime_token"){
+ if(!invite.joined_at)return out({error:"GUEST_JOIN_REQUIRED"},403);
+ const {call,error:callError}=await loadGuestCall();
+ if(callError)return out({error:"CALL_LOOKUP_FAILED"},503);
+ if(!call||!["connecting","active"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
+ const issued=await issueRealtimeToken("guest:"+invite.id,[callRealtimeChannel(invite.call_id)],900);
+ if(!issued)return out({ok:true,realtime_available:false,reason:"CENTRIFUGO_NOT_CONFIGURED"});
+ return out({ok:true,realtime_available:true,url:issued.url,token:issued.token,expires_in:900});
+}
 if(action==="decline"||action==="join"){
  const {data:transition,error:transitionError}=await db.rpc("server_guest_transition_atomic",{
   p_invite_id:invite.id,p_action:action,p_kind:null,p_payload:{}
@@ -139,6 +149,9 @@ if(action==="decline"||action==="join"){
  if(action==="decline")return out({ok:true,state:transition.state,seq:transition.seq});
  const call=transition.call;
  if(!call?.id||!call.expires_at)return out({error:"CALL_TRANSITION_RESPONSE_INVALID"},503);
+ deferRealtime(publishRealtime(callRealtimeChannel(call.id),{
+  type:"call_state",call_id:call.id,state:"connecting",action:"guest_join"
+ },"guest-join:"+invite.id));
  const remaining=Math.max(300,Math.ceil((Date.parse(call.expires_at)-Date.now())/1000));
  const iceConfig=await iceServersForCall(invite.id,remaining);
  return out({ok:true,invite_id:invite.id,call,ice_servers:iceConfig.ice_servers,
@@ -167,6 +180,11 @@ if(action==="signal"||action==="leave"){
  });
  if(transitionError||!transition)return out({error:"SIGNAL_SAVE_FAILED"},503);
  if(transition.error)return transitionFailure(transition);
+ deferRealtime(publishRealtime(callRealtimeChannel(invite.call_id),{
+  type:kind==="hangup"?"call_state":"signal",
+  call_id:invite.call_id,seq:transition.seq,kind,payload,
+  from_guest_invite_id:invite.id,created_at:transition.created_at,state:transition.state
+ },invite.call_id+":"+transition.seq));
  return out({ok:true,seq:transition.seq,created_at:transition.created_at,state:transition.state});
 }
 return out({error:"UNKNOWN_ACTION"},400);
