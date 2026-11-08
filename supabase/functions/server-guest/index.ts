@@ -91,7 +91,7 @@ function transitionFailure(transition:any){
  const code=String(transition?.error||"CALL_TRANSITION_FAILED");
  const status=code==="GUEST_INVITE_EXPIRED_OR_INVALID"?401:code==="CALL_NOT_FOUND"?404:
   code==="JOIN_REQUIRED"?403:code==="INVALID_SIGNAL"||code==="INVALID_GUEST_TRANSITION"?400:
-  code==="PAYLOAD_TOO_LARGE"?413:code==="CALL_NOT_ANSWERABLE"?409:503;
+  code==="PAYLOAD_TOO_LARGE"?413:code==="CALL_NOT_ANSWERABLE"||code==="GUEST_ALREADY_JOINED"?409:503;
  return out({error:code,...(transition?.state?{state:transition.state}:{})},status);
 }
 

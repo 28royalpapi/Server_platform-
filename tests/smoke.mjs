@@ -18,6 +18,7 @@ const presenceMigration=read("supabase/migrations/20261105124000_server_recipien
 const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push_devices_custom_identity_fk.sql");
 const offlineMissedCallMigration=read("supabase/migrations/20261105131000_server_offline_missed_call_inbox.sql");
 const callStateTransitionMigration=read("supabase/migrations/20261108110000_server_atomic_call_state_transitions.sql");
+const guestSingleClaimMigration=read("supabase/migrations/20261108152000_server_guest_single_claim.sql");
 const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
 const keepAliveMigration=read("supabase/migrations/20261108142000_server_keepalive_probe.sql");
 const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
@@ -940,6 +941,12 @@ assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
 assert.match(calls,/server_create_missed_call_atomic/);
 assert.match(callStateTransitionMigration,/server_guest_transition_atomic/);
 assert.match(callStateTransitionMigration,/server_call_transition_atomic/);
+assert.match(guestSingleClaimMigration,/v_invite\.joined_at is not null/);
+assert.match(guestSingleClaimMigration,/GUEST_ALREADY_JOINED/);
+assert.match(guest,/GUEST_ALREADY_JOINED/);
+assert.match(guestWeb,/details\.joined===true/);
+assert.match(liveGuestTransitionContract,/one-time guest join claim serialized/);
+
 assert.ok(activeRenegotiationMigration.includes("and v_call.state in ('ringing','connecting')"),
   "atomic transitions preserve the locked call row if offer/answer signalling arrives after ACTIVE");
 assert.match(guestPreview,/GUEST_PREVIEW_INVITE_LOOKUP_FAILED/);

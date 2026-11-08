@@ -130,9 +130,24 @@ try {
   assert.equal(initial.caller_label, "Private caller");
   pass("guest invite inspection and private caller identity");
 
-  const joined = await guest(token, "join");
+  const joinAttempts = await Promise.allSettled([
+    guest(token, "join"),
+    guest(token, "join")
+  ]);
+  const successfulJoins = joinAttempts.filter(result => result.status === "fulfilled");
+  const rejectedJoins = joinAttempts.filter(result => result.status === "rejected");
+  assert.equal(successfulJoins.length, 1, "only one browser session may claim a guest invitation");
+  assert.equal(rejectedJoins.length, 1);
+  assert.match(String(rejectedJoins[0].reason?.message || ""), /HTTP 409.*GUEST_ALREADY_JOINED/);
+  const joined = successfulJoins[0].value;
   assert.equal(joined.ok, true);
   assert.equal(joined.call?.state, "connecting");
+  const claimed = await inspect(token);
+  assert.equal(claimed.joined, true);
+  pass("one-time guest join claim serialized", "one browser joins; the competing session receives HTTP 409");
+  await assert.rejects(() => guest(token, "decline"), /HTTP 409.*GUEST_ALREADY_JOINED/,
+    "a second browser must not decline an invitation after it has been answered");
+  pass("answered invitation protected from remote decline");
   assert.ok(Array.isArray(joined.ice_servers) && joined.ice_servers.length > 0);
   assert.ok(["cloudflare-turn", "coturn-turn", "stun-only"].includes(joined.ice_server_mode));
   const hasTurn = joined.ice_servers.some(row => {
