@@ -839,6 +839,12 @@ assert.doesNotMatch(androidMain,/30_000/,"Android does not end guest or Server c
 assert.match(androidCarrierDialer,/TelecomManager\.EXTRA_PHONE_ACCOUNT_HANDLE/,
   "the saved SIM is preselected through Android's documented dialler account extra when still active");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
+assert.match(iosModel,/import PhoneNumberKit/,"iOS uses maintained global numbering metadata instead of country-specific digit heuristics");
+assert.match(iosModel,/PhoneNumberUtility\(\)/,"iOS reuses one parsed numbering metadata utility");
+assert.match(iosModel,/Locale\.current\.region\?\.identifier/,"iOS national-format numbers use the actual device region and fail closed when it is unavailable");
+assert.match(iosModel,/phoneNumberUtility\.format\(parsed, toType: \.e164\)/,"iOS sends canonical E.164 destinations to the global call backend");
+assert.doesNotMatch(iosModel,/digits\.count == 11 && digits\.hasPrefix\("0"\) \{ candidate = "\\+234"/,"iOS no longer hardcodes Nigerian national-number lengths or prefixes");
+
 assert.match(androidMain,/deliveryMode == "manual_share"/);
 assert.match(androidMain,/api\("availability"/,"Android checks recipient availability before the caller presses Call");
 assert.match(androidFirebase,/if \(!ServerCallNotifications\.canPostNotifications\(context\)\)/,

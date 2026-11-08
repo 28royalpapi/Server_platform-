@@ -6,6 +6,7 @@ import PushKit
 import Security
 import SwiftUI
 import WebRTC
+import PhoneNumberKit
 
 private enum ServerBuildConfig {
     static let url = Bundle.main.object(forInfoDictionaryKey: "SERVER_SUPABASE_URL") as? String ?? "https://YOUR_PROJECT_REF.supabase.co"
@@ -19,6 +20,7 @@ struct IncomingCall: Identifiable {
 
 @MainActor
 final class ServerViewModel: ObservableObject {
+    private let phoneNumberUtility = PhoneNumberUtility()
     @Published var phone = ""
     @Published var acceptedTerms = false
     @Published var serverID = UserDefaults.standard.string(forKey: "server.server_id") ?? ""
@@ -205,7 +207,7 @@ final class ServerViewModel: ObservableObject {
             return
         }
         guard let clean = normalizePhoneForServer(phoneLinkPhone) else {
-            phoneLinkStatus = "Enter a valid number, e.g. +2348012345678 or 08012345678."
+            phoneLinkStatus = "Enter an international number (for example +2348012345678 or +919876543210), or a local number for your iPhone's region."
             isError = true
             return
         }
@@ -239,7 +241,7 @@ final class ServerViewModel: ObservableObject {
             return
         }
         guard let clean = normalizePhoneForServer(phoneLinkPhone) else {
-            phoneLinkStatus = "Enter a valid number in international format."
+            phoneLinkStatus = "Enter a valid international number or a local number for your iPhone's region."
             isError = true
             return
         }
@@ -369,15 +371,28 @@ final class ServerViewModel: ObservableObject {
 
     private func normalizePhoneForServer(_ raw: String) -> String? {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let digits = value.filter { $0.isNumber }
-        let candidate: String
-        if value.hasPrefix("+") { candidate = "+" + digits }
-        else if value.hasPrefix("00") { candidate = "+" + String(digits.dropFirst(2)) }
-        else if digits.hasPrefix("234") && digits.count == 13 { candidate = "+" + digits }
-        else if digits.count == 11 && digits.hasPrefix("0") { candidate = "+234" + String(digits.dropFirst()) }
-        else if digits.count == 10, let first = digits.first, ["7", "8", "9"].contains(String(first)) { candidate = "+234" + digits }
-        else { return nil }
-        return candidate.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? candidate : nil
+        guard !value.isEmpty, value.count <= 250 else { return nil }
+
+        do {
+            let parsed: PhoneNumber
+            if value.hasPrefix("+") {
+                // E.164/international input is independent of the caller's country.
+                parsed = try phoneNumberUtility.parse(value)
+            } else {
+                // National-format input is meaningful only with a real device locale.
+                // Never silently interpret an unknown region as Nigeria.
+                guard let region = Locale.current.region?.identifier,
+                      region.range(of: #"^[A-Za-z]{2}$"#, options: .regularExpression) != nil
+                else { return nil }
+                parsed = try phoneNumberUtility.parse(value, withRegion: region.uppercased(), ignoreType: true)
+            }
+
+            let e164 = phoneNumberUtility.format(parsed, toType: .e164)
+            return e164.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil
+                ? e164 : nil
+        } catch {
+            return nil
+        }
     }
 
     func startCall() async {
@@ -388,7 +403,7 @@ final class ServerViewModel: ObservableObject {
         let payload: [String: Any]
         if isServerID { payload = ["to_server_id": typedServerID] }
         else if let normalizedPhone { payload = ["to_phone": normalizedPhone] }
-        else { update("Enter a Server ID or a valid number, e.g. 08012345678 or +2348012345678.", error: true); return }
+        else { update("Enter a Server ID or an international number (+country code), or a local number for your iPhone's region.", error: true); return }
         guestInviteMessage = ""
         isBusy = true; defer { isBusy = false }
         do {
