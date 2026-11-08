@@ -2,6 +2,9 @@ package com.server.caller
 
 import android.util.Log
 import io.github.centrifugal.centrifuge.Client
+import io.github.centrifugal.centrifuge.ConnectionTokenEvent
+import io.github.centrifugal.centrifuge.ConnectionTokenGetter
+import io.github.centrifugal.centrifuge.TokenCallback
 import io.github.centrifugal.centrifuge.ConnectedEvent
 import io.github.centrifugal.centrifuge.DisconnectedEvent
 import io.github.centrifugal.centrifuge.ErrorEvent
@@ -22,7 +25,8 @@ internal class ServerRealtimeClient(
   endpoint: String,
   token: String,
   private val onPublication: (JSONObject) -> Unit,
-  private val onConnectionChanged: (Boolean) -> Unit
+  private val onConnectionChanged: (Boolean) -> Unit,
+  private val fetchFreshToken: () -> String
 ) {
   private val client: Client
 
@@ -37,6 +41,15 @@ internal class ServerRealtimeClient(
       setTimeout(8_000)
       setMinReconnectDelay(500)
       setMaxReconnectDelay(15_000)
+      setTokenGetter(object : ConnectionTokenGetter() {
+        override fun getConnectionToken(event: ConnectionTokenEvent, cb: TokenCallback) {
+          try {
+            cb.Done(null, fetchFreshToken())
+          } catch (error: Exception) {
+            cb.Done(error, "")
+          }
+        }
+      })
     }
     client = Client(endpoint, options, object : EventListener() {
       override fun onConnected(client: Client, event: ConnectedEvent) {
