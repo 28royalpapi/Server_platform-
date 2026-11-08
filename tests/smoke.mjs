@@ -927,7 +927,7 @@ assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
 assert.match(calls,/server_create_missed_call_atomic/);
 assert.match(callStateTransitionMigration,/server_guest_transition_atomic/);
 assert.match(callStateTransitionMigration,/server_call_transition_atomic/);
-assert.match(activeRenegotiationMigration,/v_call\\.state in \\('ringing','connecting'\\)/,
+assert.ok(activeRenegotiationMigration.includes("and v_call.state in ('ringing','connecting')"),
   "atomic transitions preserve the locked call row if offer/answer signalling arrives after ACTIVE");
 assert.match(guestPreview,/GUEST_PREVIEW_INVITE_LOOKUP_FAILED/);
 assert.match(guestPreview,/GUEST_PREVIEW_CALL_LOOKUP_FAILED/);
