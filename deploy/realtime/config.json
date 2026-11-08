@@ -13,5 +13,17 @@
     "redis": {
       "address": "redis:6379"
     }
+  },
+  "channel": {
+    "namespaces": [
+      {
+        "name": "server-user",
+        "publication_data_format": "json_object"
+      },
+      {
+        "name": "server-call",
+        "publication_data_format": "json_object"
+      }
+    ]
   }
 }
