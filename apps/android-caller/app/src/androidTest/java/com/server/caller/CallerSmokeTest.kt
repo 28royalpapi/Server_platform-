@@ -1108,11 +1108,21 @@ class CallerSmokeTest {
           Thread.sleep(200)
         }
         val receivedPackets = prefs.getLong("debug_last_inbound_audio_rtp_packets", 0L)
+        val sentPackets = prefs.getLong("debug_last_outbound_audio_rtp_packets", 0L)
+        val inboundEnergy = prefs.getString("debug_last_inbound_audio_rtp_energy", "0")?.toDoubleOrNull() ?: 0.0
+        val outboundEnergy = prefs.getString("debug_last_outbound_audio_rtp_energy", "0")?.toDoubleOrNull() ?: 0.0
         val mediaFailure = prefs.getString("debug_last_call_failure", null).orEmpty()
-        assertEquals("The Android native WebRTC engine must receive guest audio RTP and mark the call active (failure=" +
-          mediaFailure + "; packets=" + receivedPackets + ")", "two_way_audio_media_ready", stage)
+        assertEquals("Android must verify inbound and outbound RTP plus non-zero audio energy (failure=" +
+          mediaFailure + "; rx=" + receivedPackets + "; tx=" + sentPackets +
+          "; rxEnergy=" + inboundEnergy + "; txEnergy=" + outboundEnergy + ")",
+          "two_way_audio_media_ready", stage)
         assertTrue("Android did not receive guest audio RTP packets", receivedPackets > 0L)
-        Log.i("ServerGuestE2E", "SERVER_GUEST_ANDROID_AUDIO_PASS: Android Telecom received inbound audio RTP packets=" + receivedPackets + ".")
+        assertTrue("Android did not send microphone RTP packets", sentPackets > 0L)
+        assertTrue("Android received no non-zero audio energy", inboundEnergy > 0.0)
+        assertTrue("Android sent no non-zero microphone audio energy", outboundEnergy > 0.0)
+        Log.i("ServerGuestE2E", "SERVER_GUEST_ANDROID_AUDIO_PASS: inbound=" + receivedPackets +
+          " outbound=" + sentPackets + " inboundEnergy=" + inboundEnergy +
+          " outboundEnergy=" + outboundEnergy + ".")
 
         val hangupDeadline = System.currentTimeMillis() + 60_000
         while (System.currentTimeMillis() < hangupDeadline &&
