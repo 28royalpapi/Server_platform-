@@ -421,7 +421,7 @@ assert.ok(nativeWorkflow.includes("explicitInternationalNumbersAndCallerRegionFa
 assert.ok(!nativeWorkflow.includes("internationalContactNumbersUseTheCallerCountryOrExplicitDestinationCode"), "no Android CI job selects the removed first-block test");
 assert.ok(nativeWorkflow.includes("if: github.head_ref != 'android-finish' && github.ref != 'refs/heads/android-finish'"), "the Android work branch does not run iOS CI");
 assert.ok(androidVersionMatrix.includes("channel: stable"), "stable Android 10–16 matrix uses released SDK images");
-assert.ok(androidVersionMatrix.includes("disk-size: 6G"), "stable Android emulator jobs use a 6 GB userdata partition");
+assert.ok(androidVersionMatrix.includes("disk-size: 8G"), "stable Android emulator jobs use an 8 GB userdata partition for system and test app headroom");
 assert.ok(!nativeWorkflow.includes("android-16-stable-compatibility-smoke"), "Android 16 is tested once in the unified version matrix");
 assert.ok(androidTests.includes("Manifest.permission.READ_CONTACTS"), "the Telecom instrumentation test grants Contacts access before testing national-format dialer destinations");
 assert.ok(androidPhoneNormalizer.includes('private val E164 = Regex("^\\\\+[1-9][0-9]{1,14}$")'), "global E.164 parsing accepts short valid international numbers after libphonenumber validates them");
