@@ -468,7 +468,7 @@ jobs:
       - name: Prepare macOS Android emulator tools
         shell: bash
         run: |
-          brew install coreutils
+          brew install coreutils llvm
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
           echo "RUNNER_ARCH=$(uname -m)"
           test "$(uname -m)" = "arm64"
@@ -482,14 +482,15 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android 17 SDK components
         run: |
-          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools' 'ndk;30.0.16248370'
-          LLVM_READELF="$(find "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt" -type f -name llvm-readelf -print -quit)"
-          if [[ -z "$LLVM_READELF" || ! -x "$LLVM_READELF" ]]; then
-            echo "ERROR: Android NDK did not provide a runnable llvm-readelf for this macOS ARM runner." >&2
-            find "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt" -maxdepth 3 -type f -name '*readelf*' -print >&2 || true
+          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools'
+          LLVM_READELF="$(brew --prefix llvm)/bin/llvm-readelf"
+          if [[ ! -x "$LLVM_READELF" ]]; then
+            echo "ERROR: Homebrew LLVM did not provide a native ARM64 llvm-readelf." >&2
+            brew --prefix llvm >&2 || true
+            find "$(brew --prefix llvm)" -name '*readelf*' -print >&2 || true
             exit 1
           fi
-          echo "NDK_LLVM_READELF=$LLVM_READELF"
+          echo "LLVM_READELF=$LLVM_READELF"
           echo "$(dirname "$LLVM_READELF")" >> "$GITHUB_PATH"
       - name: Preinstall Android 17 16 KB system image with integrity retries
         run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;arm64-v8a'

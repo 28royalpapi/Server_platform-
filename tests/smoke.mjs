@@ -1000,16 +1000,16 @@ assert.ok(android17InstallScript.includes("app_compat.enabled fatal") && android
   "Android 17 tests disable the 16 KB back-compat fallback and fail immediately on incompatible ELF binaries");
 assert.ok(android17Preview.includes("runs-on: macos-15") && android17Preview.includes("system-images;android-37.0;google_apis_ps16k;arm64-v8a") && android17Preview.includes("arch: arm64-v8a"),
   "Android 17 has a native ARM64 16 KB emulator job, not only an x86_64 simulation");
-assert.ok(android17Preview.includes("ndk;30.0.16248370") && elfAlignmentScript.includes("llvm-readelf"),
-  "the Apple Silicon Android 17 job includes an ARM64 ELF reader to validate native library alignment");
+assert.ok(android17Preview.includes("brew install coreutils llvm") && android17Preview.includes("brew --prefix llvm") && elfAlignmentScript.includes("llvm-readelf"),
+  "the Apple Silicon Android 17 job uses native Homebrew LLVM tools to validate native library alignment");
 assert.ok(android17InstallScript.includes("ANDROID17_DATA_AVAILABLE_KB") && android17InstallScript.includes("1048576"),
   "Android 17 installation fails early when the emulator data partition has less than 1 GiB free");
 assert.ok(elfAlignmentScript.includes("PT_LOAD") && elfAlignmentScript.includes("0x4000"),
   "real-device ARM64 packages receive a native ELF PT_LOAD 16 KB alignment check");
 assert.ok(nativeWorkflow.includes("check-16kb-elf-alignment.py arm64-v8a"),
   "CI validates both physical ARM64 debug and release package native libraries");
-assert.ok(android17Preview.includes("ram-size: 6144M"),
-  "Android 17 runs with extra memory headroom for the preview system image");
+assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.includes("disk-size: 8G"),
+  "Android 17 ARM64 preview reserves 4 GB guest RAM and an 8 GB userdata disk on Apple Silicon");
 console.log("Server backend/web contract checks: PASS");
 console.log("Checks include hybrid WebRTC/SIM fallback, SIM metadata minimisation, recipient reachability, previewable guest calls, device permissions and public-key hygiene.");
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");
