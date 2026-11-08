@@ -418,6 +418,66 @@ jobs:
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
+  android-8-1-api27-compatibility:
+    name: Android 8.1 API 27 Telecom compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable Linux KVM access for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 8.1 SDK and x86 Google APIs image
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          bash scripts/install-android-system-image.sh 'system-images;android-27;google_apis;x86'
+      - name: Build caller and instrumentation tests for Android 8.1
+        run: gradle -p apps/android-caller assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
+      - name: Run Android 8.1 Telecom and onboarding acceptance
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 27
+          target: google_apis
+          arch: x86
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 480
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            sh scripts/wait-for-android-package-manager.sh
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsHybridOnboardingWithFallbackSimChoice
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata
+            python3 scripts/assert-android-test-count.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-8-1-api27-acceptance-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
+
   android-10-to-16-platform-matrix:
     name: Android API ${{ matrix.api-level }} calling-account compatibility
     env:
@@ -683,6 +743,7 @@ jobs:
     needs:
       - android-build-and-emulator-smoke
       - android-8-minimum-install-smoke
+      - android-8-1-api27-compatibility
       - android-10-to-16-platform-matrix
       - android-guest-browser-e2e
     runs-on: ubuntu-latest
