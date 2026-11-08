@@ -69,7 +69,9 @@ const callerIdentity = titleMatch[1].replace(/ is calling you through Server$/, 
 if (!callerIdentity || !previewHtml.includes("og:image:alt")) {
   throw new Error("The Open Graph card did not identify the caller.");
 }
-const imageUrl = new URL(imageMatch[1], invitationUrl).toString();
+// Open Graph HTML attributes escape query-string separators as &amp;.
+const imageHref = imageMatch[1].replace(/&amp;/g, "&");
+const imageUrl = new URL(imageHref, invitationUrl).toString();
 const imageResponse = await context.request.get(imageUrl);
 if (!imageResponse.ok()) throw new Error("Caller-specific preview image returned HTTP " + imageResponse.status());
 if (!String(imageResponse.headers()["content-type"] || "").toLowerCase().includes("image/png")) {
