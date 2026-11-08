@@ -56,7 +56,7 @@ const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const guestBrowserE2eShell=read("scripts/android-guest-browser-e2e.sh");
 const guestBrowserE2e=read("scripts/android-guest-browser-e2e.mjs");
 const e2eIdentityScript=read("scripts/create-server-e2e-identity.mjs");
-const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
+const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
 const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
 const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
 const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
@@ -428,7 +428,7 @@ assert.match(nativeWorkflow,/api-level:\s*\[27,\s*28,\s*29,\s*30,\s*31,\s*32,\s*
 assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
 const androidBuildJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:"));
 const androidGuestJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-guest-browser-e2e:"),nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"));
-const androidMinimumJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"),nativeWorkflow.indexOf("  android-8-to-16-platform-matrix:"));
+const androidMinimumJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"),nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"));
 assert.ok(androidBuildJob.includes("runs-on: ubuntu-24.04") &&
   androidGuestJob.includes("runs-on: ubuntu-24.04") &&
   androidMinimumJob.includes("runs-on: ubuntu-24.04") &&
