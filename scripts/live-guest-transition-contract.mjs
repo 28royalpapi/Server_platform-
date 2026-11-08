@@ -33,8 +33,11 @@ async function request(functionName, body, { token = accessToken, timeout = 1500
   let data = {};
   try { data = JSON.parse(text); } catch {}
   if (!response.ok) {
-    throw new Error(functionName + " returned HTTP " + response.status + " (" +
+    const error = new Error(functionName + " returned HTTP " + response.status + " (" +
       String(data.error || text.slice(0, 120)) + ")");
+    error.status = response.status;
+    error.code = data.error || "HTTP_ERROR";
+    throw error;
   }
   return data;
 }
@@ -194,6 +197,25 @@ try {
   assert.equal(declinedForCaller.call?.state, "ended");
   assert.ok((declinedForCaller.signals || []).some(row => row.kind === "hangup"));
   pass("guest decline and caller notification through persisted hangup signal");
+
+  // Race two terminal requests against the same invitation. Row locking must
+  // allow one state-changing decline and persist exactly one signalling row.
+  const raced = await startGuestCall();
+  const outcomes = await Promise.allSettled([
+    guest(raced.token, "decline"),
+    guest(raced.token, "decline")
+  ]);
+  const fulfilled = outcomes.filter(result => result.status === "fulfilled");
+  const rejected = outcomes.filter(result => result.status === "rejected");
+  assert.equal(fulfilled.length, 1, "exactly one concurrent decline should transition the call");
+  assert.equal(rejected.length, 1, "the racing decline must observe the already-ended state");
+  assert.equal(rejected[0].reason.status, 409, "the losing decline must return HTTP 409, not a server error");
+  const racedForCaller = await callerPoll(raced.created.call_id, 0);
+  assert.equal(racedForCaller.call?.state, "ended");
+  const declinedSignals = (racedForCaller.signals || []).filter(row =>
+    row.kind === "hangup" && row.payload?.reason === "declined");
+  assert.equal(declinedSignals.length, 1, "exactly one decline signal must be persisted");
+  pass("concurrent decline serialization", "one success, one HTTP 409, exactly one hang-up signal");
 
   process.stdout.write("\nLive guest transition integration: " + checks + "/" + checks + " checks passed.\n");
 } finally {
