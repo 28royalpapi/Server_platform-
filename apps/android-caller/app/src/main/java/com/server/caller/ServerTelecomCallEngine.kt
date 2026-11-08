@@ -528,7 +528,7 @@ internal class ServerTelecomCallEngine(
     inboundAudioRtpPacketsReceived = maxOf(inboundAudioRtpPacketsReceived, evidence.inboundPackets)
     outboundAudioRtpPacketsSent = maxOf(outboundAudioRtpPacketsSent, evidence.outboundPackets)
     inboundAudioRtpEnergy = maxOf(inboundAudioRtpEnergy, evidence.inboundEnergy)
-    outboundAudioRtpEnergy = maxOf(outboundAudioRtpEnergy, evidence.outboundSourceEnergy)
+    outboundAudioRtpEnergy = maxOf(outboundAudioRtpEnergy, evidence.outboundEnergy)
     if (BuildConfig.DEBUG) {
       prefs.edit()
         .putLong("debug_last_inbound_audio_rtp_packets", inboundAudioRtpPacketsReceived)
