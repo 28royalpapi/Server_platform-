@@ -929,7 +929,7 @@ assert.match(callStateTransitionMigration,/server_call_transition_atomic/);
 assert.match(liveGuestTransitionContract,/"join"/);
 assert.match(liveGuestTransitionContract,/og:title/);
 assert.match(liveGuestTransitionContract,/Caller=PRIVATE CALLER/);
-assert.match(liveGuestTransitionContract,/server-terms-1\\.0/);
+assert.ok(liveGuestTransitionContract.includes("server-terms-1.0"));
 assert.doesNotMatch(liveGuestTransitionContract,/request_otp|verify_otp|server-send-sms/,
   "the live guest lifecycle test must never queue SMS or contact a real carrier number");
 
