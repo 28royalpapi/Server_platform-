@@ -60,8 +60,11 @@ jobs:
       - name: Prepare macOS Android emulator tools
         shell: bash
         run: |
-          brew install coreutils
+          brew install coreutils llvm
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          # The native ARM64 ELF checker also runs in this x86_64 packaging job.
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          command -v llvm-readelf
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -394,6 +397,8 @@ jobs:
       SERVER_DEBUG_ABI_FILTERS: x86_64
     strategy:
       fail-fast: false
+      # Avoid booting eight memory-heavy AVDs at once on the hosted macOS pool.
+      max-parallel: 2
       matrix:
         api-level: [29, 30, 31, 32, 33, 34, 35, 36]
     runs-on: macos-15-intel
@@ -415,6 +420,8 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK components for API ${{ matrix.api-level }} test
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Preinstall the selected API emulator image with integrity retries
+        run: bash scripts/install-android-system-image.sh 'system-images;android-${{ matrix.api-level }};google_apis;x86_64'
       - name: Confirm native macOS emulator acceleration
         run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
       - name: Build caller and Android instrumentation tests
@@ -428,7 +435,7 @@ jobs:
           system-image-api-level: ${{ matrix.api-level }}
           channel: stable
           target: google_apis
-          disk-size: 6G
+          disk-size: 8G
           arch: x86_64
           profile: pixel_2
           cores: 2
@@ -436,7 +443,7 @@ jobs:
           # exceeded the 3 GB emulator profile in a prior run (the instrumentation
           # process was SIGKILLed). Give API 34 extra headroom; other APIs retain 3 GB.
           ram-size: ${{ matrix.api-level == 34 && '4096M' || '3072M' }}
-          emulator-boot-timeout: 360
+          emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           script: |

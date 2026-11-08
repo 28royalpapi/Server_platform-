@@ -403,6 +403,13 @@ assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emula
   "the primary Android emulator job uses native macOS virtualization");
 assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("runs-on: macos-15-intel"),
   "the Android 29–36 API matrix uses native macOS virtualization");
+assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:")).includes("brew install coreutils llvm") &&
+  nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:")).includes('brew --prefix llvm'),
+  "the primary ARM64 ELF validation job installs and exposes a native readelf tool");
+assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("max-parallel: 2") &&
+  nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("install-android-system-image.sh") &&
+  nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"),nativeWorkflow.indexOf("  android-17-preview-compatibility:")).includes("emulator-boot-timeout: 600"),
+  "the Android API matrix installs verified system images and limits simultaneous emulator pressure");
 assert.ok(nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"),nativeWorkflow.indexOf("  ios-simulator-build-and-preview:")).includes("runs-on: macos-15"),
   "Android 17 16 KB acceptance uses a native Apple Silicon macOS runner for the ARM64 emulator");
 assert.doesNotMatch(nativeWorkflow,/ERROR: this runner does not expose \/dev\/kvm/,
