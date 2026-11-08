@@ -5,6 +5,14 @@ const out=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,h
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 const phone=(v:unknown)=>typeof v==="string"&&/^\+[1-9][0-9]{7,14}$/.test(v.trim())?v.trim():null;
 const allowed=new Set(["offer","answer","ice","hangup","state"]);
+function callTransitionFailure(transition:any){
+ const code=String(transition?.error||"CALL_TRANSITION_FAILED");
+ const status=code==="CALL_ACCESS_DENIED"?403:code==="CALL_NOT_FOUND"?404:
+  code==="CALL_NOT_ANSWERABLE"?409:code==="INVALID_SIGNAL"||code==="INVALID_CALL_TRANSITION"?400:
+  code==="PAYLOAD_TOO_LARGE"?413:503;
+ return out({error:code,...(transition?.state?{state:transition.state}:{})},status);
+}
+
 
 const SERVER_CALL_TTL_SECONDS = 180;
 const GUEST_CALL_TTL_SECONDS = 20 * 60;
@@ -463,8 +471,9 @@ Deno.serve(async(req:Request)=>{
    const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).or("state.eq.missed,expires_at.gt."+new Date().toISOString()).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
-   const {data:profiles}=ids.length?await db.from("server_profiles")
-     .select("user_id,phone_e164,phone_verified_at,allow_number_based_server_calls,server_id").in("user_id",ids):{data:[]};
+   const {data:profiles,error:profilesError}=ids.length?await db.from("server_profiles")
+     .select("user_id,phone_e164,phone_verified_at,allow_number_based_server_calls,server_id").in("user_id",ids):{data:[],error:null};
+   if(profilesError)return out({error:"CALLER_PROFILE_LOOKUP_FAILED"},503);
    const rows=new Map((profiles||[]).map((p:any)=>[p.user_id,p]));
    return out({calls:(incoming||[]).map((c:any)=>{
     const caller:any=rows.get(c.caller_user_id)||{};
@@ -477,7 +486,8 @@ Deno.serve(async(req:Request)=>{
   if(action==="poll"){
    const callId=typeof b.call_id==="string"?b.call_id:"";
    if(callId){
-    const {data:member}=await db.from("server_call_members").select("call_id").eq("call_id",callId).eq("user_id",uid).maybeSingle();
+    const {data:member,error:memberError}=await db.from("server_call_members").select("call_id").eq("call_id",callId).eq("user_id",uid).maybeSingle();
+    if(memberError)return out({error:"CALL_ACCESS_LOOKUP_FAILED"},503);
     if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
    }
    let q=db.from("server_calls").select("id,state,route,created_at,updated_at,expires_at").or("caller_user_id.eq."+uid+",callee_user_id.eq."+uid).order("created_at",{ascending:false}).limit(30);
@@ -497,39 +507,50 @@ Deno.serve(async(req:Request)=>{
    return out({calls:calls||[],call,signals,next_after_seq:nextAfterSeq});
   }
   if(action==="answer"||action==="accept"||action==="hangup"||action==="end"||action==="set_active"){
-   const callId=typeof b.call_id==="string"?b.call_id:"";if(!callId)return out({error:"CALL_ID_REQUIRED"},400);
-   const {data:member}=await db.from("server_call_members").select("member_role").eq("call_id",callId).eq("user_id",uid).maybeSingle();
-   if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
-   const now=new Date().toISOString();
-   if(action==="answer"||action==="accept"){
-    const {data:call}=await db.from("server_calls").select("id,state,callee_user_id,expires_at").eq("id",callId).maybeSingle();
-    if(!call||call.callee_user_id!==uid||!["ringing","connecting"].includes(call.state)||(call.expires_at&&Date.parse(call.expires_at)<=Date.now()))return out({error:"CALL_NOT_ANSWERABLE"},409);
-    await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",callId);
-    await db.from("server_call_members").update({joined_at:now}).eq("call_id",callId).eq("user_id",uid);
-    const iceConfig=await iceServersForCall(callId,SERVER_CALL_TTL_SECONDS);
+   const callId=typeof b.call_id==="string"?b.call_id:"";
+   if(!callId)return out({error:"CALL_ID_REQUIRED"},400);
+   const transitionAction=(action==="answer"||action==="accept")?"answer":
+    (action==="set_active"?"set_active":"end");
+   const {data:transition,error:transitionError}=await db.rpc("server_call_transition_atomic",{
+    p_call_id:callId,p_user_id:uid,p_action:transitionAction,p_kind:null,p_payload:{}
+   });
+   if(transitionError||!transition)return out({error:"CALL_TRANSITION_FAILED"},503);
+   if(transition.error)return callTransitionFailure(transition);
+   if(transitionAction==="answer"){
+    const expiresAt=Date.parse(transition.call?.expires_at||"");
+    const ttl=Number.isFinite(expiresAt)?Math.max(300,Math.ceil((expiresAt-Date.now())/1000)):SERVER_CALL_TTL_SECONDS;
+    const iceConfig=await iceServersForCall(callId,ttl);
     return out({ok:true,state:"connecting",ice_servers:iceConfig.ice_servers,ice_server_mode:iceConfig.ice_server_mode});
    }
-   if(action==="set_active"){
-    const {error}=await db.from("server_calls").update({state:"active",updated_at:now}).eq("id",callId).in("state",["ringing","connecting"]);
-    if(error)return out({error:"CALL_STATE_UPDATE_FAILED"},503);return out({ok:true,state:"active"});
-   }
-   await db.from("server_call_signals").insert({call_id:callId,from_user_id:uid,kind:"hangup",payload:{}});
-   const {error}=await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",callId);
-   if(error)return out({error:"CALL_END_FAILED"},503);
-   await db.from("server_call_members").update({left_at:now}).eq("call_id",callId).eq("user_id",uid);return out({ok:true,state:"ended"});
+   return out({ok:true,state:transition.state,seq:transition.seq,already_ended:transition.already_ended===true});
   }
   if(action==="signal"){
-   const callId=typeof b.call_id==="string"?b.call_id:"",kind=typeof b.kind==="string"?b.kind:"",payload=b.payload&&typeof b.payload==="object"&&!Array.isArray(b.payload)?b.payload:{};
-   if(!callId||!allowed.has(kind)||JSON.stringify(payload).length>18000)return out({error:"INVALID_SIGNAL"},400);
-   const {data:member}=await db.from("server_call_members").select("call_id").eq("call_id",callId).eq("user_id",uid).maybeSingle();
-   if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
-   const {data:signal,error}=await db.from("server_call_signals").insert({call_id:callId,from_user_id:uid,kind,payload}).select("seq,created_at").single();
-   if(error||!signal)return out({error:"SIGNAL_SAVE_FAILED"},503);
-   if(kind==="hangup"){const now=new Date().toISOString();await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",callId);}
-   return out({ok:true,seq:signal.seq,created_at:signal.created_at});
+   const callId=typeof b.call_id==="string"?b.call_id:"";
+   const kind=typeof b.kind==="string"?b.kind:"";
+   const payload=b.payload&&typeof b.payload==="object"&&!Array.isArray(b.payload)?b.payload:{};
+   if(!callId||!allowed.has(kind))return out({error:"INVALID_SIGNAL"},400);
+   if(JSON.stringify(payload).length>18000)return out({error:"PAYLOAD_TOO_LARGE"},413);
+   const {data:transition,error:transitionError}=await db.rpc("server_call_transition_atomic",{
+    p_call_id:callId,p_user_id:uid,p_action:"signal",p_kind:kind,p_payload:payload
+   });
+   if(transitionError||!transition)return out({error:"SIGNAL_SAVE_FAILED"},503);
+   if(transition.error)return callTransitionFailure(transition);
+   return out({ok:true,seq:transition.seq,created_at:transition.created_at,state:transition.state});
   }
   if(action==="ice_servers"){
-   const iceConfig=await iceServersForCall(uid,SERVER_CALL_TTL_SECONDS);
+   const callId=typeof b.call_id==="string"?b.call_id:"";
+   if(!callId)return out({error:"CALL_ID_REQUIRED"},400);
+   const {data:member,error:memberError}=await db.from("server_call_members")
+    .select("call_id").eq("call_id",callId).eq("user_id",uid).maybeSingle();
+   if(memberError)return out({error:"CALL_ACCESS_LOOKUP_FAILED"},503);
+   if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
+   const {data:call,error:callError}=await db.from("server_calls")
+    .select("id,state,expires_at").eq("id",callId).maybeSingle();
+   if(callError)return out({error:"CALL_LOOKUP_FAILED"},503);
+   if(!call||!["ringing","connecting","active"].includes(call.state)||
+      (call.expires_at&&Date.parse(call.expires_at)<=Date.now()))return out({error:"CALL_NOT_ANSWERABLE"},409);
+   const remaining=call.expires_at?Math.max(300,Math.ceil((Date.parse(call.expires_at)-Date.now())/1000)):SERVER_CALL_TTL_SECONDS;
+   const iceConfig=await iceServersForCall(callId,remaining);
    return out({ice_servers:iceConfig.ice_servers,ice_server_mode:iceConfig.ice_server_mode});
   }
   return out({error:"UNKNOWN_ACTION"},400);
