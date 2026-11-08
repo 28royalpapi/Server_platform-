@@ -34,6 +34,8 @@ import java.time.Instant
 class ServerIncomingCallService : Service() {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private var pollingJob: Job? = null
+  private var realtimeClient: ServerRealtimeClient? = null
+  @Volatile private var realtimeConnected = false
   private var incomingCallId: String? = null
   // Process-local by design: if Android recreates the service, active calls must be
   // re-reported to Telecom instead of being suppressed by stale persisted IDs.
@@ -124,6 +126,9 @@ class ServerIncomingCallService : Service() {
 
   override fun onDestroy() {
     pollingJob?.cancel()
+    realtimeConnected = false
+    realtimeClient?.close()
+    realtimeClient = null
     scope.cancel()
     try { (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(FOREGROUND_NOTIFICATION_ID) } catch (_: Exception) {}
     super.onDestroy()
@@ -138,55 +143,22 @@ class ServerIncomingCallService : Service() {
         }
         val token = freshAccessToken()
         if (token == null) { stopSelf(); break }
-        val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
-        val rows = result.optJSONArray("calls")
-        if (rows != null) {
-          val liveCallIds = mutableSetOf<String>()
-          for (i in 0 until rows.length()) {
-            val row = rows.optJSONObject(i) ?: continue
-            val callId = row.optString("id")
-            if (callId.isBlank()) continue
-            val callerPhone = row.optString("caller_phone_e164")
-              .takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-            val caller = callerPhone?.let { ServerCallerIdentityResolver.resolve(this, it) } ?: "Server caller"
-
-            if (row.optString("state") == "missed") {
-              if (reportedMissedCallIds.add(callId)) {
-                try {
-                  val shown = ServerCallNotifications.showMissed(this, callId, caller)
-                  if (!shown) reportedMissedCallIds.remove(callId)
-                } catch (error: Exception) {
-                  reportedMissedCallIds.remove(callId)
-                  Log.w(TAG, "Could not show a missed Server call: " + error.javaClass.simpleName)
-                }
-              }
-              continue
-            }
-            if (row.optString("state") != "ringing" && row.optString("state") != "connecting") continue
-            liveCallIds.add(callId)
-            if (!reportedCallIds.add(callId)) continue
-            try {
-              // Pass the verified E.164 number into Telecom; local display names
-              // are for notification text only and must not replace the tel: address.
-              ServerTelecomRegistry.reportIncoming(this, callId, callerPhone ?: "Server caller")
-            } catch (error: Exception) {
-              reportedCallIds.remove(callId)
-              Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
-            }
-          }
-          // Reconcile only after a successful authoritative response. A transient
-          // network error must not dismiss calls that are still ringing.
-          ServerTelecomRegistry.reconcileIncoming(liveCallIds)
+        if (realtimeClient == null) connectRealtime(token)
+        if (!realtimeConnected) {
+          val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
+          processIncomingResponse(result)
+        } else {
+          // Realtime carries call starts; this low-frequency check reconciles
+          // missed-call/terminal state without 2.2-second REST polling.
+          val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
+          processIncomingResponse(result)
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (error: Exception) {
         val status = (error as? ServerCallApiException)?.httpStatus
-          ?: Regex("HTTP (\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
+          ?: Regex("HTTP (\\\\d{3})").find(error.message.orEmpty())?.groupValues?.get(1)?.toIntOrNull()
         if (status == 401) {
-          // The local expiry can lag backend revocation. On an authenticated
-          // 401, explicitly refresh once and, when the backend says the refresh
-          // window has closed, restore this installation using its device key.
           try {
             ServerDeviceSessionManager.ensureFresh(
               this,
@@ -210,11 +182,98 @@ class ServerIncomingCallService : Service() {
           stopSelf()
           break
         } else {
-          Log.w(TAG, "Server incoming-call poll failed: " + error.javaClass.simpleName)
+          Log.w(TAG, "Server incoming-call listener failed: " + error.javaClass.simpleName)
         }
       }
-      delay(POLL_INTERVAL_MS)
+      delay(if (realtimeConnected) REALTIME_RECONCILE_INTERVAL_MS else POLL_INTERVAL_MS)
     }
+  }
+
+  private fun connectRealtime(accessToken: String) {
+    try {
+      val credentials = postJson(
+        "/functions/v1/server-calls",
+        JSONObject().put("action", "realtime_token"),
+        accessToken
+      )
+      if (!credentials.optBoolean("realtime_available", false)) return
+      val endpoint = credentials.optString("url")
+      val realtimeToken = credentials.optString("token")
+      if (!endpoint.startsWith("wss://") || realtimeToken.isBlank()) return
+      realtimeClient?.close()
+      realtimeConnected = false
+      realtimeClient = ServerRealtimeClient(
+        endpoint = endpoint,
+        token = realtimeToken,
+        onPublication = { publication ->
+          if (publication.optString("type") == "incoming_call") {
+            scope.launch { reconcileIncomingFromBackend() }
+          }
+        },
+        onConnectionChanged = { connected ->
+          realtimeConnected = connected
+          if (connected) scope.launch { reconcileIncomingFromBackend() }
+        },
+        fetchFreshToken = {
+          val current = freshAccessToken() ?: throw IllegalStateException("Server session is unavailable.")
+          val refreshed = postJson(
+            "/functions/v1/server-calls",
+            JSONObject().put("action", "realtime_token"),
+            current
+          )
+          refreshed.optString("token").takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Server realtime token refresh returned no token.")
+        }
+      ).also { it.connect() }
+    } catch (error: Exception) {
+      realtimeConnected = false
+      Log.w(TAG, "Realtime incoming-call channel unavailable: " + error.javaClass.simpleName)
+    }
+  }
+
+  private suspend fun reconcileIncomingFromBackend() {
+    try {
+      val token = freshAccessToken() ?: return
+      val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
+      processIncomingResponse(result)
+    } catch (error: Exception) {
+      Log.w(TAG, "Realtime incoming-call reconciliation deferred: " + error.javaClass.simpleName)
+    }
+  }
+
+  private fun processIncomingResponse(result: JSONObject) {
+    val rows = result.optJSONArray("calls") ?: return
+    val liveCallIds = mutableSetOf<String>()
+    for (i in 0 until rows.length()) {
+      val row = rows.optJSONObject(i) ?: continue
+      val callId = row.optString("id")
+      if (callId.isBlank()) continue
+      val callerPhone = row.optString("caller_phone_e164")
+        .takeIf { it.matches(Regex("^\\\\+[1-9][0-9]{7,14}$")) }
+      val caller = callerPhone?.let { ServerCallerIdentityResolver.resolve(this, it) } ?: "Server caller"
+      if (row.optString("state") == "missed") {
+        if (reportedMissedCallIds.add(callId)) {
+          try {
+            val shown = ServerCallNotifications.showMissed(this, callId, caller)
+            if (!shown) reportedMissedCallIds.remove(callId)
+          } catch (error: Exception) {
+            reportedMissedCallIds.remove(callId)
+            Log.w(TAG, "Could not show a missed Server call: " + error.javaClass.simpleName)
+          }
+        }
+        continue
+      }
+      if (row.optString("state") != "ringing" && row.optString("state") != "connecting") continue
+      liveCallIds.add(callId)
+      if (!reportedCallIds.add(callId)) continue
+      try {
+        ServerTelecomRegistry.reportIncoming(this, callId, callerPhone ?: "Server caller")
+      } catch (error: Exception) {
+        reportedCallIds.remove(callId)
+        Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
+      }
+    }
+    ServerTelecomRegistry.reconcileIncoming(liveCallIds)
   }
 
   private fun freshAccessToken(): String? {
@@ -300,6 +359,7 @@ class ServerIncomingCallService : Service() {
     private const val CHANNEL_ID = "server-incoming-calls"
     internal const val FOREGROUND_NOTIFICATION_ID = 7338
     private const val POLL_INTERVAL_MS = 2200L
+    private const val REALTIME_RECONCILE_INTERVAL_MS = 30000L
     private const val ACTION_SHOW_INCOMING_CALL = "com.server.caller.action.FGS_SHOW_INCOMING"
     private const val ACTION_SILENCE_INCOMING_CALL = "com.server.caller.action.FGS_SILENCE_INCOMING"
     private const val ACTION_CLEAR_INCOMING_CALL = "com.server.caller.action.FGS_CLEAR_INCOMING"
