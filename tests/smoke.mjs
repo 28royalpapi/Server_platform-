@@ -607,7 +607,7 @@ assert.match(androidManifest,/android:name="com\.server\.caller\.ServerGuestInvi
   "the native share activity is available only after the user taps the guest invitation notification");
 assert.match(androidPhoneNormalizer,/PhoneNumberUtil\.getInstance\(\)/,
   "all supported Android releases use the same bundled international numbering metadata");
-assert.match(androidPhoneNormalizer,/phoneUtil\.parse\(value, defaultRegion\)/,
+assert.match(androidPhoneNormalizer,/phoneUtil\.parse\(value, defaultRegion \?: "ZZ"\)/,
   "national-format contact numbers are parsed with an explicit destination-region context");
 assert.match(androidPhoneNormalizer,/PhoneLookup\.CONTENT_FILTER_URI/,
   "Android looks up only the selected saved-contact number before interpreting a national number");
