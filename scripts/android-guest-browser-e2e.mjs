@@ -103,11 +103,33 @@ try {
   await page.screenshot({ path: join(artifactDir, "guest-invitation-ready.png"), fullPage: true });
   await page.locator("#join-call").click();
   await page.waitForFunction(() =>
-    (document.querySelector("#guest-status")?.textContent || "").includes("Connected. Two-way audio packets are flowing."),
+    (document.querySelector("#guest-status")?.textContent || "").includes("Connected. Audio is flowing in both directions."),
     null, { timeout: 90000 }
   );
+  const guestAudioStats = await page.evaluate(async () => {
+    const peer = window.__serverGuestPeerConnection;
+    if (!peer) return null;
+    const report = await peer.getStats();
+    const result = { inboundPackets: 0, outboundPackets: 0, inboundEnergy: 0, outboundEnergy: 0 };
+    report.forEach(stat => {
+      if (stat.kind !== "audio" && stat.mediaType !== "audio") return;
+      if (stat.type === "inbound-rtp") {
+        result.inboundPackets += Number(stat.packetsReceived) || 0;
+        result.inboundEnergy += Number(stat.totalAudioEnergy) || 0;
+      } else if (stat.type === "outbound-rtp") {
+        result.outboundPackets += Number(stat.packetsSent) || 0;
+        result.outboundEnergy += Number(stat.totalAudioEnergy) || 0;
+      }
+    });
+    return result;
+  });
+  if (!guestAudioStats || guestAudioStats.inboundPackets < 1 || guestAudioStats.outboundPackets < 1 ||
+      guestAudioStats.inboundEnergy <= 0 || guestAudioStats.outboundEnergy <= 0) {
+    throw new Error("Guest audio did not prove bidirectional RTP and non-zero audio energy: " + JSON.stringify(guestAudioStats));
+  }
   await page.screenshot({ path: join(artifactDir, "guest-call-connected.png"), fullPage: true });
-  process.stdout.write("SERVER_GUEST_BROWSER_AUDIO_PASS: guest browser connected and received inbound audio RTP.\n");
+  await writeFile(join(artifactDir, "guest-audio-stats.json"), JSON.stringify(guestAudioStats, null, 2));
+  process.stdout.write("SERVER_GUEST_BROWSER_AUDIO_PASS: inbound/outbound RTP and audio energy verified: " + JSON.stringify(guestAudioStats) + "\\n");
 
   await page.locator("#leave-call").click();
   await page.waitForFunction(() =>
