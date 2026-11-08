@@ -18,10 +18,10 @@ internal data class ServerAuthResponse(val status: Int, val body: JSONObject)
 /**
  * Keeps a device's Server identity recoverable across long offline periods.
  *
- * A normal refresh is always attempted first. Only an HTTP 401 from the refresh
- * endpoint may use the persisted installation credentials to restore the same
- * Server identity. Network errors, rate limits, and server errors never trigger
- * re-registration or silently create another account.
+ * The device secret is created at first consented onboarding and stored locally.
+ * A normal refresh is always attempted first. Only an explicit HTTP 401 from
+ * refresh may use the persisted device identity to obtain a new session.
+ * Network errors, rate limits, and server errors never trigger re-registration.
  */
 internal object ServerDeviceSessionManager {
   private const val PREFS_NAME = "server-session"
@@ -34,8 +34,6 @@ internal object ServerDeviceSessionManager {
     currentToken: String?,
     currentExpiry: Long,
     preferences: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE),
-    forceRefresh: Boolean = false,
-    onSessionRestored: () -> Unit = { ServerPushRegistration.syncFcmToken(context) },
     request: ((JSONObject, String?) -> ServerAuthResponse)? = null
   ): ServerDeviceSession {
     val storedToken = preferences.getString("access_token", null)
@@ -45,8 +43,12 @@ internal object ServerDeviceSessionManager {
     val expiry = maxOf(currentExpiry, preferences.getLong("access_expiry", 0L))
     val now = System.currentTimeMillis() / 1000L
 
-    if (!forceRefresh && expiry > now + 90L) {
-      return ServerDeviceSession(token, expiry, preferences.getString("server_id", null))
+    if (expiry > now + 90L) {
+      return ServerDeviceSession(
+        token,
+        expiry,
+        preferences.getString("server_id", null)
+      )
     }
 
     val send = request ?: { body: JSONObject, bearer: String? -> postAuth(context, body, bearer) }
@@ -58,9 +60,9 @@ internal object ServerDeviceSessionManager {
       throw apiError(refreshed, "Server session refresh failed")
     }
 
-    // The backend refresh window is intentionally finite. If this device has
-    // been offline beyond that grace window, restore its existing identity using
-    // its private installation credentials rather than making a new Server user.
+    // Refresh tokens are deliberately not valid forever. When a device has been
+    // offline beyond the server's grace window, recover the same identity with
+    // its locally-held installation credentials rather than creating a new user.
     val installationId = preferences.getString("installation_id", null).orEmpty()
     val deviceSecret = preferences.getString("device_secret", null).orEmpty()
     if (!installationId.matches(Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")) ||
@@ -68,7 +70,6 @@ internal object ServerDeviceSessionManager {
       throw IllegalStateException("Your Server session expired and this installation has no recoverable device identity. Reopen Server setup.")
     }
 
-    val selectedSim = ServerFallbackSimManager.selectedOption(context)
     val registration = JSONObject()
       .put("action", "register_device")
       .put("installation_id", installationId)
@@ -76,14 +77,12 @@ internal object ServerDeviceSessionManager {
       .put("accepted_terms", true)
       .put("terms_version", "server-terms-1.0")
       .put("privacy_version", "server-privacy-1.0")
-      .put("selected_sim_slot", selectedSim?.slotIndex ?: JSONObject.NULL)
-      .put("selected_sim_carrier", selectedSim?.carrierName ?: JSONObject.NULL)
     val recovered = send(registration, null)
     if (recovered.status !in 200..299) {
       throw apiError(recovered, "Server could not restore this device session")
     }
     val session = persistSession(preferences, recovered.body, preferences.getString("server_id", null), expiry)
-    onSessionRestored()
+    ServerPushRegistration.syncFcmToken(context)
     return session
   }
 
