@@ -18,6 +18,7 @@ const presenceMigration=read("supabase/migrations/20261105124000_server_recipien
 const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push_devices_custom_identity_fk.sql");
 const offlineMissedCallMigration=read("supabase/migrations/20261105131000_server_offline_missed_call_inbox.sql");
 const callStateTransitionMigration=read("supabase/migrations/20261108110000_server_atomic_call_state_transitions.sql");
+const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
 const liveGuestTransitionContract=read("scripts/live-guest-transition-contract.mjs");
 const offlineInbox=read("web/offline-inbox.js");
 const guestServiceWorker=read("web/server-guest-sw.js");
@@ -926,6 +927,12 @@ assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
 assert.match(calls,/server_create_missed_call_atomic/);
 assert.match(callStateTransitionMigration,/server_guest_transition_atomic/);
 assert.match(callStateTransitionMigration,/server_call_transition_atomic/);
+assert.match(activeRenegotiationMigration,/v_call\\.state in \\('ringing','connecting'\\)/,
+  "atomic transitions preserve the locked call row if offer/answer signalling arrives after ACTIVE");
+assert.match(guestPreview,/GUEST_PREVIEW_INVITE_LOOKUP_FAILED/);
+assert.match(guestPreview,/GUEST_PREVIEW_CALL_LOOKUP_FAILED/);
+assert.match(guestPreview,/GUEST_PREVIEW_CALLER_PROFILE_LOOKUP_FAILED/);
+
 assert.match(liveGuestTransitionContract,/"join"/);
 assert.match(liveGuestTransitionContract,/og:title/);
 assert.match(liveGuestTransitionContract,/Caller=PRIVATE CALLER/);
