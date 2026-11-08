@@ -82,6 +82,14 @@ export async function publishRealtime(
       console.error("CENTRIFUGO_PUBLISH_HTTP_" + response.status);
       return false;
     }
+    const payload = await response.json().catch(() => null) as {
+      error?: { code?: number; message?: string };
+      result?: unknown;
+    } | null;
+    if (!payload || payload.error || !("result" in payload)) {
+      console.error("CENTRIFUGO_PUBLISH_REJECTED_" + String(payload?.error?.code || "INVALID_RESPONSE"));
+      return false;
+    }
     return true;
   } catch {
     console.error("CENTRIFUGO_PUBLISH_UNAVAILABLE");
