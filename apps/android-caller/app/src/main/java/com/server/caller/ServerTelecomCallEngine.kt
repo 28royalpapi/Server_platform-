@@ -103,6 +103,9 @@ internal class ServerTelecomCallEngine(
   private var receivedIceCandidates = 0
   private var rejectedIceCandidates = 0
   private var inboundAudioRtpPacketsReceived = 0L
+  private var outboundAudioRtpPacketsSent = 0L
+  private var inboundAudioRtpEnergy = 0.0
+  private var outboundAudioRtpEnergy = 0.0
   private var lastAudioStatsCheckAt = 0L
   private var peer: PeerConnection? = null
   private var peerFactory: PeerConnectionFactory? = null
@@ -150,6 +153,9 @@ internal class ServerTelecomCallEngine(
       prefs.edit().remove("debug_last_guest_invitation_text")
         .remove("debug_last_guest_call_id")
         .remove("debug_last_inbound_audio_rtp_packets")
+        .remove("debug_last_outbound_audio_rtp_packets")
+        .remove("debug_last_inbound_audio_rtp_energy")
+        .remove("debug_last_outbound_audio_rtp_energy")
         .apply()
     }
     carrierFallbackPhone = null
@@ -371,7 +377,7 @@ internal class ServerTelecomCallEngine(
       while (currentCoroutineContext().isActive && !disposed && !callId.isNullOrBlank()) {
         try {
           val id = callId ?: break
-          if (iceConnected && remoteAudioTrackReady) refreshInboundAudioStats()
+          if (iceConnected && remoteAudioTrackReady) refreshAudioStats()
           val response = api("poll", JSONObject().put("call_id", id).put("after_seq", lastSeq))
           val signals = response.optJSONArray("signals") ?: JSONArray()
           for (index in 0 until signals.length()) {
@@ -458,45 +464,83 @@ internal class ServerTelecomCallEngine(
     queued.forEach(::addRemoteIceCandidate)
   }
 
-  private suspend fun refreshInboundAudioStats() {
-    if (disposed || !iceConnected || !remoteAudioTrackReady || inboundAudioRtpPacketsReceived > 0L) return
+  private data class AudioRtpEvidence(
+    val inboundPackets: Long,
+    val outboundPackets: Long,
+    val inboundEnergy: Double,
+    val outboundEnergy: Double
+  )
+
+  /**
+   * Audio readiness is directional. ICE connectivity or one inbound stream is
+   * not proof that both microphones are transmitting. Require packet counters
+   * and non-zero WebRTC audio-energy counters in both directions.
+   */
+  private suspend fun refreshAudioStats() {
+    if (disposed || !iceConnected || !remoteAudioTrackReady) return
+    if (inboundAudioRtpPacketsReceived > 0L && outboundAudioRtpPacketsSent > 0L &&
+      inboundAudioRtpEnergy > 0.0 && outboundAudioRtpEnergy > 0.0) return
     val now = System.currentTimeMillis()
     if (now - lastAudioStatsCheckAt < 1200L) return
     lastAudioStatsCheckAt = now
     val activePeer = peer ?: return
-    val packets = withTimeoutOrNull(2500L) {
-      suspendCancellableCoroutine<Long> { continuation ->
+    val evidence = withTimeoutOrNull(2500L) {
+      suspendCancellableCoroutine<AudioRtpEvidence> { continuation ->
         try {
           activePeer.getStats(object : RTCStatsCollectorCallback {
             override fun onStatsDelivered(report: RTCStatsReport) {
-              val received = report.getStatsMap().values
-                .asSequence()
-                .filter { it.type == "inbound-rtp" }
-                .filter {
-                  (it.getMembers()["kind"] ?: it.getMembers()["mediaType"])?.toString() == "audio"
+              var inboundPackets = 0L
+              var outboundPackets = 0L
+              var inboundEnergy = 0.0
+              var outboundEnergy = 0.0
+              report.getStatsMap().values.forEach { stat ->
+                val members = stat.getMembers()
+                val isAudio = (members["kind"] ?: members["mediaType"])?.toString() == "audio"
+                if (!isAudio) return@forEach
+                when (stat.type) {
+                  "inbound-rtp" -> {
+                    inboundPackets += members["packetsReceived"]?.toString()?.toLongOrNull() ?: 0L
+                    inboundEnergy += members["totalAudioEnergy"]?.toString()?.toDoubleOrNull() ?: 0.0
+                  }
+                  "outbound-rtp" -> {
+                    outboundPackets += members["packetsSent"]?.toString()?.toLongOrNull() ?: 0L
+                    outboundEnergy += members["totalAudioEnergy"]?.toString()?.toDoubleOrNull() ?: 0.0
+                  }
                 }
-                .mapNotNull { it.getMembers()["packetsReceived"]?.toString()?.toLongOrNull() }
-                .sum()
-              if (continuation.isActive) continuation.resume(received)
+              }
+              if (continuation.isActive) continuation.resume(
+                AudioRtpEvidence(inboundPackets, outboundPackets, inboundEnergy, outboundEnergy)
+              )
             }
           })
         } catch (error: Exception) {
           if (continuation.isActive) continuation.resumeWithException(error)
         }
       }
-    } ?: 0L
-    if (packets > 0L) {
-      inboundAudioRtpPacketsReceived = packets
-      if (BuildConfig.DEBUG) {
-        prefs.edit().putLong("debug_last_inbound_audio_rtp_packets", packets).apply()
-      }
-      recordStage("inbound_audio_rtp_packets_received")
-      syncMediaConnected()
+    } ?: AudioRtpEvidence(0L, 0L, 0.0, 0.0)
+
+    inboundAudioRtpPacketsReceived = maxOf(inboundAudioRtpPacketsReceived, evidence.inboundPackets)
+    outboundAudioRtpPacketsSent = maxOf(outboundAudioRtpPacketsSent, evidence.outboundPackets)
+    inboundAudioRtpEnergy = maxOf(inboundAudioRtpEnergy, evidence.inboundEnergy)
+    outboundAudioRtpEnergy = maxOf(outboundAudioRtpEnergy, evidence.outboundEnergy)
+    if (BuildConfig.DEBUG) {
+      prefs.edit()
+        .putLong("debug_last_inbound_audio_rtp_packets", inboundAudioRtpPacketsReceived)
+        .putLong("debug_last_outbound_audio_rtp_packets", outboundAudioRtpPacketsSent)
+        .putString("debug_last_inbound_audio_rtp_energy", inboundAudioRtpEnergy.toString())
+        .putString("debug_last_outbound_audio_rtp_energy", outboundAudioRtpEnergy.toString())
+        .apply()
     }
+    if (inboundAudioRtpPacketsReceived > 0L && outboundAudioRtpPacketsSent > 0L) {
+      recordStage("audio_rtp_packets_both_directions")
+    }
+    syncMediaConnected()
   }
 
   private suspend fun syncMediaConnected() {
-    if (disposed || !iceConnected || !remoteAudioTrackReady || inboundAudioRtpPacketsReceived < 1L) return
+    if (disposed || !iceConnected || !remoteAudioTrackReady ||
+      inboundAudioRtpPacketsReceived < 1L || outboundAudioRtpPacketsSent < 1L ||
+      inboundAudioRtpEnergy <= 0.0 || outboundAudioRtpEnergy <= 0.0) return
     val id = callId ?: return
     connection.markConnected()
     if (activeStateSyncedFor == id) return
@@ -520,6 +564,9 @@ internal class ServerTelecomCallEngine(
     lastMediaSyncAttemptAt = 0L
     activeStateSyncedFor = null
     inboundAudioRtpPacketsReceived = 0L
+    outboundAudioRtpPacketsSent = 0L
+    inboundAudioRtpEnergy = 0.0
+    outboundAudioRtpEnergy = 0.0
     lastAudioStatsCheckAt = 0L
     if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
       throw IllegalStateException("Microphone permission is required for Server calls.")
@@ -723,7 +770,7 @@ internal class ServerTelecomCallEngine(
         PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
           iceConnected = true
           recordStage("ice_transport_connected")
-          refreshInboundAudioStats()
+          refreshAudioStats()
         }
         PeerConnection.IceConnectionState.DISCONNECTED -> {
           iceConnected = false
@@ -765,7 +812,7 @@ internal class ServerTelecomCallEngine(
       if (disposed) return@launch
       remoteAudioTrackReady = true
       recordStage("remote_audio_track_received")
-      refreshInboundAudioStats()
+      refreshAudioStats()
     }
   }
   override fun onSignalingChange(state: PeerConnection.SignalingState) {}
