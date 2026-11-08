@@ -845,7 +845,7 @@ assert.match(html,/show this number as my caller ID/,
   "phone-number consent explains that a verified number is also used as outgoing caller ID");
 assert.match(androidTests,/Habib TNC/,
   "Android Telecom instrumentation covers a recipient-saved contact name");
-assert.match(androidTests,/An unsaved caller must display its real phone number/,
+assert.match(androidTests,/An unsaved caller must display the real phone number/,
   "Android Telecom instrumentation covers an unsaved number fallback");
 assert.match(iosModel,/let callerPhone = first\["caller_phone_e164"\]/,"iOS passes the caller's verified phone number to CallKit before any internal Server identity");
 assert.match(iosModel,/update\.remoteHandle = CXHandle\(type: handleType, value: handleValue\)/,"iOS leaves contact-name resolution to CallKit and uses a generic handle only when no verified number exists");
