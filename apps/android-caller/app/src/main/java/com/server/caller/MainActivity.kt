@@ -201,7 +201,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     root.addView(authPanel, matchWrap())
     authPanel.addView(label("Complete setup on the Server website"))
     authPanel.addView(TextView(this).apply {
-      text = "Create your Server ID on the website and choose a preferred fallback SIM. Server uses internet voice when the recipient is reachable; a normal carrier fallback is placed through your selected mobile line."
+      text = "Create your Server ID on the website. SIM selection is optional: choose a preferred line only if you want carrier fallback. Server-to-Server internet calls do not require a SIM choice; carrier fallback uses your own mobile line and may incur your operator's charges."
       textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(12))
     }, matchWrap())
     authPanel.addView(button("Open Server setup") {
