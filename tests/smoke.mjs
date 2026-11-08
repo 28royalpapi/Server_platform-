@@ -21,6 +21,8 @@ const callStateTransitionMigration=read("supabase/migrations/20261108110000_serv
 const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
 const keepAliveMigration=read("supabase/migrations/20261108142000_server_keepalive_probe.sql");
 const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
+const elfAlignmentScript=read("scripts/check-16kb-elf-alignment.py");
+const android17InstallScript=read("scripts/android17-16kb-acceptance.sh");
 const liveGuestTransitionContract=read("scripts/live-guest-transition-contract.mjs");
 const offlineInbox=read("web/offline-inbox.js");
 const guestServiceWorker=read("web/server-guest-sw.js");
@@ -992,6 +994,14 @@ assert.ok(androidEmulatorSmoke.includes("adb install -r artifacts/server-caller-
   "the main API 34 emulator installs Server before proving CE storage access");
 assert.ok(nativeWorkflow.includes("adb install -r apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"),
   "the API 29–36 matrix installs the app before the credential-encrypted storage check");
+assert.ok(android17InstallScript.includes('find "$ANDROID_HOME/build-tools"'),
+  "Android 17 validation selects a zipalign executable from the Build Tools installed in that job");
+assert.ok(android17InstallScript.includes("ANDROID17_DATA_AVAILABLE_KB") && android17InstallScript.includes("1048576"),
+  "Android 17 installation fails early when the emulator data partition has less than 1 GiB free");
+assert.ok(elfAlignmentScript.includes("PT_LOAD") && elfAlignmentScript.includes("0x4000"),
+  "real-device ARM64 packages receive a native ELF PT_LOAD 16 KB alignment check");
+assert.ok(nativeWorkflow.includes("check-16kb-elf-alignment.py arm64-v8a"),
+  "CI validates both physical ARM64 debug and release package native libraries");
 assert.ok(android17Preview.includes("ram-size: 6144M"),
   "Android 17 runs with extra memory headroom for the preview system image");
 console.log("Server backend/web contract checks: PASS");

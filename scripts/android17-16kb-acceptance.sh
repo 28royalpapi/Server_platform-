@@ -10,13 +10,27 @@ if [ "$page_size" != "16384" ]; then
 fi
 
 adb shell df -h /data
+available_kb="$(adb shell df -Pk /data | awk 'NR > 1 {print $(NF-2); exit}' | tr -d '\r')"
+case "$available_kb" in
+  ''|*[!0-9]*) echo "ERROR: could not determine available /data storage."; exit 1 ;;
+esac
+echo "ANDROID17_DATA_AVAILABLE_KB=$available_kb"
+if [ "$available_kb" -lt 1048576 ]; then
+  echo "ERROR: Android 17 emulator has less than 1 GiB free in /data before app installation."
+  exit 1
+fi
 apk="apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
 if [ ! -s "$apk" ]; then
   echo "ERROR: Server debug APK is missing before Android 17 install validation."
   exit 1
 fi
 
-zipalign="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+zipalign="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name zipalign | sort -V | tail -n 1)"
+if [ -z "$zipalign" ] || [ ! -x "$zipalign" ]; then
+  echo "ERROR: no Android Build Tools zipalign executable was found."
+  exit 1
+fi
+echo "ANDROID17_ZIPALIGN=$zipalign"
 if ! "$zipalign" -c -P 16 -v 4 "$apk"; then
   echo "ERROR: Android 17 APK ZIP/native-library alignment validation failed."
   exit 1
