@@ -37,6 +37,31 @@ adb shell pm grant com.server.caller.debug android.permission.POST_NOTIFICATIONS
 mkdir -p "$ARTIFACT_DIR"
 rm -f "$LOG_FILE" "$INVITE_ON_HOST"
 
+# The Android emulator captures its microphone from the host's default PulseAudio
+# source. Feed that source a deterministic tone so outbound Android audio cannot
+# pass on RTP packet counters alone while carrying silence.
+MIC_TONE_FILE="$ARTIFACT_DIR/server-android-mic-tone.wav"
+node --input-type=module - "$MIC_TONE_FILE" <<'NODE'
+import { writeFile } from "node:fs/promises";
+const path=process.argv[2],rate=48000,seconds=20,count=rate*seconds,dataBytes=count*2;
+const wav=Buffer.alloc(44+dataBytes);
+wav.write("RIFF",0);wav.writeUInt32LE(36+dataBytes,4);wav.write("WAVE",8);
+wav.write("fmt ",12);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);
+wav.writeUInt16LE(1,22);wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);
+wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write("data",36);wav.writeUInt32LE(dataBytes,40);
+for(let i=0;i<count;i++){
+  const envelope=Math.min(1,i/2400,(count-i)/2400);
+  wav.writeInt16LE(Math.round(Math.sin(2*Math.PI*440*i/rate)*6500*envelope),44+i*2);
+}
+await writeFile(path,wav);
+NODE
+pactl load-module module-null-sink sink_name=server_e2e_mic rate=48000 channels=1 >/dev/null
+pactl set-default-source server_e2e_mic.monitor
+pactl list short sources | grep -F 'server_e2e_mic.monitor'
+(paplay --device=server_e2e_mic "$MIC_TONE_FILE" >/dev/null 2>&1; while true; do paplay --device=server_e2e_mic "$MIC_TONE_FILE" >/dev/null 2>&1; done) &
+TONE_PID=$!
+echo "SERVER_ANDROID_MIC_AUDIO_PILOT=440Hz"
+
 adb shell am instrument -w -r \
   -e class com.server.caller.CallerSmokeTest#preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice \
   -e server_test_token "$SERVER_TEST_TOKEN" \
@@ -51,6 +76,10 @@ cleanup() {
     adb shell am force-stop com.server.caller.debug >/dev/null 2>&1 || true
     kill "$INSTRUMENTATION_PID" >/dev/null 2>&1 || true
     wait "$INSTRUMENTATION_PID" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${TONE_PID:-}" ]] && kill -0 "$TONE_PID" 2>/dev/null; then
+    kill "$TONE_PID" >/dev/null 2>&1 || true
+    wait "$TONE_PID" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
