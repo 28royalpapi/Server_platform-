@@ -1409,6 +1409,15 @@ class CallerSmokeTest {
   }
 
   @Test fun serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata() {
+    // Android 10 uses legacy SIM subscription IDs in PhoneAccountHandle IDs.
+    // Android 11+ exposes the official mapping API; neither path needs READ_PHONE_NUMBERS.
+    val activeSubscriptions = setOf(11, 22)
+    assertEquals(11, ServerFallbackSimManager.resolveActiveSubscriptionId("11", activeSubscriptions, 29, null))
+    assertEquals(22, ServerFallbackSimManager.resolveActiveSubscriptionId("opaque-account-id", activeSubscriptions, 30, 22))
+    assertEquals(22, ServerFallbackSimManager.resolveActiveSubscriptionId("22", activeSubscriptions, 36, -1))
+    assertEquals(null, ServerFallbackSimManager.resolveActiveSubscriptionId("not-a-sim", activeSubscriptions, 36, -1))
+    assertEquals(null, ServerFallbackSimManager.resolveActiveSubscriptionId("11", setOf(22), 36, 22))
+
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     grantTelecomPermissions(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
