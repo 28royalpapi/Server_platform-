@@ -273,7 +273,12 @@ assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeS
   "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
 assert.match(androidSetup,/ServerFallbackSimManager\.optionsJson/);
 assert.match(androidSetup,/ServerFallbackSimManager\.saveSelection/);
-assert.match(androidFallbackSim,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
+assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/);
+assert.match(androidFallbackSim,/resolveActiveSubscriptionId/);
+assert.doesNotMatch(androidFallbackSim,/getPhoneAccount\(handle\)/,
+  "SIM fallback must not call the protected Telecom metadata API requiring READ_PHONE_NUMBERS");
+assert.match(androidTests,/resolveActiveSubscriptionId\("opaque-account-id", activeSubscriptions, 30, 22\)/,
+  "Android SIM fallback mapping is regression-tested without line-number permission");
 assert.match(androidFallbackSim,/Manifest\.permission\.READ_PHONE_STATE/);
 assert.doesNotMatch(androidFallbackSim,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
   "SIM fallback selection never invokes APIs that read subscriber phone numbers or serial identifiers");
@@ -429,7 +434,7 @@ for (const job of [androidBuildJob, androidGuestJob, androidMinimumJob, androidV
     "each stable Android emulator job explicitly verifies and enables hardware KVM access");
 }
 assert.ok(androidGuestJob.includes("pulseaudio --start") &&
-  androidGuestJob.includes("--use-file-for-fake-audio-capture"),
+  guestBrowserE2e.includes("--use-file-for-fake-audio-capture"),
   "the Android-to-browser audio E2E uses a Linux virtual-audio host and deterministic microphone input");
 assert.ok(android17Preview.includes("runs-on: macos-15") &&
   android17Preview.includes("continue-on-error: true"),
@@ -690,7 +695,8 @@ assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"inc
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
 assert.doesNotMatch(androidTelecom,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
-assert.match(androidFallbackSim,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
+assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/,
+  "SIM-backed fallback uses Android's subscription mapping API rather than requesting line-number permission");
 assert.match(iosView,/model.handleAppHandoff/);
 assert.match(iosView,/Set up Server on this iPhone/);
 assert.match(iosView,/How iPhone calling works/);
