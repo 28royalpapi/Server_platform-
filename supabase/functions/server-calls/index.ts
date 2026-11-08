@@ -569,7 +569,7 @@ Deno.serve(async(req:Request)=>{
    if(transition.error)return callTransitionFailure(transition);
    deferRealtime(publishRealtime(callRealtimeChannel(callId),{
     type:"signal",call_id:callId,seq:transition.seq,kind,payload,
-    from_user_id:uid,created_at:transition.created_at,state:transition.state
+    from_user_id:uid,from_server_id:profile.server_id,created_at:transition.created_at,state:transition.state
    },callId+":"+transition.seq));
    return out({ok:true,seq:transition.seq,created_at:transition.created_at,state:transition.state});
   }
