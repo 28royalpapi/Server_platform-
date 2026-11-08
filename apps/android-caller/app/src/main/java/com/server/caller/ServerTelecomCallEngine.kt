@@ -25,6 +25,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -419,6 +420,13 @@ internal class ServerTelecomCallEngine(
               realtimeConnected = false
               Log.w(TAG, "Realtime sequence reconciliation failed: " + error.javaClass.simpleName)
             }
+          }
+        },
+        fetchFreshToken = {
+          runBlocking {
+            val refreshed = api("realtime_token", JSONObject().put("call_id", id))
+            refreshed.optString("token").takeIf { it.isNotBlank() }
+              ?: throw IllegalStateException("Server realtime token refresh returned no token.")
           }
         }
       ).also { it.connect() }
