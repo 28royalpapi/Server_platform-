@@ -212,7 +212,7 @@ jobs:
         with:
           api-level: 34
           target: google_apis
-          # Use an x86_64 system image with KVM acceleration; API 34 supports subscription-slot APIs.
+          # Use x86_64; the host macOS emulator runs on Hypervisor.Framework. API 34 supports subscription-slot APIs.
           arch: x86_64
           profile: pixel_2
           cores: 2
@@ -275,29 +275,9 @@ jobs:
           npx playwright install chromium
       - name: Confirm native macOS emulator acceleration
         run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
-      - name: Prepare virtual microphone and speaker for WebRTC
-        shell: bash
+      - name: Prepare macOS CoreAudio guest-call path
         run: |
-          set -euo pipefail
-          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$RUNNER_TEMP/pulse-runtime}"
-          mkdir -p "$XDG_RUNTIME_DIR"
-          pulseaudio --start --exit-idle-time=-1
-          READY=0
-          for attempt in $(seq 1 20); do
-            if pactl info >/dev/null 2>&1; then READY=1; break; fi
-            sleep 1
-          done
-          if [[ "$READY" -ne 1 ]]; then
-            echo "ERROR: PulseAudio did not start; Android WebRTC needs a virtual audio device." >&2
-            pulseaudio --check || true
-            exit 1
-          fi
-          pactl load-module module-null-sink sink_name=server_e2e_speaker
-          pactl load-module module-null-source source_name=server_e2e_microphone
-          pactl set-default-sink server_e2e_speaker
-          pactl set-default-source server_e2e_microphone
-          pactl info
-          echo "PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native" >> "$GITHUB_ENV"
+          echo "Android Emulator uses the host CoreAudio backend; Playwright injects a deterministic WAV microphone source."
       - name: Create a disposable Server test identity through the real auth endpoint
         run: node scripts/create-server-e2e-identity.mjs > "$RUNNER_TEMP/server-e2e-identity.json"
       - name: Run a real Server call from Android Telecom to the no-install guest browser
