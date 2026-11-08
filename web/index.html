@@ -44,7 +44,7 @@
         <p id="ios-install-note" class="fine-print">iPhone uses a separate native Server app and Apple's calling-app permissions. The Android APK above cannot be installed on iPhone; the iOS setup will be released separately.</p>
       </div>
       <div id="native-setup" class="hidden">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>Server tries the internet route first. If the recipient is reachable on Server, the call uses WebRTC. If not, Server can open your normal phone dialler with your preferred fallback SIM; your mobile operator charges its usual voice rate.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>Server tries the internet route first. When a Server recipient is confirmed unreachable, you can choose whether Server should immediately continue through your selected mobile SIM or leave the final Call tap to you.</p></div></div>
         <div id="call-permission-step" class="hidden">
           <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio, Phone-state access for Android calling-account status and your fallback SIM choices, and notifications for incoming calls. Server reads only the active SIM carrier label and slot you choose. It does not read SIM phone numbers, ICCIDs or IMSIs.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
@@ -52,10 +52,11 @@
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Allow permissions and continue <span aria-hidden="true">→</span></button>
         </div>
         <div id="fallback-sim-step" class="hidden">
-          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred fallback SIM</h2><p>If Server cannot confirm that the recipient's Server receiver is reachable, you can use this SIM for an ordinary mobile call. Android opens your normal phone dialler with this line preselected when it is still active. You review the number and press Call; your mobile operator applies its usual charges, not Server.</p></div></div>
+          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred fallback SIM</h2><p>Choose the actual SIM Server should use when its internet route cannot reach the recipient. A selected SIM is required for automatic fallback; manual dialler fallback remains available.</p></div></div>
           <div id="fallback-sim-options" class="sim-options" role="group" aria-label="Preferred fallback SIM"></div>
           <p id="fallback-sim-note" class="fine-print" role="status" aria-live="polite">Choose a preferred line, or ask Android to let you choose every time.</p>
-          <p class="fine-print">The preferred SIM is only a dialler preference. Server never starts or charges a carrier call without your confirmation in Android Phone. Server cannot read your airtime balance; after you press Call, your mobile operator checks the balance and provides its usual insufficient-credit message where applicable.</p>
+          <label class="check-row" for="automatic-carrier-fallback"><input id="automatic-carrier-fallback" type="checkbox"><span>Automatically place a normal carrier call through this SIM when Server confirms the recipient is unreachable.</span></label>
+          <p class="fine-print">When enabled, Server ends the failed internet call and Android Telecom places an ordinary cellular call through your selected SIM without another Call tap. Your mobile operator applies its usual voice or plan charges. Server cannot read your airtime balance; the operator handles insufficient-credit announcements. Leave this unchecked to review the number and press Call yourself in the normal phone dialler.</p>
           <button class="primary full" id="save-fallback-sim" type="button">Save fallback choice and create my Server ID <span aria-hidden="true">→</span></button>
           <p class="fine-print">SIM labels and slots are used only to identify your selected line. Server never reads or uploads your SIM phone number or serial identifiers.</p>
         </div>
