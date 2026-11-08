@@ -56,7 +56,7 @@ const nativeWorkflow=read(".github/workflows/build-server-native.yml");
 const guestBrowserE2eShell=read("scripts/android-guest-browser-e2e.sh");
 const guestBrowserE2e=read("scripts/android-guest-browser-e2e.mjs");
 const e2eIdentityScript=read("scripts/create-server-e2e-identity.mjs");
-const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8.1-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
+const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
 const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
 const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
 const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
@@ -428,7 +428,7 @@ assert.match(nativeWorkflow,/api-level:\s*\[27,\s*28,\s*29,\s*30,\s*31,\s*32,\s*
 assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
 const androidBuildJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:"));
 const androidGuestJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-guest-browser-e2e:"),nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"));
-const androidMinimumJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"),nativeWorkflow.indexOf("  android-8.1-to-16-platform-matrix:"));
+const androidMinimumJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"),nativeWorkflow.indexOf("  android-8-to-16-platform-matrix:"));
 assert.ok(androidBuildJob.includes("runs-on: ubuntu-24.04") &&
   androidGuestJob.includes("runs-on: ubuntu-24.04") &&
   androidMinimumJob.includes("runs-on: ubuntu-24.04") &&
@@ -450,7 +450,7 @@ assert.ok(android17Preview.includes("runs-on: macos-15") &&
   "Android 17 remains an explicitly non-blocking Apple Silicon preview while stable APIs gate release");
 assert.doesNotMatch(nativeWorkflow,/if: github\.head_ref != 'android-finish' && github\.ref != 'refs\/heads\/android-finish'/,
   "the Android completion branch also runs the iOS simulator build and startup check");
-assert.ok(androidVersionMatrix.includes("channel: stable"), "stable Android 8.1–16 matrix uses released SDK images");
+assert.ok(androidVersionMatrix.includes("channel: stable"), "stable Android 8–16 matrix uses released SDK images");
 assert.match(nativeWorkflow,/api-level: \[27, 28, 29, 30, 31, 32, 33, 34, 35, 36\]/,
   "Android API 27 (8.1) and API 28 (9) join the full stable Telecom compatibility matrix; API 26 (8.0) retains its minimum-install smoke test");
 
@@ -464,8 +464,8 @@ assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidat
 assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,
    "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
 assert.match(androidTests,/launcherShowsHybridOnboardingWithFallbackSimChoice/);
-assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every stable Android 8.1–16 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
-assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 17"), "every stable Android 8.1–16 API must execute all 17 acceptance tests without skipped or failed tests");
+assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every stable Android 8–16 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
+assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 17"), "every stable Android 8–16 API must execute all 17 acceptance tests without skipped or failed tests");
 assert.ok(android17Preview.includes("scripts/android17-16kb-acceptance.sh") && android17Preview.includes("assert-android-test-count.py --expected-tests 17"), "Android 17 remains separately tested with the full 17-test 16 KB acceptance suite");
 assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.includes("emulator-boot-timeout: 600") && android17Preview.includes("timeout-minutes: 50") && android17Preview.includes("disk-size: 8G"), "Android 17 ARM64 preview receives the appropriate 4 GB guest RAM, 8 GB storage and 10-minute boot budget on the 7 GB Apple Silicon runner");
 assert.ok(!nativeWorkflow.slice(nativeWorkflow.indexOf("  publish-android-preview-release:")).includes("android-17-preview-compatibility"), "an unstable Android 17 preview emulator does not block publication after the stable Android release matrix passes");
