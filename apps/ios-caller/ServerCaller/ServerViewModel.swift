@@ -730,7 +730,7 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
         guard let uuid = UUID(uuidString: id) else { return }
         if handles[uuid] != nil { return }
         let rawPhone = (phoneNumber ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let safePhone = rawPhone.range(of: #"^\\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil
+        let safePhone = rawPhone.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil
             ? rawPhone : nil
         let trimmedName = (callerName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let displayName = trimmedName.isEmpty ? "Server caller" : String(trimmedName.prefix(80))
