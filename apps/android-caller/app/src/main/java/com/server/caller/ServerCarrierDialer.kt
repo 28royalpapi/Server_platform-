@@ -16,7 +16,7 @@ internal enum class AutomaticCarrierFallbackResult {
 
 /** Places ordinary carrier calls through Android Telecom on the explicitly selected SIM. */
 internal object ServerCarrierDialer {
-  private val E164 = Regex("^\\\\+[1-9][0-9]{7,14}$")
+  private val E164 = Regex("^\\+[1-9][0-9]{7,14}$")
 
   fun createIntent(rawNumber: String): Intent? {
     val number = rawNumber.trim()

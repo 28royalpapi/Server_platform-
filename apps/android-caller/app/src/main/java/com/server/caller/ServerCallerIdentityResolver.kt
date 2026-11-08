@@ -8,7 +8,7 @@ import android.provider.ContactsContract
 
 /** Resolve caller identity against the recipient's local Contacts; never upload the address book. */
 internal object ServerCallerIdentityResolver {
-  private val E164 = Regex("^\\\\+[1-9][0-9]{7,14}$")
+  private val E164 = Regex("^\\+[1-9][0-9]{7,14}$")
 
   fun resolve(context: Context, rawNumber: String): String {
     val number = rawNumber.trim()
