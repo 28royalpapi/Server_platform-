@@ -273,6 +273,9 @@ jobs:
   android-guest-browser-e2e:
     name: Android Telecom to no-install guest browser end-to-end call
     needs: android-build-and-emulator-smoke
+    # APKs are uploaded before the UI emulator smoke. Run this independent audio
+    # pilot even when that separate emulator fails to boot; skip only cancellation.
+    if: ${{ always() && needs.android-build-and-emulator-smoke.result != 'cancelled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
