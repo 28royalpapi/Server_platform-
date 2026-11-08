@@ -460,8 +460,8 @@ jobs:
   android-17-preview-compatibility:
     name: Android 17 16 KB preview compatibility
     env:
-      SERVER_DEBUG_ABI_FILTERS: x86_64
-    runs-on: macos-15-intel
+      SERVER_DEBUG_ABI_FILTERS: arm64-v8a
+    runs-on: macos-15
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
@@ -470,6 +470,8 @@ jobs:
         run: |
           brew install coreutils
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "RUNNER_ARCH=$(uname -m)"
+          test "$(uname -m)" = "arm64"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -479,9 +481,11 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Install Android 17 SDK components
-        run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools'
+        run: |
+          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools' 'ndk;30.0.16248370'
+          echo "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-arm64/bin" >> "$GITHUB_PATH"
       - name: Preinstall Android 17 16 KB system image with integrity retries
-        run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;x86_64'
+        run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;arm64-v8a'
       - name: Confirm native macOS emulator acceleration
         run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
       - name: Build caller and Android instrumentation tests
@@ -494,12 +498,11 @@ jobs:
           channel: stable
           target: google_apis_ps16k
           disk-size: 8G
-          arch: x86_64
+          arch: arm64-v8a
           profile: pixel_2
-          cores: 4
-          # API 37 requires 4 GB minimum; reserve headroom for GMSCore,
-          # the 16 KB runtime and Telecom instrumentation.
-          ram-size: 6144M
+          cores: 2
+          # macos-15 is a 7 GB M1 runner; keep the emulator within its RAM budget.
+          ram-size: 4096M
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
@@ -507,6 +510,7 @@ jobs:
             set -eu
             sh scripts/wait-for-android-package-manager.sh
             sh scripts/android17-16kb-acceptance.sh
+            python3 scripts/check-16kb-elf-alignment.py arm64-v8a apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
             # APK installation can re-create the swipe keyguard on API 37.
             # Unlock again and prove app credential storage is usable before instrumentation.
             sh scripts/unlock-android-emulator.sh

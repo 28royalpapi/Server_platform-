@@ -996,6 +996,12 @@ assert.ok(nativeWorkflow.includes("adb install -r apps/android-caller/app/build/
   "the API 29–36 matrix installs the app before the credential-encrypted storage check");
 assert.ok(android17InstallScript.includes('find "$ANDROID_HOME/build-tools"'),
   "Android 17 validation selects a zipalign executable from the Build Tools installed in that job");
+assert.ok(android17InstallScript.includes("app_compat.enabled fatal") && android17InstallScript.includes("pm.16kb.app_compat.disabled true"),
+  "Android 17 tests disable the 16 KB back-compat fallback and fail immediately on incompatible ELF binaries");
+assert.ok(android17Preview.includes("runs-on: macos-15") && android17Preview.includes("system-images;android-37.0;google_apis_ps16k;arm64-v8a") && android17Preview.includes("arch: arm64-v8a"),
+  "Android 17 has a native ARM64 16 KB emulator job, not only an x86_64 simulation");
+assert.ok(android17Preview.includes("ndk;30.0.16248370") && elfAlignmentScript.includes("llvm-readelf"),
+  "the Apple Silicon Android 17 job includes an ARM64 ELF reader to validate native library alignment");
 assert.ok(android17InstallScript.includes("ANDROID17_DATA_AVAILABLE_KB") && android17InstallScript.includes("1048576"),
   "Android 17 installation fails early when the emulator data partition has less than 1 GiB free");
 assert.ok(elfAlignmentScript.includes("PT_LOAD") && elfAlignmentScript.includes("0x4000"),

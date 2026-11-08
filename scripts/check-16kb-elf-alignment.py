@@ -23,7 +23,7 @@ if abi not in expected_machine:
 if not apk_arg.is_file() or apk_arg.stat().st_size == 0:
     raise SystemExit(f"APK missing or empty: {apk_arg}")
 
-readelf = shutil.which("readelf") or shutil.which("greadelf")
+readelf = shutil.which("llvm-readelf") or shutil.which("readelf") or shutil.which("greadelf")
 if not readelf:
     raise SystemExit("readelf/greadelf is required to inspect native ELF segments")
 

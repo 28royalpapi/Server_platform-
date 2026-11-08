@@ -19,6 +19,19 @@ if [ "$available_kb" -lt 1048576 ]; then
   echo "ERROR: Android 17 emulator has less than 1 GiB free in /data before app installation."
   exit 1
 fi
+# Android 17 offers a strict mode that fails immediately on 4 KB native ELF
+# segments instead of allowing legacy 16 KB page-size compatibility.
+adb shell setprop bionic.linker.16kb.app_compat.enabled fatal
+adb shell setprop pm.16kb.app_compat.disabled true
+linker_mode="$(adb shell getprop bionic.linker.16kb.app_compat.enabled | tr -d '\r')"
+package_mode="$(adb shell getprop pm.16kb.app_compat.disabled | tr -d '\r')"
+echo "ANDROID17_16KB_LINKER_MODE=$linker_mode"
+echo "ANDROID17_16KB_PACKAGE_COMPAT_DISABLED=$package_mode"
+if [ "$linker_mode" != "fatal" ] || [ "$package_mode" != "true" ]; then
+  echo "ERROR: Android 17 refused the strict 16 KB compatibility settings."
+  exit 1
+fi
+
 apk="apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
 if [ ! -s "$apk" ]; then
   echo "ERROR: Server debug APK is missing before Android 17 install validation."
