@@ -26,8 +26,9 @@ services:
 
   caddy:
     image: caddy:2.10.2-alpine
+    profiles: ["ingress"]
     environment:
-      REALTIME_HOST: ${REALTIME_HOST:?Set a public DNS hostname in infra/realtime/.env}
+      REALTIME_HOST: ${REALTIME_HOST:-localhost}
     ports:
       - "80:80"
       - "443:443"
