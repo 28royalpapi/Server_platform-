@@ -24,6 +24,40 @@ services:
       timeout: 3s
       retries: 5
 
+  coturn:
+    image: coturn/coturn:4.6.3
+    profiles: ["turn"]
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-ip=0.0.0.0
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=65535
+      - --realm=${REALTIME_HOST:?Set REALTIME_HOST in infra/realtime/.env}
+      - --use-auth-secret
+      - --static-auth-secret=${SERVER_TURN_SHARED_SECRET:?Set a unique SERVER_TURN_SHARED_SECRET}
+      - --fingerprint
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --no-loopback-peers
+      - --no-multicast-peers
+      - --stale-nonce=600
+      - --external-ip=${SERVER_TURN_EXTERNAL_IP:?Set the VM public IPv4 address}
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-65535:49160-65535/udp"
+    networks:
+      - server-realtime
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   caddy:
     image: caddy:2.10.2-alpine
     profiles: ["ingress"]
