@@ -611,14 +611,13 @@ class CallerSmokeTest {
     val handle = ServerTelecomRegistry.handle(context)
     val callId = "incoming-" + UUID.randomUUID().toString()
     val callerPhone = "+2348030000001"
+    // The caller-name test fixture is created after the one-time runtime
+    // permission grant in grantTelecomPermissions(), avoiding extra UiAutomator
+    // shell grant/revoke calls while Telecom is handling the incoming callback.
     val expectedCallerName = if (Build.VERSION.SDK_INT >= 29) {
       insertDemoContact(context, "Habib TNC", callerPhone)
       "Habib TNC"
-    } else {
-      // UiAutomation shell-identity adoption is available from API 29. API 28
-      // still verifies native Telecom ringing and raw-number presentation.
-      callerPhone
-    }
+    } else callerPhone
 
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
@@ -698,37 +697,28 @@ class CallerSmokeTest {
   }
 
   private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    require(Build.VERSION.SDK_INT >= 29) {
-      "The test contact fixture uses UiAutomation shell identity, available from API 29."
+    check(context.checkSelfPermission(Manifest.permission.WRITE_CONTACTS) ==
+      android.content.pm.PackageManager.PERMISSION_GRANTED) {
+      "WRITE_CONTACTS must be granted by the instrumentation permission setup."
     }
-    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    val packageName = context.packageName
-    // Use the platform package manager command for the debug-only fixture grant.
-    // UiAutomation.adoptShellPermissionIdentity can terminate instrumentation on
-    // several emulator API images before Telecom is exercised.
-    device.executeShellCommand("pm grant $packageName ${Manifest.permission.WRITE_CONTACTS}")
-    try {
-      val operations = arrayListOf<android.content.ContentProviderOperation>()
-      val rawContact = operations.size
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
-        .withValue(ContactsContract.Data.DATA2, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-        .build())
-      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
-    } finally {
-      device.executeShellCommand("pm revoke $packageName ${Manifest.permission.WRITE_CONTACTS}")
-    }
+    val operations = arrayListOf<android.content.ContentProviderOperation>()
+    val rawContact = operations.size
+    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+      .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+      .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+      .build())
+    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+      .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+      .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+      .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
+      .build())
+    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+      .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+      .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+      .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
+      .withValue(ContactsContract.Data.DATA2, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+      .build())
+    context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
   }
 
   private fun clickTextWithRetry(
@@ -815,6 +805,7 @@ class CallerSmokeTest {
       add(Manifest.permission.READ_PHONE_STATE)
       add(Manifest.permission.RECORD_AUDIO)
       add(Manifest.permission.READ_CONTACTS)
+      if (Build.VERSION.SDK_INT >= 29) add(Manifest.permission.WRITE_CONTACTS)
       if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
     }
     // Grant runtime permissions through the instrumentation shell identity.
