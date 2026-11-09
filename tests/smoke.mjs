@@ -809,8 +809,8 @@ assert.match(androidMain,/REACHABLE · SERVER \/ WEBRTC/,"the caller sees the re
 assert.match(androidMain,/GUEST INVITATION · INTERNET STATUS UNKNOWN/,"a non-Server number is shown as a guest with unknown internet status, not as offline");
 assert.doesNotMatch(androidMain,/PeerConnection\.IceConnectionState\.FAILED[\s\S]*handoffToCarrierDialer/,
   "a failed WebRTC path is reported as unreachable and never converted into a carrier call");
-assert.match(androidMain,/Recipient availability is unknown until their browser connects/,
-  "a guest invitation is not misrepresented as an active ring before the guest joins");
+assert.match(androidMain,/waiting for the recipient to (?:open and )?answer/,
+  "a guest Web Push alert or shared link is not misrepresented as a connected call before the recipient answers");
 assert.match(androidEngine,/Recipient has a fresh Server presence heartbeat/,"Android Telecom logs the live-presence path");
 assert.match(androidEngine,/throw ServerCallApiException\(status, result, reason\)/,
   "the Telecom HTTP client preserves structured recipient-offline responses for SIM fallback");
