@@ -929,6 +929,8 @@ assert.match(guest,/action==="push_config"/,
   "the invitation page can obtain the public VAPID key without exposing its private key");
 assert.match(guest,/action==="push_subscribe"/,
   "a guest can bind an explicitly approved browser subscription to the invitation's phone number");
+assert.match(guest,/!\/\^\\\+\[1-9\]\[0-9\]\{7,14\}\$\/.test\(invite\.phone_e164\)/,
+  "guest browser push enrollment accepts canonical E.164 numbers instead of rejecting every plus-prefixed phone number");
 assert.match(guest,/action==="push_presence"/,
   "an open guest browser can refresh its internet-reachability heartbeat");
 assert.match(guestWeb,/Notification\.requestPermission\(\)/,
