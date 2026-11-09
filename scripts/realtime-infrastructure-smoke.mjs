@@ -22,7 +22,6 @@ const token = input + "." + signature;
 const socket = new WebSocket(wsUrl);
 let nextId = 1;
 let connected = false;
-let subscribed = false;
 let published = false;
 const deadline = Date.now() + 15000;
 
@@ -45,11 +44,8 @@ const completed = new Promise((resolve, reject) => {
     if (message.error) return fail(new Error("Centrifugo protocol error: " + JSON.stringify(message.error)));
     if (message.id === 1 && message.connect) {
       connected = true;
-      socket.send(JSON.stringify({ id: nextId++, subscribe: { channel } }));
-      return;
-    }
-    if (message.id === 2 && message.subscribe) {
-      subscribed = true;
+      // The signed connection JWT's channels claim creates a server-side
+      // subscription. Do not issue a client-side subscribe for private "$" channels.
       try {
         const response = await fetch(apiUrl + "/publish", {
           method: "POST",
@@ -76,9 +72,8 @@ const completed = new Promise((resolve, reject) => {
 try {
   await completed;
   assert.equal(connected, true);
-  assert.equal(subscribed, true);
   assert.equal(published, true);
-  process.stdout.write("PASS Centrifugo authenticated WebSocket connect, JWT channel authorization, Redis-backed subscribe, and HTTP API publish fanout.\\n");
+  process.stdout.write("PASS Centrifugo authenticated WebSocket connect, JWT server-side channel subscription, Redis-backed publication fanout, and HTTP API publish.\\n");
 } finally {
   try { socket.close(); } catch {}
 }
