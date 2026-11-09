@@ -889,7 +889,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
-        setStatus("The guest-call link is ready. The recipient can open it over Wi-Fi or mobile data and tap Answer. Until the browser connects, internet status is unknown; no SIM call has been placed.")
+        setStatus("Recipient availability is unknown until their browser connects. The guest-call link is ready; the recipient can open it over Wi-Fi or mobile data and tap Answer. No SIM call has been placed.")
         if (pendingSystemDialerReturn) returnToSystemPhoneUi()
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
