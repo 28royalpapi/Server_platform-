@@ -28,7 +28,29 @@ alter table public.server_guest_push_devices alter column p256dh set not null;
 alter table public.server_guest_push_devices alter column auth set not null;
 alter table public.server_guest_push_devices drop constraint if exists server_guest_push_devices_phone_e164_check;
 alter table public.server_guest_push_devices add constraint server_guest_push_devices_phone_e164_check
-  check (phone_e164 ~ '^\\+[1-9][0-9]{7,14}$');
+  check (phone_e164 ~ '^\+[1-9][0-9]{7,14});
+create unique index if not exists server_guest_push_devices_endpoint_uidx
+  on public.server_guest_push_devices(endpoint);
+create index if not exists server_guest_push_devices_phone_live_idx
+  on public.server_guest_push_devices(phone_e164, last_seen_at desc)
+  where revoked_at is null;
+alter table public.server_guest_push_devices enable row level security;
+revoke all on public.server_guest_push_devices from anon, authenticated;
+grant all on public.server_guest_push_devices to service_role;
+
+-- A single VAPID keypair for this Server installation. The private key is never returned to browsers.
+create table if not exists public.server_guest_push_config (
+  id smallint primary key check (id = 1),
+  subject text not null,
+  public_key text not null,
+  private_key text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.server_guest_push_config enable row level security;
+revoke all on public.server_guest_push_config from anon, authenticated;
+grant all on public.server_guest_push_config to service_role;
+);
 create unique index if not exists server_guest_push_devices_endpoint_uidx
   on public.server_guest_push_devices(endpoint);
 create index if not exists server_guest_push_devices_phone_live_idx
