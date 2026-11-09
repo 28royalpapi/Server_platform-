@@ -27,24 +27,22 @@ services:
   coturn:
     image: coturn/coturn:4.6.3
     profiles: ["turn"]
+    entrypoint: ["/bin/sh", "-ec"]
     command:
-      - -n
-      - --log-file=stdout
-      - --listening-ip=0.0.0.0
-      - --listening-port=3478
-      - --min-port=49160
-      - --max-port=65535
-      - --realm=${REALTIME_HOST:?Set REALTIME_HOST in infra/realtime/.env}
-      - --use-auth-secret
-      - --static-auth-secret=${SERVER_TURN_SHARED_SECRET:?Set a unique SERVER_TURN_SHARED_SECRET}
-      - --fingerprint
-      - --no-cli
-      - --no-tls
-      - --no-dtls
-      - --no-loopback-peers
-      - --no-multicast-peers
-      - --stale-nonce=600
-      - --external-ip=${SERVER_TURN_EXTERNAL_IP:?Set the VM public IPv4 address}
+      - |
+        set -- -n --log-file=stdout --listening-ip=0.0.0.0 --listening-port=3478 \
+          --min-port=49160 --max-port=65535 --realm="$REALTIME_HOST" \
+          --use-auth-secret --static-auth-secret="$SERVER_TURN_SHARED_SECRET" \
+          --fingerprint --no-cli --no-tls --no-dtls --no-loopback-peers \
+          --no-multicast-peers --stale-nonce=600
+        if [ -n "$SERVER_TURN_EXTERNAL_IP" ]; then
+          set -- "$@" --external-ip="$SERVER_TURN_EXTERNAL_IP"
+        fi
+        exec turnserver "$@"
+    environment:
+      REALTIME_HOST: ${REALTIME_HOST:?Set REALTIME_HOST in infra/realtime/.env}
+      SERVER_TURN_SHARED_SECRET: ${SERVER_TURN_SHARED_SECRET:?Set a unique SERVER_TURN_SHARED_SECRET}
+      SERVER_TURN_EXTERNAL_IP: ${SERVER_TURN_EXTERNAL_IP:-}
     ports:
       - "3478:3478/udp"
       - "3478:3478/tcp"
@@ -52,6 +50,11 @@ services:
     networks:
       - server-realtime
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "turnutils_stunclient -p 3478 127.0.0.1 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     logging:
       driver: json-file
       options:
