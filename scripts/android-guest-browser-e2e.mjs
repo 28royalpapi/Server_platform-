@@ -109,10 +109,36 @@ try {
 const page = await context.newPage();
 page.setDefaultTimeout(25000);
 page.on("pageerror", error => process.stderr.write("Guest page error: " + error.message + "\n"));
+page.on("console", message => { if (message.type() === "error") process.stderr.write("Guest console error: " + message.text() + "\\n"); });
+page.on("requestfailed", request => process.stderr.write("Guest request failed: " + request.url() + " :: " + (request.failure()?.errorText || "unknown") + "\\n"));
+page.on("response", response => { if (response.status() >= 400) process.stderr.write("Guest HTTP " + response.status() + ": " + response.url() + "\\n"); });
 
 try {
   await page.goto(invitationUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.locator("#join-call").waitFor({ state: "visible", timeout: 30000 });
+  // The Open Graph preview is a real recipient-facing interstitial with a
+  // visible Open incoming call link. Normally its inline redirect opens the
+  // guest screen automatically; explicitly follow that same link if a browser
+  // or test harness suppresses the script-driven redirect.
+  if (/\\/server-guest-preview$/i.test(new URL(page.url()).pathname)) {
+    const openCall = page.locator('a[href*="/guest.html"]');
+    await openCall.waitFor({ state: "visible", timeout: 10000 });
+    await openCall.click();
+    await page.waitForURL(url => url.pathname.endsWith("/guest.html"), { timeout: 15000 });
+  }
+  try {
+    await page.locator("#join-call").waitFor({ state: "visible", timeout: 30000 });
+  } catch (error) {
+    await page.screenshot({ path: join(artifactDir, "guest-page-load-failure.png"), fullPage: true }).catch(() => {});
+    const diagnostic = {
+      url: page.url(),
+      title: await page.title().catch(() => ""),
+      status: await page.locator("#guest-status").innerText().catch(() => "missing #guest-status"),
+      body: (await page.locator("body").innerText().catch(() => "missing body")).slice(0, 3000),
+      html: (await page.content().catch(() => "")).slice(0, 12000)
+    };
+    await writeFile(join(artifactDir, "guest-page-load-failure.json"), JSON.stringify(diagnostic, null, 2));
+    throw new Error("Guest answer button did not become visible: " + JSON.stringify({url:diagnostic.url,title:diagnostic.title,status:diagnostic.status,body:diagnostic.body}) + "; " + error.message);
+  }
   await page.waitForFunction(() => {
     const button = document.querySelector("#join-call");
     const status = document.querySelector("#guest-status")?.textContent || "";
