@@ -64,15 +64,15 @@
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Your Server ID is ready. Reachable Server users are called using WebRTC. If the recipient is not reachable on Server—or is not registered with Server—your selected SIM is used for the normal carrier call. Server records the attempt; your mobile operator handles the voice call and its charges.</p>
+          <p class="done-text">Your Server ID is ready. A recipient with a fresh Server internet connection is called over WebRTC. If they are unreachable on Server—or are not registered—Server switches to your selected SIM for a normal carrier call. Server records the attempt; the mobile operator handles the voice call and its charges. To receive this carrier fallback when someone calls your Server ID, you must also verify a phone number and explicitly allow number-based calls below.</p>
 
           <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
           <section id="phone-link-step" class="phone-link-step hidden">
             <h3>Link your mobile number</h3>
-            <p class="fine-print">Verify the same number already on your SIM. When enabled below, other Server users can call you using this number, and Server can share it as your caller ID so recipients can match it to the name saved in their own Contacts. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
+            <p class="fine-print">Verify the mobile number where you want to receive carrier fallback. When you explicitly allow it below, Server can provide this verified number to a caller when your Server receiver is unreachable, so their previously selected SIM can place a normal carrier call to you. It also allows number-based Server calling and may share your number as caller ID. Without this consent, other Server users can still reach your Server ID over WebRTC while you are online, but Server cannot route your offline Server ID to your phone number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
             <div class="gateway-setup">
               <h4>Set up SMS verification</h4>
-              <p class="fine-print">Phone-number verification is optional and uses a separate SMS gateway. You do not need to complete it to use your Server ID. The code expires after 10 minutes.</p>
+              <p class="fine-print">Phone-number verification is optional for online WebRTC calling, but it is required if you want other Server users to reach your Server ID through their selected SIM when you are unreachable on Server. The code expires after 10 minutes.</p>
               <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate SMS gateway pairing code</button>
               <div id="sms-gateway-pairing-result" class="hidden">
                 <label for="sms-gateway-pairing-code">One-time pairing code</label>
@@ -80,7 +80,7 @@
                 <p id="sms-gateway-pairing-expiry" class="fine-print"></p>
               </div>
             </div>
-            <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow other Server users to call me using this verified number, and show this number as my caller ID when I call through Server.</span></label>
+            <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow Server to share this verified number with another Server caller when I am unreachable, so their selected SIM can call my phone over the mobile network. Also allow number-based Server calling and show this number as my caller ID.</span></label>
             <label for="link-phone-number">Mobile number</label>
             <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or +919876543210">
             <button class="primary full" id="request-phone-link-code" type="button">Send verification code</button>
