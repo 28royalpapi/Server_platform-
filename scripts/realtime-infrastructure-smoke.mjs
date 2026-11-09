@@ -37,6 +37,7 @@ const completed = new Promise((resolve, reject) => {
     reject(new Error("Centrifugo WebSocket connection failed"));
   });
   socket.addEventListener("open", () => {
+    process.stdout.write("CENTRIFUGO_WS_OPEN\\n");
     socket.send(JSON.stringify({ id: nextId++, connect: { token } }));
   });
   socket.addEventListener("message", async event => {
@@ -45,6 +46,7 @@ const completed = new Promise((resolve, reject) => {
     if (message.error) return fail(new Error("Centrifugo protocol error: " + JSON.stringify(message.error)));
     if (message.id === 1 && message.connect) {
       connected = true;
+      process.stdout.write("CENTRIFUGO_WS_AUTHENTICATED\\n");
       // The signed connection JWT's channels claim creates a server-side
       // subscription. Do not issue a client-side subscribe for private "$" channels.
       try {
@@ -63,7 +65,8 @@ const completed = new Promise((resolve, reject) => {
       }
       return;
     }
-    if (message.pub?.data?.nonce === nonce) {
+    if (message.push?.pub?.data?.nonce === nonce) {
+      process.stdout.write("CENTRIFUGO_WS_PUBLICATION_RECEIVED\\n");
       published = true;
       clearTimeout(timeout);
       resolve();
