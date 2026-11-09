@@ -37,6 +37,7 @@ class ServerIncomingCallService : Service() {
   private var realtimeClient: ServerRealtimeClient? = null
   @Volatile private var realtimeConnected = false
   @Volatile private var realtimeCallId: String? = null
+  @Volatile private var realtimeRetryAtMs: Long = 0L
   private var incomingCallId: String? = null
   // Process-local by design: if Android recreates the service, active calls must be
   // re-reported to Telecom instead of being suppressed by stale persisted IDs.
@@ -145,7 +146,7 @@ class ServerIncomingCallService : Service() {
         }
         val token = freshAccessToken()
         if (token == null) { stopSelf(); break }
-        if (realtimeClient == null) connectRealtime(token)
+        if (realtimeClient == null && System.currentTimeMillis() >= realtimeRetryAtMs) connectRealtime(token)
         if (!realtimeConnected) {
           val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
           processIncomingResponse(result, token)
@@ -192,10 +193,19 @@ class ServerIncomingCallService : Service() {
       val request = JSONObject().put("action", "realtime_token")
       if (!callId.isNullOrBlank()) request.put("call_id", callId)
       val credentials = postJson("/functions/v1/server-calls", request, accessToken)
-      if (!credentials.optBoolean("realtime_available", false)) return
+      if (!credentials.optBoolean("realtime_available", false)) {
+        realtimeRetryAtMs = System.currentTimeMillis() + REALTIME_CONFIG_RETRY_MS
+        Log.w(TAG, "CENTRIFUGO_NOT_CONFIGURED: incoming calls are using the compatibility HTTP poller.")
+        return
+      }
       val endpoint = credentials.optString("url")
       val realtimeToken = credentials.optString("token")
-      if (!endpoint.startsWith("wss://") || realtimeToken.isBlank()) return
+      if (!endpoint.startsWith("wss://") || realtimeToken.isBlank()) {
+        realtimeRetryAtMs = System.currentTimeMillis() + REALTIME_CONFIG_RETRY_MS
+        Log.w(TAG, "Centrifugo returned incomplete connection credentials; retry is delayed.")
+        return
+      }
+      realtimeRetryAtMs = 0L
       realtimeClient?.close()
       realtimeConnected = false
       realtimeCallId = callId
@@ -226,7 +236,8 @@ class ServerIncomingCallService : Service() {
       realtimeClient?.close()
       realtimeClient = null
       realtimeCallId = null
-      Log.w(TAG, "Realtime incoming-call channel unavailable: " + error.javaClass.simpleName)
+      realtimeRetryAtMs = System.currentTimeMillis() + REALTIME_CONFIG_RETRY_MS
+      Log.w(TAG, "Realtime incoming-call channel unavailable; compatibility polling remains active: " + error.javaClass.simpleName)
     }
   }
 
@@ -364,6 +375,7 @@ class ServerIncomingCallService : Service() {
     internal const val FOREGROUND_NOTIFICATION_ID = 7338
     private const val POLL_INTERVAL_MS = 2200L
     private const val REALTIME_IDLE_DELAY_MS = 15000L
+    private const val REALTIME_CONFIG_RETRY_MS = 30000L
     private const val ACTION_SHOW_INCOMING_CALL = "com.server.caller.action.FGS_SHOW_INCOMING"
     private const val ACTION_SILENCE_INCOMING_CALL = "com.server.caller.action.FGS_SILENCE_INCOMING"
     private const val ACTION_CLEAR_INCOMING_CALL = "com.server.caller.action.FGS_CLEAR_INCOMING"
