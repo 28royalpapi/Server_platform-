@@ -26,6 +26,7 @@ on:
       - 'web/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'infra/**'
 concurrency:
   group: server-native-${{ github.ref }}-kvm
   cancel-in-progress: true
