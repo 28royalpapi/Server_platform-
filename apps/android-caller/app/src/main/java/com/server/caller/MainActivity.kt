@@ -284,14 +284,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     if (!::recipientAvailabilityText.isInitialized) return
     val status = availability?.optString("status").orEmpty()
     val reachable = ServerRecipientReachability.isFresh(status)
-    val awaitingWakeConfirmation = ServerRecipientReachability.requiresWakeConfirmation(
-      status,
-      availability?.optBoolean("push_queued", false) == true
-    )
+    val wakeCandidate = status == "background_reachable"
     val message = when {
       status.isBlank() -> fallbackMessage ?: "Checking Server reachability…"
       reachable -> "REACHABLE · SERVER / WEBRTC"
-      awaitingWakeConfirmation -> "CHECKING · SERVER WAKE"
+      wakeCandidate -> "NOT CONFIRMED · SERVER WAKE"
       else -> "UNREACHABLE · SELECTED SIM"
     }
     val detail = when (status) {
