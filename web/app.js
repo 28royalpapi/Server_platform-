@@ -56,6 +56,9 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const gatewayPairingResult = document.querySelector("#sms-gateway-pairing-result");
   const gatewayPairingCode = document.querySelector("#sms-gateway-pairing-code");
   const gatewayPairingExpiry = document.querySelector("#sms-gateway-pairing-expiry");
+  const guestInviteSmsConsent = document.querySelector("#allow-guest-invite-sms");
+  const guestInviteSmsStatus = document.querySelector("#guest-invite-sms-status");
+  let guestInviteSmsConsentBeforeChange = false;
   let pendingPhoneNumber = "";
   let phoneLinkVerified = false;
   let persistedNumberConsent = false;
@@ -278,6 +281,12 @@ if (isNativeSetup && nativeSetup && stepForm) {
     finishStep.classList.remove("hidden");
     serverId.textContent = `Your Server ID: ${result.serverId}`;
     pendingPhoneNumber = "";
+    if (guestInviteSmsConsent && window.ServerAndroid && typeof window.ServerAndroid.getGuestInviteSmsConsent === "function") {
+      try {
+        guestInviteSmsConsent.checked = window.ServerAndroid.getGuestInviteSmsConsent() === "true";
+        guestInviteSmsConsentConsentBeforeChange = guestInviteSmsConsent.checked;
+      } catch { guestInviteSmsConsent.checked = false; }
+    }
     phoneCodeStep && phoneCodeStep.classList.add("hidden");
     if (phoneCodeInput) phoneCodeInput.value = "";
     try {
@@ -296,6 +305,34 @@ if (isNativeSetup && nativeSetup && stepForm) {
     } catch { /* First-time number linking remains available. */ }
     const contactCountryNote = destinationCountryContactsGranted ? "" : " Contacts access was not granted. For safety, use an international number beginning with +; Server will not guess a country for a national-format number.";
     showStatus("Server identity created. Phone-number linking is optional; enable Server under Android Calling accounts to finish setup." + contactCountryNote, true);
+  };
+
+  guestInviteSmsConsent && guestInviteSmsConsent.addEventListener("change", () => {
+    if (!(window.ServerAndroid && typeof window.ServerAndroid.setGuestInviteSmsConsent === "function")) {
+      guestInviteSmsConsent.checked = guestInviteSmsConsentConsentBeforeChange;
+      if (guestInviteSmsStatus) guestInviteSmsStatus.textContent = "Open Server from the installed Android connector to change this setting.";
+      return;
+    }
+    guestInviteSmsConsentBeforeChange = guestInviteSmsConsent.checked;
+    guestInviteSmsConsent.disabled = true;
+    if (guestInviteSmsStatus) guestInviteSmsStatus.textContent = "Saving your SMS delivery preference…";
+    window.ServerAndroid.setGuestInviteSmsConsent(guestInviteSmsConsentBeforeChange);
+  });
+
+  window.onServerGuestSmsConsentResult = (result) => {
+    if (guestInviteSmsConsent) {
+      guestInviteSmsConsent.disabled = false;
+      if (!result || result.ok !== true) guestInviteSmsConsent.checked = !guestInviteSmsConsentConsentBeforeChange;
+      else guestInviteSmsConsent.checked = result.allow_guest_invite_sms === true;
+      guestInviteSmsConsentConsentBeforeChange = guestInviteSmsConsent.checked;
+    }
+    if (guestInviteSmsStatus) {
+      guestInviteSmsStatus.textContent = result && result.ok === true
+        ? (result.allow_guest_invite_sms
+          ? "Automatic guest-invitation SMS is enabled. A recently active gateway paired to your account is required; your operator may charge for each SMS."
+          : "Automatic guest-invitation SMS is off. You can still share each guest-call link manually.")
+        : "The setting could not be saved. Check your connection and try again.";
+    }
   };
 
   requestPhoneCodeButton && requestPhoneCodeButton.addEventListener("click", () => {
