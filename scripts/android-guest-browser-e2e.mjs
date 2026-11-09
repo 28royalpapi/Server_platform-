@@ -62,7 +62,7 @@ const context = await browser.newContext({
 const previewResponse = await context.request.get(invitationUrl, { maxRedirects: 0 });
 if (!previewResponse.ok()) throw new Error("Caller-identifying Open Graph page returned HTTP " + previewResponse.status());
 const previewHtml = await previewResponse.text();
-const guestLinkMatch = previewHtml.match(/<a\\s+href="([^"]+)"[^>]*>\\s*Open incoming call\\s*<\\/a>/i);
+const guestLinkMatch = previewHtml.match(/<a\s+href="([^"]+)"[^>]*>\s*Open incoming call\s*<\/a>/i);
 if (!guestLinkMatch) throw new Error("Guest preview is missing its secure Open incoming call link.");
 const guestPageUrl = new URL(guestLinkMatch[1].replace(/&amp;/g, "&"), invitationUrl);
 if (guestPageUrl.hostname !== "server-onboarding-ochre.vercel.app" ||
