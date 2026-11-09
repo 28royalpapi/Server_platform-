@@ -1,0 +1,19 @@
+{
+  "client": {
+    "allowed_origins": [
+      "https://server-onboarding-ochre.vercel.app"
+    ]
+  },
+  "engine": {
+    "type": "redis",
+    "redis": {
+      "address": "redis://redis:6379"
+    }
+  },
+  "admin": {
+    "enabled": false
+  },
+  "log": {
+    "level": "info"
+  }
+}
