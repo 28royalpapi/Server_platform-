@@ -183,6 +183,32 @@ try {
   calls.push({ id: offlineStart.call_id, owner: caller });
   pass("offline Server recipient is not falsely rung; an atomic missed-call record is saved");
 
+  // This is a backend metadata contract test only. It does not originate a
+  // cellular call; Android Telecom remains responsible for making that call.
+  const deniedFallbackWrite = await callAction(onlineCallee, "record_carrier_fallback", {
+    call_id: offlineStart.call_id,
+    stage: "unavailable",
+    error_code: "RECIPIENT_NUMBER_NOT_OPTED_IN"
+  }, 403);
+  assert.equal(deniedFallbackWrite.error, "CALL_ACCESS_DENIED");
+  const fallbackSaved = await callAction(caller, "record_carrier_fallback", {
+    call_id: offlineStart.call_id,
+    stage: "unavailable",
+    selected_sim_slot: 1,
+    selected_sim_carrier: "Contract Test Network",
+    error_code: "RECIPIENT_NUMBER_NOT_OPTED_IN"
+  });
+  assert.equal(fallbackSaved.ok, true);
+  assert.equal(fallbackSaved.call.carrier_fallback_status, "unavailable");
+  assert.equal(fallbackSaved.call.carrier_fallback_sim_slot, 1);
+  const fallbackHistory = await callAction(caller, "poll", {
+    call_id: offlineStart.call_id, after_seq: 0
+  });
+  assert.equal(fallbackHistory.call.carrier_fallback_method, "selected_sim");
+  assert.equal(fallbackHistory.call.carrier_fallback_status, "unavailable");
+  assert.equal(fallbackHistory.call.carrier_fallback_error_code, "RECIPIENT_NUMBER_NOT_OPTED_IN");
+  pass("offline attempt history preserves selected-SIM fallback availability and enforces caller-only updates");
+
   const reconnected = await createIdentity({
     installation_id: offlineCallee.installation_id,
     device_secret: offlineCallee.device_secret
@@ -193,7 +219,9 @@ try {
   const missed = (inbox.calls || []).find(row => row.id === offlineStart.call_id);
   assert.ok(missed, "the same Server identity must receive its missed call after reconnecting");
   assert.equal(missed.state, "missed");
-  pass("offline missed call reappears in the same user's inbox after device re-authentication");
+  assert.equal(missed.carrier_fallback_status, "unavailable");
+  assert.equal(missed.carrier_fallback_sim_slot, 1);
+  pass("offline missed call and selected-SIM fallback outcome reappear in the same user's inbox after device re-authentication");
 
   process.stdout.write("\nLive Server-to-Server backend integration: " + checks + "/" + checks +
     " checks passed. This does not claim that a real microphone/ICE media session was established.\n");
