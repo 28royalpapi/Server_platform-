@@ -674,8 +674,10 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
-assert.match(calls,/delivery_mode:"manual_share"/,
-  "guest invitations are deliberately shared by the caller rather than automatically sent by SMS");
+assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":"manual_share"/,
+  "guest calls use browser push for enrolled receivers and a one-time share link for first-contact activation");
+assert.doesNotMatch(calls,/server_sms_jobs|automatic_sms_queued/,
+  "guest call invitations are never placed into the SMS delivery queue");
 assert.doesNotMatch(calls,/from\("server_sms_jobs"\)\.insert/,
   "new guest calls never enqueue per-call SMS invitations");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
