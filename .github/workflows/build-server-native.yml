@@ -63,8 +63,10 @@ jobs:
           TURN_SECRET="$(awk -F= '$1 == "SERVER_TURN_SHARED_SECRET" {print substr($0, index($0, "=") + 1)}' infra/realtime/.env)"
           test "${#TURN_SECRET}" -ge 32
           TURN_USERNAME="$(( $(date +%s) + 600 )):server-turn-smoke"
-          docker exec realtime-coturn-1 turnutils_uclient \
-            -X -c -n 0 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
+          # -Y alloc performs a real authenticated TURN ALLOCATE/REFRESH cycle
+          # without requiring an echo peer (-e) or two relay clients (-y).
+          timeout 20s docker exec realtime-coturn-1 turnutils_uclient \
+            -Y alloc -X -n 1 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
       - name: Validate optional Coturn relay compose configuration
         run: |
           docker compose --profile turn --env-file infra/realtime/.env \
@@ -608,7 +610,7 @@ jobs:
             sh scripts/unlock-android-emulator.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
-            python3 scripts/assert-android-test-count.py --expected-tests 17
+            python3 scripts/assert-android-test-count.py --expected-tests 21
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -692,7 +694,7 @@ jobs:
             sh scripts/recover-android17-system-server.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
-            python3 scripts/assert-android-test-count.py --expected-tests 17
+            python3 scripts/assert-android-test-count.py --expected-tests 21
       - uses: actions/upload-artifact@v4
         if: always()
         with:
