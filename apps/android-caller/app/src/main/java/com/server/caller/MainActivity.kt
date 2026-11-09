@@ -655,9 +655,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     AlertDialog.Builder(this)
       .setTitle("This recipient isn't on Server")
       .setMessage(
-        "Share a secure internet-call invitation, or try the number through your normal phone SIM. " +
-          "A carrier attempt may show a missed-call or callback alert where your operator supports it. " +
-          "A powered-off phone may only receive a network alert after reconnecting. Standard call charges may apply."
+        "This number has no reachable Server receiver. You can share a secure browser invitation, or place a normal cellular call through your selected SIM. " +
+          "A cellular call makes the recipient's ordinary phone ring when their line is registered for voice service. If the phone is switched off or outside voice coverage, the carrier cannot ring it. Your operator applies its normal call charges; Server adds no calling charge."
       )
       .setPositiveButton("Share invitation") { _, _ ->
         try {
@@ -668,7 +667,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         }
       }
       .setNeutralButton("Call using selected SIM") { _, _ ->
-        handoffToCarrierDialer(recipientPhone, callId)
+        handoffToCarrierDialer(recipientPhone, callId, allowAutomaticFallback = false)
       }
       .setNegativeButton("Cancel") { _, _ ->
         abandonPendingGuestCall(callId)
