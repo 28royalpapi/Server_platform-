@@ -31,7 +31,7 @@ function fail(error) {
   throw error instanceof Error ? error : new Error(String(error));
 }
 const completed = new Promise((resolve, reject) => {
-  const timeout = setTimeout(() => reject(new Error("Centrifugo WebSocket publish/subscribe smoke timed out")), 15000);
+  const timeout = setTimeout(() => reject(new Error("Centrifugo WebSocket JWT subscribe/publish smoke timed out")), 15000);
   socket.addEventListener("error", () => {
     clearTimeout(timeout);
     reject(new Error("Centrifugo WebSocket connection failed"));
@@ -63,7 +63,7 @@ const completed = new Promise((resolve, reject) => {
       }
       return;
     }
-    if (message.push?.pub?.data?.nonce === nonce) {
+    if (message.pub?.data?.nonce === nonce) {
       published = true;
       clearTimeout(timeout);
       resolve();
