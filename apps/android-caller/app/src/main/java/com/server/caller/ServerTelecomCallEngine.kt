@@ -305,6 +305,13 @@ internal class ServerTelecomCallEngine(
       val apiError = error as? ServerCallApiException
       if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE" &&
           (!apiError.payload.optBoolean("call_created", true) || apiError.payload.optBoolean("missed_call_saved", false))) {
+        // The backend has already saved this offline attempt as a missed call.
+        // Keep its ID so the selected-SIM handoff is attached to the same history row.
+        val missedCallId = apiError.payload.optString("call_id").takeIf { it.matches(Regex("^[0-9a-fA-F-]{36}$")) }
+        if (missedCallId != null) {
+          callId = missedCallId
+          ServerTelecomRegistry.setCurrentCallId(missedCallId)
+        }
         val dialNumber = apiError.carrierFallback?.optString("destination_e164")
           ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
         val message = if (dialNumber != null) {
@@ -401,6 +408,16 @@ internal class ServerTelecomCallEngine(
     failCallStarted = true
     recordStage("call_setup_failed")
     if (BuildConfig.DEBUG) prefs.edit().putString("debug_last_call_failure", message.take(240)).apply()
+
+    val selectedFallbackSim = ServerFallbackSimManager.selectedOption(context)
+    // Persist the intended route before ending the Server leg. The final status
+    // is written only after Telecom either accepts or rejects the carrier call.
+    if (automaticCarrierFallback) {
+      val initialStage = if (carrierFallbackPhone != null) "requested" else "unavailable"
+      val initialError = if (carrierFallbackPhone == null) "RECIPIENT_NUMBER_NOT_AVAILABLE" else null
+      persistCarrierFallbackHistory(initialStage, selectedFallbackSim, initialError)
+    }
+
     val id = callId
     if (!id.isNullOrBlank()) {
       try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
@@ -410,7 +427,7 @@ internal class ServerTelecomCallEngine(
     cleanupPeer()
     ServerCallNotifications.cancel(context, id.orEmpty())
     ServerGuestInviteNotifications.cancel(context, id.orEmpty())
-    val selectedFallbackSim = ServerFallbackSimManager.selectedOption(context)
+
     if (automaticCarrierFallback && carrierFallbackPhone != null && selectedFallbackSim != null) {
       Toast.makeText(
         context,
@@ -421,13 +438,67 @@ internal class ServerTelecomCallEngine(
     val carrierResult = if (automaticCarrierFallback) {
       carrierFallbackPhone?.let { ServerCarrierDialer.placeAutomatically(context, it) }
     } else null
-    if (carrierResult == AutomaticCarrierFallbackResult.PLACED) {
-      recordStage("automatic_carrier_fallback_requested")
-      Log.i(TAG, "Server leg ended; Telecom accepted the selected-SIM carrier-call request.")
-    } else {
-      ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
+
+    when (carrierResult) {
+      AutomaticCarrierFallbackResult.PLACED -> {
+        persistCarrierFallbackHistory("handed_off", selectedFallbackSim, null)
+        recordStage("automatic_carrier_fallback_requested")
+        Log.i(TAG, "Server recorded the selected-SIM handoff; Android Telecom accepted the carrier-call request.")
+      }
+      AutomaticCarrierFallbackResult.NOT_OPTED_IN,
+      AutomaticCarrierFallbackResult.CALL_PERMISSION_MISSING,
+      AutomaticCarrierFallbackResult.SELECTED_SIM_UNAVAILABLE,
+      AutomaticCarrierFallbackResult.INVALID_NUMBER -> {
+        val reason = carrierResult.name
+        persistCarrierFallbackHistory("unavailable", selectedFallbackSim, reason)
+        ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
+      }
+      AutomaticCarrierFallbackResult.TELECOM_REJECTED,
+      AutomaticCarrierFallbackResult.FAILED -> {
+        val reason = carrierResult.name
+        persistCarrierFallbackHistory("failed", selectedFallbackSim, reason)
+        ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
+      }
+      null -> {
+        if (automaticCarrierFallback) {
+          // A carrier destination or a usable selected SIM was not available.
+          persistCarrierFallbackHistory(
+            "unavailable",
+            selectedFallbackSim,
+            if (carrierFallbackPhone == null) "RECIPIENT_NUMBER_NOT_AVAILABLE" else "SELECTED_SIM_UNAVAILABLE"
+          )
+        }
+        ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
+      }
     }
     release()
+  }
+
+  /**
+   * Attach the caller-side selected-SIM handoff to the same durable call row.
+   * "handed_off" means Android Telecom accepted placeCall; it is not a claim
+   * that the remote subscriber answered or that the carrier completed the call.
+   */
+  private suspend fun persistCarrierFallbackHistory(
+    stage: String,
+    selectedSim: ServerFallbackSimOption?,
+    errorCode: String?
+  ) {
+    val id = callId?.takeIf { it.isNotBlank() } ?: return
+    try {
+      api("record_carrier_fallback", JSONObject()
+        .put("call_id", id)
+        .put("stage", stage)
+        .put("selected_sim_slot", selectedSim?.slotIndex ?: JSONObject.NULL)
+        .put("selected_sim_carrier", selectedSim?.carrierName ?: JSONObject.NULL)
+        .put("error_code", errorCode ?: JSONObject.NULL)
+      )
+    } catch (error: Exception) {
+      Log.w(TAG, "Server carrier-fallback history update failed: " + error.javaClass.simpleName)
+      if (BuildConfig.DEBUG) {
+        prefs.edit().putString("debug_last_carrier_fallback_history_error", error.javaClass.simpleName).apply()
+      }
+    }
   }
 
   private suspend fun connectRealtime(id: String) {
