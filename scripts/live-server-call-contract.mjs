@@ -97,7 +97,7 @@ try {
 
   const realtime = await callAction(caller, "realtime_token", { call_id: started.call_id });
   if (realtime.realtime_available === true) {
-    assert.ok((realtime.url || "").startsWith("wss://") || (realtime.url || "").startsWith("ws://"));
+    assert.ok((realtime.url || "").startsWith("wss://"));
     const realtimeTokenParts = (realtime.token || "").split(".");
     assert.equal(realtimeTokenParts.length, 3);
     assert.ok(realtimeTokenParts.every(part => /^[A-Za-z0-9_-]+$/.test(part)));
@@ -107,7 +107,7 @@ try {
     assert.ok(claims.channels.includes("$server-call:" + started.call_id));
     pass("Centrifugo realtime token is scoped to caller identity and this call");
   } else {
-    process.stdout.write("WARN CENTRIFUGO_NOT_CONFIGURED: call events still use durable HTTP reconciliation; this is not the high-concurrency realtime path.\\n");
+    process.stdout.write("WARN CENTRIFUGO_NOT_CONFIGURED: call events still use durable HTTP reconciliation; this is not the high-concurrency realtime path.\n");
   }
 
   const incoming = await callAction(onlineCallee, "incoming");
