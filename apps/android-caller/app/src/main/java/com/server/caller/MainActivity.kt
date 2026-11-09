@@ -283,17 +283,22 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   ) {
     if (!::recipientAvailabilityText.isInitialized) return
     val status = availability?.optString("status").orEmpty()
-    val reachable = status == "online" || status == "background_reachable"
+    val reachable = ServerRecipientReachability.isFresh(status)
+    val awaitingWakeConfirmation = ServerRecipientReachability.requiresWakeConfirmation(
+      status,
+      availability?.optBoolean("push_queued", false) == true
+    )
     val message = when {
       status.isBlank() -> fallbackMessage ?: "Checking Server reachability…"
       reachable -> "REACHABLE · SERVER / WEBRTC"
+      awaitingWakeConfirmation -> "CHECKING · SERVER WAKE"
       else -> "UNREACHABLE · SELECTED SIM"
     }
     val detail = when (status) {
-      "online" -> "A fresh Server connection is available; attempting WebRTC."
-      "background_reachable" -> "A background wake receiver exists; Server will attempt delivery, but ringing is not confirmed."
-      "offline" -> "No live Server receiver or background wake endpoint is available."
-      "unknown_guest" -> "This number has no Server receiver. A shared browser invitation remains an optional alternative."
+      "online" -> "A fresh authenticated Server internet heartbeat is available; WebRTC can be attempted."
+      "background_reachable" -> "A push registration exists, but a live internet heartbeat is not confirmed. Server will check again when you call; otherwise the selected SIM is used."
+      "offline" -> "No fresh Server heartbeat or registered wake endpoint is available. The selected SIM is the carrier route."
+      "unknown_guest" -> "This number has no Server receiver. The call uses your selected cellular SIM."
       else -> ""
     }
     val colour = when {
