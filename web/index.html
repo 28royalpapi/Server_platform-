@@ -64,11 +64,15 @@
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Your Server ID is ready. Server users are called over WebRTC. People who do not use Server receive a secure browser-call invitation; they can open it over mobile data or Wi-Fi and tap Answer. A missing Server account or an old app heartbeat is not proof that a phone has no internet. A selected SIM remains a separate carrier option and may incur normal operator charges.</p>
+          <p class="done-text">Your Server ID is ready. A recipient with a fresh Server internet connection is called over WebRTC. If they are unreachable on Server—or are not registered—Server switches to your selected SIM for a normal carrier call. Server records the attempt; the mobile operator handles the voice call and its charges. To receive this carrier fallback when someone calls your Server ID, you must also verify a phone number and explicitly allow number-based calls below.</p>
 
-          <div class="gateway-setup">
-            <h4>Automatic guest-call invitation delivery</h4>
-            <p class="fine-print">Pair an Android phone with an active SIM that you control. When its Server SIM Gateway is online and you enable the option below, Server queues the secure guest-call link to the number you call. SMS charges may apply. This sends the invitation only; the recipient still needs internet over mobile data or Wi-Fi to open it and tap Answer.</p>
+          <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
+          <section id="phone-link-step" class="phone-link-step hidden">
+            <h3>Link your mobile number</h3>
+            <p class="fine-print">Verify the mobile number where you want to receive carrier fallback. When you explicitly allow it below, Server can provide this verified number to a caller when your Server receiver is unreachable, so their previously selected SIM can place a normal carrier call to you. It also allows number-based Server calling and may share your number as caller ID. Without this consent, other Server users can still reach your Server ID over WebRTC while you are online, but Server cannot route your offline Server ID to your phone number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
+                      <div class="gateway-setup">
+            <h4>Set up SMS verification</h4>
+            <p class="fine-print">Phone-number verification is optional for online WebRTC calling, but it is required if you want other Server users to reach your Server ID through their selected SIM when you are unreachable on Server. The code expires after 10 minutes.</p>
             <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate SMS gateway pairing code</button>
             <div id="sms-gateway-pairing-result" class="hidden">
               <label for="sms-gateway-pairing-code">One-time pairing code</label>
@@ -76,13 +80,6 @@
               <p id="sms-gateway-pairing-expiry" class="fine-print"></p>
             </div>
           </div>
-          <label class="check-row" for="allow-guest-invite-sms"><input id="allow-guest-invite-sms" type="checkbox"><span>Allow Server to automatically send guest-call invitation links through my paired SIM gateway. My mobile operator may charge for each SMS.</span></label>
-          <p id="guest-invite-sms-status" class="fine-print" role="status" aria-live="polite">Off by default. Turn this on only after pairing a gateway phone with a SIM you control.</p>
-
-          <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
-          <section id="phone-link-step" class="phone-link-step hidden">
-            <h3>Link your mobile number</h3>
-            <p class="fine-print">Verify the mobile number where you want to receive carrier fallback. When you explicitly allow it below, Server can provide this verified number to a caller when your Server receiver is unreachable, so their previously selected SIM can place a normal carrier call to you. It also allows number-based Server calling and may share your number as caller ID. Without this consent, other Server users can still reach your Server ID over WebRTC while you are online, but Server cannot route your offline Server ID to your phone number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
             <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow Server to share this verified number with another Server caller when I am unreachable, so their selected SIM can call my phone over the mobile network. Also allow number-based Server calling and show this number as my caller ID.</span></label>
             <label for="link-phone-number">Mobile number</label>
             <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or +919876543210">
