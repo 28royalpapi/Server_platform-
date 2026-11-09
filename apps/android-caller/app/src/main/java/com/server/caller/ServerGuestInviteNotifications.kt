@@ -55,25 +55,12 @@ internal object ServerGuestInviteNotifications {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
     val masked = mask(recipientPhone)
-    val carrierDialIntent = Intent(context, ServerCarrierDialActivity::class.java).apply {
-      action = "com.server.caller.action.CARRIER_FALLBACK"
-      data = Uri.parse("server-carrier://dial/$callId")
-      putExtra(ServerCarrierDialActivity.EXTRA_CALL_ID, callId)
-      putExtra(ServerCarrierDialActivity.EXTRA_PHONE, recipientPhone)
-      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-    }
-    val carrierPending = PendingIntent.getActivity(
-      context,
-      REQUEST_BASE + 1 + (callId.hashCode() and 0x0FFFFFFF),
-      carrierDialIntent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.sym_action_email)
       .setContentTitle("Server invitation ready")
-      .setContentText("Share the preview invitation or call with your preferred SIM.")
+      .setContentText("Share the secure browser invitation to connect over the internet.")
       .setStyle(NotificationCompat.BigTextStyle().bigText(
-        "Share the Server call preview with $masked. The preview identifies who is calling; the recipient opens it and taps Answer to connect over WebRTC. Or choose Call using selected SIM to place a normal carrier call. Review the dialler and press Call yourself; your operator applies its usual charges."
+        "Share the Server call preview with $masked. The preview identifies who is calling; the recipient opens it, enables browser call alerts and taps Answer to connect over WebRTC using mobile data or Wi-Fi. Server never converts this guest call to a mobile-operator call."
       ))
       .setCategory(NotificationCompat.CATEGORY_CALL)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -83,7 +70,6 @@ internal object ServerGuestInviteNotifications {
       .setTimeoutAfter(20 * 60 * 1000L)
       .setContentIntent(sharePending)
       .addAction(android.R.drawable.ic_menu_share, "Share invitation", sharePending)
-      .addAction(android.R.drawable.sym_action_call, "Call using selected SIM", carrierPending)
       .build()
     return try {
       NotificationManagerCompat.from(context).notify(notificationId(callId), notification)
