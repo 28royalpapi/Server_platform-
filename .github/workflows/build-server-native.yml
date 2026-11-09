@@ -64,7 +64,7 @@ jobs:
           test "${#TURN_SECRET}" -ge 32
           TURN_USERNAME="$(( $(date +%s) + 600 )):server-turn-smoke"
           docker exec realtime-coturn-1 turnutils_uclient \
-            -X -n 1 -Y alloc -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
+            -X -c -n 0 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
       - name: Validate optional Coturn relay compose configuration
         run: |
           docker compose --profile turn --env-file infra/realtime/.env \
