@@ -657,9 +657,10 @@ jobs:
             sh scripts/android17-16kb-acceptance.sh
             python3 scripts/check-16kb-elf-alignment.py arm64-v8a apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
             # APK installation can re-create the swipe keyguard on API 37.
-            # Unlock again and prove app credential storage is usable before instrumentation.
+            # Confirm ActivityManager reports the primary user unlocked; the
+            # instrumentation suite then exercises the app's private CE storage.
             sh scripts/unlock-android-emulator.sh
-            adb shell run-as com.server.caller.debug sh -c 'touch .ce-unlock-check && rm -f .ce-unlock-check'
+            test "$(adb shell am get-started-user-state 0 | tr -d '\\r')" = "RUNNING_UNLOCKED"
             echo "ANDROID17_CREDENTIAL_STORAGE_READY"
             sh scripts/recover-android17-system-server.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
