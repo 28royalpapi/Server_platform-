@@ -192,13 +192,24 @@ class ServerConnectionService : ConnectionService() {
 
   override fun onCreateOutgoingConnection(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest): Connection {
     val phone = request.address?.schemeSpecificPart.orEmpty()
+    val requestedAccount = request.accountHandle
+    val serverAccountMatches = requestedAccount == ServerTelecomRegistry.handle(this)
     if (BuildConfig.DEBUG) {
       getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
         .putLong("debug_last_telecom_connection_service_entered_at", System.currentTimeMillis())
         .putString("debug_last_telecom_request_scheme", request.address?.scheme.orEmpty())
         .putInt("debug_last_telecom_request_target_length", phone.length)
+        .putBoolean("debug_last_telecom_request_account_matches", serverAccountMatches)
+        .putBoolean("debug_last_telecom_manager_account_present", connectionManagerPhoneAccount != null)
         .apply()
     }
+    // The account chooser and the system-wide default must resolve to the same
+    // registered Server provider. Keep a privacy-safe trace for OEM-specific
+    // one-time chooser failures; do not store the recipient's phone number.
+    android.util.Log.i(
+      "ServerTelecom",
+      "Outgoing provider selected; accountMatches=$serverAccountMatches, managerAccountPresent=${connectionManagerPhoneAccount != null}, hasTelAddress=${request.address?.scheme == PhoneAccount.SCHEME_TEL}"
+    )
     val connection = ServerTelecomConnection(this).apply {
       setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
       setCallerDisplayName("Server internet call", TelecomManager.PRESENTATION_ALLOWED)
@@ -214,6 +225,19 @@ class ServerConnectionService : ConnectionService() {
     retainEngine(engine)
     engine.startOutgoing(phone)
     return connection
+  }
+
+  override fun onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest) {
+    super.onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount, request)
+    val preferences = getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    if (BuildConfig.DEBUG) {
+      preferences.edit()
+        .putLong("debug_last_telecom_outgoing_failed_at", System.currentTimeMillis())
+        .putString("debug_last_telecom_outgoing_failed_scheme", request.address?.scheme.orEmpty())
+        .putInt("debug_last_telecom_outgoing_failed_target_length", request.address?.schemeSpecificPart?.length ?: 0)
+        .apply()
+    }
+    android.util.Log.e("ServerTelecom", "Android Telecom rejected the outgoing ConnectionService request before a call connection was created.")
   }
 
   override fun onCreateIncomingConnection(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest): Connection {
