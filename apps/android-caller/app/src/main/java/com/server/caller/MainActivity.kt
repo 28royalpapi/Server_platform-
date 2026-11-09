@@ -781,7 +781,18 @@ Guest dialog SIM action      .setNegativeButton("Cancel") { _, _ ->
       if (currentRoute == "guest" && deliveryMode == "manual_share" && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
-        setStatus("Recipient availability is unknown until their browser connects. The guest-call link is ready; the recipient can open it over Wi-Fi or mobile data and tap Answer. No SIM call has been placed.")
+        val guestPush = started.optJSONObject("push_delivery")
+        val accepted = guestPush?.optInt("accepted_by_push_service", 0) ?: 0
+        val guestStatus = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
+        val message = when {
+          accepted > 0 && guestStatus == "online" ->
+            "Guest browser is online. Server submitted the caller-identified alert; waiting for the recipient to answer over WebRTC."
+          accepted > 0 ->
+            "Server submitted the caller-identified alert to an enrolled guest browser. Delivery is not confirmed; waiting for the recipient to open and answer."
+          else ->
+            "The guest browser has not enrolled for alerts yet. Share the secure invitation once; the recipient can enable call alerts on that browser for future calls."
+        }
+        setStatus(message, accepted == 0)
         if (pendingSystemDialerReturn) returnToSystemPhoneUi()
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
