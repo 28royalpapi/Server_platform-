@@ -38,6 +38,7 @@ class ServerIncomingCallService : Service() {
   @Volatile private var realtimeConnected = false
   @Volatile private var realtimeCallId: String? = null
   @Volatile private var realtimeRetryAtMs: Long = 0L
+  private var lastPresenceHeartbeatAtMs: Long = 0L
   private var incomingCallId: String? = null
   // Process-local by design: if Android recreates the service, active calls must be
   // re-reported to Telecom instead of being suppressed by stale persisted IDs.
@@ -150,6 +151,15 @@ class ServerIncomingCallService : Service() {
         if (!realtimeConnected) {
           val result = postJson("/functions/v1/server-calls", JSONObject().put("action", "incoming"), token)
           processIncomingResponse(result, token)
+        } else {
+          // A live Centrifugo subscription replaces the high-frequency incoming
+          // call poll, but the backend still needs a bounded presence heartbeat.
+          // The 15-second cadence stays inside the 35-second freshness window.
+          val now = System.currentTimeMillis()
+          if (now - lastPresenceHeartbeatAtMs >= PRESENCE_HEARTBEAT_INTERVAL_MS) {
+            postJson("/functions/v1/server-calls", JSONObject().put("action", "presence"), token)
+            lastPresenceHeartbeatAtMs = now
+          }
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -375,6 +385,7 @@ class ServerIncomingCallService : Service() {
     internal const val FOREGROUND_NOTIFICATION_ID = 7338
     private const val POLL_INTERVAL_MS = 2200L
     private const val REALTIME_IDLE_DELAY_MS = 15000L
+    private const val PRESENCE_HEARTBEAT_INTERVAL_MS = 15000L
     private const val REALTIME_CONFIG_RETRY_MS = 30000L
     private const val ACTION_SHOW_INCOMING_CALL = "com.server.caller.action.FGS_SHOW_INCOMING"
     private const val ACTION_SILENCE_INCOMING_CALL = "com.server.caller.action.FGS_SILENCE_INCOMING"
