@@ -905,8 +905,8 @@ assert.match(calls,/guestPushRegistered/,
   "a number with no live browser heartbeat can still be classified as background-reachable when a guest push receiver is enrolled");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
-assert.match(html,/verify a phone number and explicitly allow number-based calls below/,
-  "onboarding explains recipient verification and explicit consent for Server number calling");
+assert.match(html,/Phone-number verification is optional/,
+  "onboarding makes phone-number verification optional and separate from guest browser call-alert enrollment");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
   "Android instrumentation covers fresh heartbeat and background wake classification");
 
