@@ -94,7 +94,7 @@ internal class ServerTelecomCallEngine(
   private var callId: String? = null
   private var route = "server"
   private var lastSeq = 0L
-Engine phone field  private var activeStateSyncedFor: String? = null
+private var activeStateSyncedFor: String? = null
   private var iceConnected = false
   private var remoteAudioTrackReady = false
   private var lastMediaSyncAttemptAt = 0L
@@ -159,11 +159,11 @@ Engine phone field  private var activeStateSyncedFor: String? = null
         .remove("debug_last_outbound_audio_rtp_energy")
         .apply()
     }
-Engine reset field    try {
+try {
       // Resolve the target first; Server calling always requires an internet path.
       val target = ServerCallTarget.parse(rawTarget) { value -> normalizePhone(value) }
         ?: throw IllegalStateException("The destination could not be resolved. Use a valid Server ID or an international telephone number. No carrier call was placed.")
-Engine target fallback      val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
       val capabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
       if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
         failCall("UNREACHABLE · Server cannot reach the internet from this phone. Connect to mobile data or Wi-Fi.")
@@ -190,7 +190,7 @@ Engine target fallback      val connectivity = context.getSystemService(Context.
         return
       }
       route = started.optString("route", "guest")
-Engine fallback payload      // Availability is Server reachability, never a claim that a phone number's
+// Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
       connection.setRingbackRequested(route == "server")
       if (route == "guest") {
@@ -256,7 +256,7 @@ Engine fallback payload      // Availability is Server reachability, never a cla
       if (route != "server") throw IllegalStateException("Server returned an unsupported call route.")
       val availability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
       val queuedWake = started.optJSONObject("push_delivery")?.optBoolean("queued", false) ?: false
-Engine fallback availability      if (ServerRecipientReachability.isFresh(availability)) {
+if (ServerRecipientReachability.isFresh(availability)) {
         connection.updateServerStatus("Reachable on Server · recent authenticated internet heartbeat · WebRTC")
         Log.i(TAG, "Recipient has a fresh Server presence heartbeat.")
       } else if (ServerRecipientReachability.requiresWakeConfirmation(availability, queuedWake)) {

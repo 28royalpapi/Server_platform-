@@ -244,7 +244,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-MainActivity SIM button    callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
+callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply {
       text = "Server calls use the internet only. Online recipients are reached through WebRTC over mobile data or Wi-Fi; recipients without a live Server or guest-browser receiver are shown as unreachable. Guest invitations are shared as secure browser links—Server does not switch calls to a mobile operator."
@@ -662,7 +662,7 @@ MainActivity SIM button    callPanel.addView(button("Enable Server in phone sett
           setStatus("The invitation is ready, but Android could not open a sharing app.", true)
         }
       }
-Guest dialog SIM action      .setNegativeButton("Cancel") { _, _ ->
+.setNegativeButton("Cancel") { _, _ ->
         abandonPendingGuestCall(callId)
       }
       .show()
