@@ -7,6 +7,101 @@ const statusEl=document.querySelector("#guest-status"),joinButton=document.query
 let pc=null,localStream=null,lastSeq=0,polling=false,leaving=false,pendingIce=[],callId="",iceConnected=false,remoteAudioReceived=false,activeReported=false,realtimeClient=null,realtimeConnected=false;
 let inviteFingerprint="",lastInviteDoc=null,lastMediaStatsAt=0,mediaStatsCheckPending=false;
 const titleEl=document.querySelector("#guest-title");
+const alertsButton=document.querySelector("#enable-guest-alerts");
+const alertsStatus=document.querySelector("#guest-alerts-status");
+let guestPushSubscription=null,guestPushPresenceTimer=null;
+const guestServiceWorkerReady=("serviceWorker" in navigator&&location.protocol==="https:")
+ ?navigator.serviceWorker.register("/server-guest-sw.js",{scope:"/"}).then(()=>navigator.serviceWorker.ready).catch(()=>null)
+ :Promise.resolve(null);
+function alertStatus(message,isError=false){
+ if(!alertsStatus)return;
+ alertsStatus.textContent=message;
+ alertsStatus.classList.remove("hidden");
+ alertsStatus.style.color=isError?"#ffb5a9":"#83b8a4";
+}
+function decodeBase64Url(value){
+ const normalized=String(value||"").replace(/-/g,"+").replace(/_/g,"/");
+ const padded=normalized+"=".repeat((4-normalized.length%4)%4);
+ return Uint8Array.from(atob(padded),c=>c.charCodeAt(0));
+}
+async function refreshGuestPushPresence(){
+ if(!guestPushSubscription||document.visibilityState!=="visible"||!navigator.onLine)return;
+ try{await api("push_presence",{endpoint:guestPushSubscription.endpoint});}catch{}
+}
+function startGuestPushPresence(){
+ if(guestPushPresenceTimer)return;
+ void refreshGuestPushPresence();
+ guestPushPresenceTimer=setInterval(()=>{void refreshGuestPushPresence();},15000);
+}
+async function syncExistingGuestPush(){
+ if(!alertsButton)return;
+ if(!("Notification" in window)||!("PushManager" in window)||!("serviceWorker" in navigator)||location.protocol!=="https:"){
+  alertsButton.classList.add("hidden");
+  alertStatus("This browser cannot receive background Server call alerts. Open the link in a supported browser.",true);
+  return;
+ }
+ const registration=await guestServiceWorkerReady;
+ if(!registration){
+  alertsButton.classList.add("hidden");
+  alertStatus("The browser could not start the secure Server notification receiver.",true);
+  return;
+ }
+ try{
+  const existing=await registration.pushManager.getSubscription();
+  if(existing&&Notification.permission==="granted"){
+   const saved=await api("push_subscribe",{consent:true,subscription:existing.toJSON()});
+   if(saved.ok!==true)throw new Error("Could not save this browser's call-alert subscription.");
+   guestPushSubscription=existing;
+   alertsButton.textContent="Call alerts enabled on this device";
+   alertsButton.disabled=true;
+   alertsButton.classList.remove("hidden");
+   alertStatus("This browser can now receive caller-identified Server call alerts over Wi-Fi or mobile data.");
+   startGuestPushPresence();
+   return;
+  }
+  alertsButton.disabled=Notification.permission==="denied";
+  alertsButton.textContent=Notification.permission==="denied"?"Enable alerts in browser settings":"Enable call alerts on this device";
+  alertsButton.classList.remove("hidden");
+ }catch(error){
+  alertsButton.disabled=false;
+  alertsButton.textContent="Retry enabling call alerts";
+  alertStatus("Browser call alerts could not be checked: "+error.message,true);
+ }
+}
+async function enableGuestPush(){
+ if(!alertsButton)return;
+ alertsButton.disabled=true;
+ try{
+  // Permission is requested directly inside this user gesture, as browsers require.
+  const permission=await Notification.requestPermission();
+  if(permission!=="granted")throw new Error("Notification permission was not granted. You can still answer a shared invitation while this page is open.");
+  const registration=await guestServiceWorkerReady;
+  if(!registration)throw new Error("The secure browser receiver is unavailable.");
+  const config=await api("push_config");
+  if(!config.vapid_public_key)throw new Error("Server did not return its public notification key.");
+  let subscription=await registration.pushManager.getSubscription();
+  if(!subscription){
+   subscription=await registration.pushManager.subscribe({
+    userVisibleOnly:true,
+    applicationServerKey:decodeBase64Url(config.vapid_public_key)
+   });
+  }
+  const saved=await api("push_subscribe",{consent:true,subscription:subscription.toJSON()});
+  if(saved.ok!==true)throw new Error("Server could not register this browser for call alerts.");
+  guestPushSubscription=subscription;
+  alertsButton.textContent="Call alerts enabled on this device";
+  alertsButton.disabled=true;
+  alertStatus("Enabled. Server can now send caller-identified call alerts to this browser when you have an internet connection.");
+  startGuestPushPresence();
+ }catch(error){
+  alertsButton.disabled=false;
+  alertsButton.textContent="Enable call alerts on this device";
+  alertStatus(error.message||"Could not enable browser call alerts.",true);
+ }
+}
+if(alertsButton)alertsButton.addEventListener("click",()=>{void enableGuestPush();});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refreshGuestPushPresence();});
+window.addEventListener("online",()=>{void refreshGuestPushPresence();});
 function fallbackCacheKey(){return "server.guest.inbox.v1."+inviteFingerprint;}
 function readFallbackInvite(){try{return JSON.parse(localStorage.getItem(fallbackCacheKey())||"null");}catch{return null;}}
 function writeFallbackInvite(doc){try{localStorage.setItem(fallbackCacheKey(),JSON.stringify(doc));}catch{}}
@@ -61,7 +156,7 @@ async function loadInvitation(){
  try{inviteFingerprint=await fingerprintToken(inviteToken);}catch{status("This browser cannot create a secure local invitation reference.",true);joinButton.disabled=true;return;}
  const cached=await readInviteLocally();
  if(!navigator.onLine){if(cached){lastInviteDoc=cached;renderInvite(cached,true);status("You are offline. This is the last saved state; reconnect before trying to answer.",true);}else status("You are offline. Reopen this invitation after your internet connection returns.",true);joinButton.disabled=true;return;}
- try{const details=await api("inspect");const doc=await saveInviteLocally(details);renderInvite(details,false);if(doc.state==="missed")joinButton.disabled=true;}
+ try{const details=await api("inspect");const doc=await saveInviteLocally(details);renderInvite(details,false);if(doc.state==="missed")joinButton.disabled=true;void syncExistingGuestPush();}
  catch(err){const latest=await readInviteLocally();if(latest){lastInviteDoc=latest;renderInvite(latest,true);status("Server could not be reached. Showing the invitation saved on this device.",true);}else{status("This Server invitation could not be verified: "+err.message,true);joinButton.disabled=true;}}
 }
 async function onSignal(signal){if(signal.kind==="hangup"){status("The other person ended the call.");await cleanup(false);return;}if(!pc)return;try{if(signal.kind==="offer"){await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));for(const candidate of pendingIce)await pc.addIceCandidate(new RTCIceCandidate(candidate));pendingIce=[];const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await sendSignal("answer",pc.localDescription.toJSON());status("Negotiating audio connection…");}else if(signal.kind==="ice"&&signal.payload?.candidate){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(signal.payload));else pendingIce.push(signal.payload);}else if(signal.kind==="state"&&signal.payload?.state==="active")status("Audio connection active. Keep this page open.");}catch(err){status("Call negotiation failed: "+err.message,true);}}
@@ -138,5 +233,4 @@ async function cleanup(notify){if(leaving)return;leaving=true;realtimeConnected=
 declineButton.addEventListener("click",async()=>{declineButton.disabled=true;joinButton.disabled=true;status("Declining call…");try{await api("decline");titleEl.textContent="Call declined";descriptionEl.textContent="You declined this Server call.";status("The caller has been notified.");}catch(err){status("Could not decline the call: "+err.message,true);declineButton.disabled=false;joinButton.disabled=false;}});
 joinButton.addEventListener("click",async()=>{joinButton.disabled=true;try{if(inviteToken.length<48)throw new Error("This invitation link is missing or invalid.");if(!navigator.mediaDevices?.getUserMedia)throw new Error("Open this link in an up-to-date browser over HTTPS.");status("Requesting microphone permission…");localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});const joined=await api("join");callId=joined.call.id;activeReported=false;pc=new RTCPeerConnection({iceServers:joined.ice_servers||[{urls:"stun:stun.cloudflare.com:3478"},{urls:"stun:stun.l.google.com:19302"}],iceTransportPolicy:joined.ice_server_mode&&joined.ice_server_mode!=="stun-only"?"relay":"all"});localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));window.__serverGuestPeerConnection=pc;pc.ontrack=e=>{if(e.track.kind!=="audio")return;audioEl.srcObject=e.streams[0]||new MediaStream([e.track]);e.track.onunmute=()=>{remoteAudioReceived=true;maybeReportMediaReady();};audioEl.play().catch(()=>status("Tap the page once to allow audio playback."));};pc.onicecandidate=e=>{if(e.candidate)void sendSignal("ice",e.candidate.toJSON());};pc.onconnectionstatechange=()=>{if(pc?.connectionState==="connected"){iceConnected=true;status(remoteAudioReceived?"Connected. Two-way audio is ready.":"Network connected; waiting for remote audio…");maybeReportMediaReady();}if(pc?.connectionState==="disconnected"){iceConnected=false;status("Connection interrupted. Trying to recover…",true);}if(pc?.connectionState==="failed"){iceConnected=false;status("The network could not establish a peer connection. A TURN relay may be required on this network.",true);}};joinButton.classList.add("hidden");declineButton.classList.add("hidden");leaveButton.classList.remove("hidden");leaveButton.disabled=false;status("Waiting for the Server caller. Internet access is required.");leaving=false;void connectRealtime();void pollLoop();}catch(err){status(err.message||"Could not join this call.",true);localStream?.getTracks().forEach(t=>t.stop());localStream=null;joinButton.disabled=false;}});
 leaveButton.addEventListener("click",async()=>{leaveButton.disabled=true;status("Leaving call…");await cleanup(true);status("You left the call.");});
-if("serviceWorker" in navigator && location.protocol==="https:")navigator.serviceWorker.register("/server-guest-sw.js",{scope:"/"}).catch(()=>{});
 void loadInvitation();
