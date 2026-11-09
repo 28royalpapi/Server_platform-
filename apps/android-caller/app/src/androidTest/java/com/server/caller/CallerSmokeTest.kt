@@ -701,32 +701,33 @@ class CallerSmokeTest {
     require(Build.VERSION.SDK_INT >= 29) {
       "The test contact fixture uses UiAutomation shell identity, available from API 29."
     }
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val operations = arrayListOf<android.content.ContentProviderOperation>()
-    val rawContact = operations.size
-    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-      .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-      .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-      .build())
-    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-      .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-      .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-      .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
-      .build())
-    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-      .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-      .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-      .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
-      .withValue(ContactsContract.Data.DATA2, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-      .build())
-
-    // Only the test fixture write uses shell identity. Name resolution below still
-    // runs inside Server with its ordinary READ_CONTACTS permission.
-    instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.WRITE_CONTACTS)
+    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    val packageName = context.packageName
+    // Use the platform package manager command for the debug-only fixture grant.
+    // UiAutomation.adoptShellPermissionIdentity can terminate instrumentation on
+    // several emulator API images before Telecom is exercised.
+    device.executeShellCommand("pm grant $packageName ${Manifest.permission.WRITE_CONTACTS}")
     try {
+      val operations = arrayListOf<android.content.ContentProviderOperation>()
+      val rawContact = operations.size
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+        .build())
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
+        .build())
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
+        .withValue(ContactsContract.Data.DATA2, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+        .build())
       context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
     } finally {
-      instrumentation.uiAutomation.dropShellPermissionIdentity()
+      device.executeShellCommand("pm revoke $packageName ${Manifest.permission.WRITE_CONTACTS}")
     }
   }
 
