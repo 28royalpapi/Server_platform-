@@ -176,7 +176,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     grantCalls.disabled = true;
     grantCalls.textContent = "Waiting for Android permissions…";
-    showStatus("Android will request microphone, Phone-state and notification permissions. Contacts access matches incoming caller numbers to names stored on this phone only; your address book is never uploaded. CALL_PHONE is requested separately only after you enable automatic SIM fallback.");
+    showStatus("Android will request microphone and notification permissions. Optional contacts access matches caller numbers against names stored on this phone only; your address book is never uploaded. Server calls use WebRTC over the internet and do not require a SIM fallback.");
     if (!window.ServerAndroid) { showStatus("Android calling integration is not connected. Reopen Server onboarding from this phone."); grantCalls.disabled = false; return; }
     window.ServerAndroid.requestCallPermissions();
   });
@@ -186,11 +186,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     grantCalls.disabled = false;
     grantCalls.textContent = "Allow permissions and continue →";
     if (!microphoneGranted) {
-      showStatus("Microphone permission is required for Server calls. Allow it and try again.");
-      return;
-    }
-    if (!phoneStateGranted) {
-      showStatus("Android Phone-state permission is required to list active SIM carrier names and slots for your fallback choice and to check Server calling-account settings. Server does not read SIM phone numbers, ICCIDs or IMSIs.");
+      showStatus("Microphone permission is required for Server internet calls. Allow it and try again.");
       return;
     }
     if (!window.ServerAndroid) {
@@ -198,12 +194,15 @@ if (isNativeSetup && nativeSetup && stepForm) {
       return;
     }
     callStep && callStep.classList.add("hidden");
-    fallbackSimStep && fallbackSimStep.classList.remove("hidden");
-    const permissionStatus = notificationsGranted === true
-      ? "Incoming-call notifications are allowed. "
-      : "Notifications are disabled. Server internet calls can still work while the receiver is active, but background incoming-call alerts may not appear until you enable Server notifications in Android Settings. "
-    showStatus(permissionStatus + "Select the SIM that Server will use automatically when a recipient is unreachable on Server.", true);
-    loadFallbackSimOptions();
+    fallbackSimStep && fallbackSimStep.classList.add("hidden");
+    showStatus(
+      (notificationsGranted === true
+        ? "Incoming-call notifications are allowed. "
+        : "Notifications are disabled; background incoming-call alerts may not appear until enabled in Android Settings. ") +
+      "Creating your Server identity. Server calling uses the internet and does not require a selected SIM.",
+      true
+    );
+    window.ServerAndroid.completeSetup(Boolean(terms && terms.checked));
   };
 
   window.onServerAutoCarrierFallbackPermissionResult = (enabled, reason) => {
