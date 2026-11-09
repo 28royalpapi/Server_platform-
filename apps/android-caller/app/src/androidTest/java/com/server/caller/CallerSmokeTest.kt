@@ -656,23 +656,22 @@ class CallerSmokeTest {
     // and works on API 28 where UiAutomation shell-permission adoption is absent.
     fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
     val raw = runShellCommand(
-      "content insert --uri content://com.android.contacts/raw_contacts" +
-        " --bind account_type:s: --bind account_name:s:"
+      "content insert --uri content://com.android.contacts/raw_contacts 2>&1"
     )
     val rawId = Regex("raw_contacts/(\\d+)").find(raw)?.groupValues?.get(1)
-      ?: throw AssertionError("Could not create the test contact raw row through Android shell: " + raw)
+      ?: throw AssertionError("Could not create the test contact raw row through Android shell (exit/output): " + raw)
     runShellCommand(
       "content insert --uri content://com.android.contacts/data" +
         " --bind raw_contact_id:i:" + rawId +
         " --bind mimetype:s:vnd.android.cursor.item/name" +
-        " --bind data1:s:" + shellQuote(displayName)
+        " --bind data1:s:" + shellQuote(displayName) + " 2>&1"
     )
     runShellCommand(
       "content insert --uri content://com.android.contacts/data" +
         " --bind raw_contact_id:i:" + rawId +
         " --bind mimetype:s:vnd.android.cursor.item/phone_v2" +
         " --bind data1:s:" + shellQuote(phone) +
-        " --bind data2:i:2"
+        " --bind data2:i:2 2>&1"
     )
   }
 
