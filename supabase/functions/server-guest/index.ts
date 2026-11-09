@@ -141,6 +141,7 @@ if(action==="push_presence"){
  const {data:updated,error:updateError}=await db.from("server_guest_push_devices")
   .update({last_seen_at:now,updated_at:now})
   .eq("phone_e164",invite.phone_e164).eq("endpoint",endpoint).is("revoked_at",null)
+  .or("expiration_at.is.null,expiration_at.gt."+now)
   .select("id").maybeSingle();
  if(updateError)return out({error:"GUEST_PUSH_PRESENCE_FAILED"},503);
  return out({ok:!!updated,online:!!updated,last_seen_at:updated?now:null});
