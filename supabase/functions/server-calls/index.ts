@@ -331,7 +331,7 @@ Deno.serve(async(req:Request)=>{
  const sessionHash=await sha(auth);
  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at,last_seen_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
- const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",session.user_id).maybeSingle();
+ const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,allow_guest_invite_sms").eq("user_id",session.user_id).maybeSingle();
  if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  try{
@@ -585,23 +585,57 @@ Deno.serve(async(req:Request)=>{
    if(route==="guest"){
     const token=guestToken as string;
     const expires=guestInviteExpiresAt as string;
-    // This endpoint returns caller-specific Open Graph metadata and redirects
-    // the recipient to the secure browser call. Sharing is explicit; no SMS is queued.
+    // The preview page supplies OpenGraph metadata and redirects into the guest
+    // browser. A paired SIM gateway can deliver this URL by SMS only after the
+    // caller explicitly opts in and the caller-owned gateway has a fresh heartbeat.
     const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
     const callerDisplay=callerPhone||"Private caller";
     const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
-    const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";
+    const invitationText=callerDisplay+" is calling you through Server. Open to answer by internet: "+invitationUrl;
+    let smsQueued=false;
+    let smsQueueReason="SMS_CONSENT_DISABLED";
+    if(profile.allow_guest_invite_sms===true){
+     const gatewayCutoff=new Date(Date.now()-45_000).toISOString();
+     const {data:gateways,error:gatewayError}=await db.from("server_gateway_devices")
+      .select("id").eq("owner_user_id",uid).eq("enabled",true)
+      .gt("last_seen_at",gatewayCutoff).order("last_seen_at",{ascending:false}).limit(1);
+     if(gatewayError){
+      smsQueueReason="GATEWAY_LOOKUP_FAILED";
+     }else if(!gateways?.length){
+      smsQueueReason="CALLER_GATEWAY_OFFLINE";
+     }else{
+      const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
+       category:"guest_invite",recipient_e164:to,body:invitationText,auth_user_id:uid,
+       call_id:call.id,guest_invite_id:created.invite_id||null,
+       source_event_id:"guest-invite-call:"+call.id
+      }).select("id,status").single();
+      if(!queueError&&queuedJob){
+       smsQueued=true;
+       smsQueueReason="QUEUED_TO_CALLER_GATEWAY";
+      }else{
+       smsQueueReason="SMS_QUEUE_INSERT_FAILED";
+       console.error("GUEST_INVITE_SMS_QUEUE_FAILED",queueError?.code||"UNKNOWN");
+      }
+     }
+    }
+    const deliveryMode=smsQueued?"automatic_gateway_sms":"manual_share";
     return out({
      ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
-     invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
-     guest_invite_url:invitationUrl,invitation_text:invitationText,
-     // Compatibility alias for older Android builds. This text is not sent automatically.
-     sms_body:invitationText,
-     delivery_message:"The recipient's live Server/browser connection is not confirmed. Share this caller-identifying preview link for a free WebRTC guest call, or choose your SIM for an ordinary carrier call.",
+     invite_expires_at:expires,delivery_mode:deliveryMode,
+     delivery_channel:smsQueued?"caller_owned_sim_sms":"manual_share",
+     guest_invite_url:invitationUrl,invitation_text:invitationText,sms_body:invitationText,
+     sms_delivery:{
+      queued:smsQueued,status:smsQueueReason,
+      charges_may_apply:smsQueued,
+      note:smsQueued?"The caller's paired SIM gateway has queued an SMS. The mobile operator may charge for sending it; SMS submission is not proof that the recipient has internet access.":"Automatic SMS was not queued. Use the secure share link; enable guest-invitation SMS consent and keep the paired SIM gateway online to automate delivery."
+     },
+     delivery_message:smsQueued
+      ?"The guest-call link is queued for SMS delivery through the caller's paired SIM. The recipient must open it with internet access and tap Answer to connect over WebRTC."
+      :"The guest-call link is ready to share. A phone-number lookup cannot determine Wi-Fi or mobile-data status; the guest browser confirms internet access when opened.",
      caller_display_label:callerDisplay,
      recipient_availability:{
       status:"unknown_guest",connected:false,internet_status:"unknown",
-      explanation:"A phone number alone cannot reveal whether the recipient currently has mobile data or Wi-Fi."
+      explanation:"The guest browser proves internet access when the recipient opens the invitation; no phone-number-only lookup can verify Wi-Fi connectivity."
      },
      carrier_fallback:{status:"user_confirmed_dialer",available:!!to,destination_e164:to,method:"android_action_dial",requires_user_confirmation:true}
     });
