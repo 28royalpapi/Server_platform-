@@ -891,7 +891,11 @@ assert.match(androidSetup,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegis
 assert.match(app,/background incoming-call alerts may not appear/,
   "onboarding explains that denied Android notifications disable reliable background incoming-call alerts without blocking carrier fallback");
 assert.match(androidMain,/recipientAvailabilityText/,"Android displays a distinct recipient reachability state beside the dialled destination");
-assert.match(androidMain,/background wake receiver exists/,"the app does not claim to know the recipient's actual mobile-data state");
+assert.match(androidMain,/A push registration exists, but a live internet heartbeat is not confirmed/,"a background push token is displayed as unconfirmed rather than WebRTC reachable");
+assert.match(androidMain,/val reachable = ServerRecipientReachability\.isFresh\(status\)/,
+  "the pre-call screen uses the same heartbeat-only reachability rule as Telecom");
+assert.doesNotMatch(androidMain,/status == "online" \|\| status == "background_reachable"/,
+  "a push token alone is never classified as reachable for WebRTC");
 assert.match(androidMain,/started\.optString\("invitation_text"/,"Android prefers the explicit manual-share invitation field from the backend");
 assert.match(iosModel,/guestInviteMessage/);
 assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
