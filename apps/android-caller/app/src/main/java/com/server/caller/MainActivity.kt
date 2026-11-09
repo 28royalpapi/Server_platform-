@@ -19,6 +19,7 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -245,14 +246,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-    carrierFallbackButton = button("Call using selected SIM") {
-      handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
+    carrierFallbackButton = button("Call manually using selected SIM") {
+      handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = false)
     }.apply { visibility = View.GONE }
     callPanel.addView(carrierFallbackButton, matchWrap())
     callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply {
-      text = "Server tries WebRTC when the recipient is reachable through Server. For a non-Server recipient, share the caller-identifying guest preview so they can answer in their browser. If Server cannot reach a recipient, you can use your selected SIM; your mobile operator applies its normal charges."
+      text = "Server uses WebRTC only after a fresh recipient internet heartbeat. If the recipient is unreachable on Server, or is not a Server user, Server hands the call to your explicitly selected SIM when automatic fallback is enabled. Your operator handles the normal cellular call and charges; Server adds no call charge."
       textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0)
     })
   }
