@@ -69,15 +69,11 @@ if (isNativeSetup && nativeSetup && stepForm) {
     selectedFallbackSimKey = selectedKeyOverride !== null
       ? String(selectedKeyOverride)
       : String(payload && payload.selected_key || "ask");
-    const choices = [{
-      key: "ask",
-      label: "Ask me every time",
-      description: "Android will show the available SIM lines each time you choose a carrier call."
-    }, ...options.map((option) => ({
+    const choices = options.map((option) => ({
       key: String(option.key),
       label: String(option.label || ("SIM " + (Number(option.slot_index) + 1))),
-      description: "Your mobile operator will apply its normal voice-call charges."
-    }))];
+      description: "Server automatically hands unreachable calls to this SIM; your operator applies normal voice-call charges."
+    }));
     if (fallbackSimOptionsEl) fallbackSimOptionsEl.textContent = "";
     choices.forEach((choice) => {
       const item = document.createElement("button");
@@ -113,7 +109,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       });
       fallbackSimOptionsEl && fallbackSimOptionsEl.appendChild(item);
     });
-    const hasSelectedSim = selectedFallbackSimKey !== "ask" && options.some((option) => String(option.key) === selectedFallbackSimKey);
+    const hasSelectedSim = options.some((option) => String(option.key) === selectedFallbackSimKey);
     if (automaticCarrierFallback) {
       automaticCarrierFallback.disabled = !hasSelectedSim;
       automaticCarrierFallback.checked = payload && payload.automatic_fallback_enabled === true && hasSelectedSim;
@@ -121,13 +117,13 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     if (fallbackSimNote) {
       if (payload && payload.selected_sim_unavailable) {
-        fallbackSimNote.textContent = "Your previously selected SIM is no longer active. Choose another line or ask Android every time.";
+        fallbackSimNote.textContent = "Your previously selected SIM is no longer active. Choose another active SIM to continue.";
       } else if (!options.length) {
-        fallbackSimNote.textContent = "Android did not expose an active SIM calling account. Server internet calls still work; select a SIM when one is available.";
+        fallbackSimNote.textContent = "Android did not expose an active cellular calling account. Add or enable a SIM before completing automatic carrier fallback setup.";
       } else {
         fallbackSimNote.textContent = automaticCarrierFallbackEnabled
-          ? "Automatic fallback is enabled for this selected SIM. Your operator applies normal charges."
-          : "The selected SIM is saved on this device. Automatic carrier calling is off until you explicitly enable it.";
+          ? "Automatic fallback is enabled for this selected SIM. Your operator applies normal charges; Server adds no call charge."
+          : "Select this SIM and explicitly authorize automatic carrier calling. Your operator's normal charges apply.";
       }
     }
   };
@@ -142,7 +138,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       renderFallbackSimOptions(payload);
     } catch {
       renderFallbackSimOptions({ok:true,options:[],selected_key:"ask"});
-      if (fallbackSimNote) fallbackSimNote.textContent = "SIM choices could not be read. Server will keep Ask me every time; your normal phone dialler remains available.";
+      if (fallbackSimNote) fallbackSimNote.textContent = "SIM choices could not be read. Automatic carrier fallback cannot be configured until Android exposes an active SIM.";
     }
   };
   const normalizePhone = (raw) => {
@@ -206,7 +202,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     const permissionStatus = notificationsGranted === true
       ? "Incoming-call notifications are allowed. "
       : "Notifications are disabled. Server internet calls can still work while the receiver is active, but background incoming-call alerts may not appear until you enable Server notifications in Android Settings. "
-    showStatus(permissionStatus + "Choose the SIM Server should preselect if you make a normal carrier fallback.", true);
+    showStatus(permissionStatus + "Select the SIM that Server will use automatically when a recipient is unreachable on Server.", true);
     loadFallbackSimOptions();
   };
 
@@ -216,10 +212,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
     if (fallbackSimNote) fallbackSimNote.textContent = automaticCarrierFallbackEnabled
       ? "Automatic fallback is enabled for this selected SIM. Your operator applies normal charges."
       : reason === "CALL_PHONE_PERMISSION_DENIED"
-        ? "Automatic fallback is off because Android call permission was not granted. Manual SIM fallback remains available."
+        ? "Automatic fallback is off because Android call permission was not granted. Grant it to enable the selected-SIM handoff."
         : reason === "SELECTED_SIM_REQUIRED"
-          ? "Choose one active SIM before enabling automatic carrier fallback."
-          : "Automatic carrier fallback is off. Manual SIM fallback remains available.";
+          ? "Select an active SIM before enabling automatic carrier fallback."
+          : "Automatic carrier fallback is off. Enable it to finish configuring Server's selected-SIM handoff.";
   };
 
   automaticCarrierFallback && automaticCarrierFallback.addEventListener("change", () => {
@@ -229,7 +225,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       return;
     }
     if (automaticCarrierFallback.checked) {
-      if (selectedFallbackSimKey === "ask") {
+      if (!fallbackSimOptionPayload || !Array.isArray(fallbackSimOptionPayload.options) || !fallbackSimOptionPayload.options.some((option) => String(option.key) === selectedFallbackSimKey)) {
         automaticCarrierFallback.checked = false;
         showStatus("Choose one active SIM before enabling automatic carrier fallback.");
         return;
@@ -253,13 +249,18 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     saveFallbackSimButton.disabled = true;
     try {
-      if (automaticCarrierFallback && automaticCarrierFallback.checked && !automaticCarrierFallbackEnabled) {
-        throw new Error("Wait for Android to confirm permission for automatic carrier calling before completing setup.");
+      const availableOptions = fallbackSimOptionPayload && Array.isArray(fallbackSimOptionPayload.options)
+        ? fallbackSimOptionPayload.options : [];
+      if (!availableOptions.some((option) => String(option.key) === selectedFallbackSimKey)) {
+        throw new Error("Select one active SIM. Server cannot automatically place a carrier call until a real SIM is selected.");
+      }
+      if (!(automaticCarrierFallback && automaticCarrierFallback.checked && automaticCarrierFallbackEnabled)) {
+        throw new Error("Enable automatic carrier fallback and allow Android's Phone permission. This is required for the selected-SIM handoff.");
       }
       const saved = JSON.parse(window.ServerAndroid.setFallbackSimSelection(selectedFallbackSimKey));
       if (!saved || saved.ok !== true) throw new Error((saved && saved.error) || "Fallback SIM preference could not be saved.");
       fallbackSimStep && fallbackSimStep.classList.add("hidden");
-      showStatus("Fallback choice saved. Creating your Server identity…", true);
+      showStatus("Selected SIM and automatic fallback authorization saved. Creating your Server identity…", true);
       window.ServerAndroid.completeSetup(Boolean(terms && terms.checked));
     } catch (error) {
       showStatus(error.message || "Fallback SIM preference could not be saved.");
