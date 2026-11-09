@@ -119,7 +119,7 @@ try {
   // visible Open incoming call link. Normally its inline redirect opens the
   // guest screen automatically; explicitly follow that same link if a browser
   // or test harness suppresses the script-driven redirect.
-  if (/\\/server-guest-preview$/i.test(new URL(page.url()).pathname)) {
+  if (new URL(page.url()).pathname.endsWith("/server-guest-preview")) {
     const openCall = page.locator('a[href*="/guest.html"]');
     await openCall.waitFor({ state: "visible", timeout: 10000 });
     await openCall.click();
