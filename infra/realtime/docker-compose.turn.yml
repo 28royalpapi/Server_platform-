@@ -1,0 +1,34 @@
+# Optional self-hosted WebRTC TURN relay.
+# Run alongside docker-compose.yml with:
+# docker compose -f docker-compose.yml -f docker-compose.turn.yml up -d
+#
+# Uses host networking so Coturn can advertise the VPS public IP directly.
+# This overlay targets a Linux VPS with a public IPv4 address or correctly
+# configured 1:1 NAT. Do not expose Redis or Centrifugo's private HTTP API.
+services:
+  coturn:
+    image: coturn/coturn:4.6.3
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --fingerprint
+      - --lt-cred-mech
+      - --use-auth-secret
+      - --static-auth-secret=${SERVER_TURN_SHARED_SECRET:?Set SERVER_TURN_SHARED_SECRET in infra/realtime/.env}
+      - --realm=${TURN_REALM:?Set TURN_REALM to the public TURN hostname}
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=65535
+      - --external-ip=${TURN_EXTERNAL_IP:?Set TURN_EXTERNAL_IP to the VPS public IPv4 address}
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --no-loopback-peers
+      - --no-multicast-peers
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
