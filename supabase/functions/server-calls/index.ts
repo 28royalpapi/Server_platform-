@@ -628,8 +628,6 @@ Deno.serve(async(req:Request)=>{
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
     invite_expires_at:expires,delivery_mode:deliveryMode,delivery_channel:deliveryMode,
     guest_invite_url:invitationUrl,invitation_text:invitationText,
-    // Compatibility alias for older Android builds. This text is never sent automatically.
-    sms_body:invitationText,
     delivery_message:deliveryMessage,
     caller_display_label:callerDisplay,
     recipient_availability:{
