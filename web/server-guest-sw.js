@@ -23,8 +23,10 @@ self.addEventListener("notificationclick",event=>{
  if(typeof target!=="string"||!target.startsWith("https://"))return;
  event.waitUntil((async()=>{
   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
+  const sameOriginTarget=new URL(target,self.location.origin);
+  if(sameOriginTarget.origin!==self.location.origin)return;
   const existing=windows.find(client=>client.url.startsWith(self.location.origin));
-  if(existing){await existing.navigate(target);await existing.focus();return;}
-  await self.clients.openWindow(target);
+  if(existing){await existing.navigate(sameOriginTarget.href);await existing.focus();return;}
+  await self.clients.openWindow(sameOriginTarget.href);
  })());
 });
