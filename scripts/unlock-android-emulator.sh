@@ -28,9 +28,15 @@ while [ "$attempt" -le 90 ]; do
 
     user_state="$(adb shell am get-started-user-state 0 2>/dev/null | tr -d '\r' || true)"
     unlocked="$(adb shell cmd user is-user-unlocked 0 2>/dev/null | tr -d '\r' | tail -1 || true)"
-    # Decisive check: run-as must write in the installed app's private CE data.
-    if adb shell run-as "$APP_ID" sh -c 'touch .server-ce-unlock-probe && rm -f .server-ce-unlock-probe' >/dev/null 2>&1; then
-      echo "ANDROID_USER_UNLOCK_PASS: app credential storage is accessible (state=$user_state, user_unlocked=$unlocked)"
+    # Android's ActivityManager reports RUNNING_UNLOCKED only after the
+    # user's credential-encrypted storage key has been unlocked. Do not use
+    # "cmd user is-user-unlocked": that subcommand is absent on several stable
+    # emulator images. Also avoid run-as as the gate; OEM/Google API images can
+    # reject shell run-as independently of the app's own CE storage access.
+    # The instrumentation tests below exercise the app's actual SharedPreferences
+    # and private files after this user-state check.
+    if [ "$user_state" = "RUNNING_UNLOCKED" ]; then
+      echo "ANDROID_USER_UNLOCK_PASS: Android reports the primary user RUNNING_UNLOCKED; app CE access is verified by instrumentation."
       exit 0
     fi
     echo "ANDROID_USER_UNLOCK_WAIT attempt=$attempt state=$user_state user_unlocked=$unlocked"
