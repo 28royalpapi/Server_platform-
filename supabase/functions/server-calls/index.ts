@@ -610,11 +610,12 @@ Deno.serve(async(req:Request)=>{
    const callerDisplay=callerPhone||"Private caller";
    const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
    const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";
+   const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
    const guestPush=await sendGuestBrowserPush(db,to,{
     call_id:call.id,caller_label:callerDisplay,
     title:callerDisplay+" is calling you",
     body:callerDisplay+" is calling you through Server. Tap to open the caller-identifying invitation and answer by internet voice.",
-    url:invitationUrl
+    url:guestBrowserUrl
    });
    const hasPushAccepted=guestPush.accepted>0;
    const guestAvailabilityStatus=guestPush.recent_online>0?"online":
