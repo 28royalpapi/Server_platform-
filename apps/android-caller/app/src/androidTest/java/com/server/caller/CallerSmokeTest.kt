@@ -654,10 +654,9 @@ class CallerSmokeTest {
     // WRITE_CONTACTS is merged only into the debug build used by instrumentation;
     // the production release manifest never declares this permission.
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    instrumentation.uiAutomation.grantRuntimePermission(
-      context.packageName,
-      Manifest.permission.WRITE_CONTACTS
-    )
+    // WRITE_CONTACTS is granted only to the debug test target; the release
+    // APK does not request this permission.
+    runShellCommand("pm grant " + context.packageName + " " + Manifest.permission.WRITE_CONTACTS)
     assertEquals(
       "The debug-only contact fixture permission must be granted before setup",
       android.content.pm.PackageManager.PERMISSION_GRANTED,
@@ -684,10 +683,7 @@ class CallerSmokeTest {
       context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
     } finally {
       try {
-        instrumentation.uiAutomation.revokeRuntimePermission(
-          context.packageName,
-          Manifest.permission.WRITE_CONTACTS
-        )
+        runShellCommand("pm revoke " + context.packageName + " " + Manifest.permission.WRITE_CONTACTS)
       } catch (_: Exception) {}
     }
   }
