@@ -250,8 +250,14 @@ assert.match(calls,/state\.eq\.missed,expires_at\.gt\./,
   "incoming-call lookup must never ring a call after its expiry, even before the cron sweep runs");
 assert.match(atomicCallMigration,/'id',v_call\.id[\s\S]*?'expires_at',v_call\.expires_at/,
   "atomic call creation returns only public call fields, not callee phone or private user IDs");
-assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at"\)\.or\("caller_user_id\.eq\."\+uid/,
-  "call polling responses expose only public call state and IDs");
+assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at,carrier_fallback_method,carrier_fallback_status,carrier_fallback_sim_slot,carrier_fallback_carrier,carrier_fallback_requested_at,carrier_fallback_handed_off_at,carrier_fallback_failed_at,carrier_fallback_error_code"\)\.or\("caller_user_id\.eq\."\+uid/,
+  "call polling returns public call state and the minimal selected-SIM fallback outcome without private phone or account identifiers");
+assert.match(calls,/if\(action==="record_carrier_fallback"\)/,
+  "selected-SIM handoff outcomes are recorded through an explicit backend action");
+assert.match(calls,/existing\.caller_user_id!==uid/,
+  "only the originating caller may record the selected-SIM fallback for a call");
+assert.match(calls,/carrier_fallback_status==="handed_off"/,
+  "a persisted handoff cannot later be downgraded to a failed attempt");
 assert.doesNotMatch(calls,/\.select\("[^"]*(?:callee_phone_e164|callee_user_id)[^"]*"\)\.or\(/,
   "call polling must not return private callee contact or identity fields");
 assert.match(calls,/found\.allow_number_based_server_calls===true/);
