@@ -496,7 +496,7 @@ Deno.serve(async(req:Request)=>{
   }
   if(action==="incoming"){
    await touchSessionPresence(db,session);
-   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).or("state.eq.missed,expires_at.gt."+new Date().toISOString()).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
+   const {data:incoming,error:incomingError}=await db.from("server_calls").select("id,state,route,caller_user_id,created_at,updated_at,carrier_fallback_method,carrier_fallback_status,carrier_fallback_sim_slot,carrier_fallback_carrier,carrier_fallback_requested_at,carrier_fallback_handed_off_at,carrier_fallback_failed_at,carrier_fallback_error_code").eq("callee_user_id",uid).in("state",["ringing","connecting","missed"]).or("state.eq.missed,expires_at.gt."+new Date().toISOString()).gte("updated_at",new Date(Date.now()-14*24*60*60*1000).toISOString()).order("created_at",{ascending:false}).limit(40);
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
    const {data:profiles,error:profilesError}=ids.length?await db.from("server_profiles")
@@ -508,8 +508,58 @@ Deno.serve(async(req:Request)=>{
     // Never disclose a stored phone number to the callee unless the owner
     // verified it and explicitly opted into number-based Server calls.
     const sharedPhone=caller.phone_verified_at&&caller.allow_number_based_server_calls===true?phone(caller.phone_e164):null;
-    return {id:c.id,state:c.state,route:c.route,caller_phone_e164:sharedPhone||"",caller_server_id:caller.server_id||"",created_at:c.created_at,updated_at:c.updated_at};
+    return {id:c.id,state:c.state,route:c.route,caller_phone_e164:sharedPhone||"",caller_server_id:caller.server_id||"",created_at:c.created_at,updated_at:c.updated_at,carrier_fallback_method:c.carrier_fallback_method||null,carrier_fallback_status:c.carrier_fallback_status||null,carrier_fallback_sim_slot:c.carrier_fallback_sim_slot??null,carrier_fallback_carrier:c.carrier_fallback_carrier||null,carrier_fallback_requested_at:c.carrier_fallback_requested_at||null,carrier_fallback_handed_off_at:c.carrier_fallback_handed_off_at||null,carrier_fallback_failed_at:c.carrier_fallback_failed_at||null,carrier_fallback_error_code:c.carrier_fallback_error_code||null};
    })});
+  }
+  if(action==="record_carrier_fallback"){
+   const callId=typeof b.call_id==="string"?b.call_id.trim():"";
+   const stage=typeof b.stage==="string"?b.stage:"";
+   const allowedStages=new Set(["requested","handed_off","failed","unavailable"]);
+   if(!callId||!allowedStages.has(stage))return out({error:"INVALID_CARRIER_FALLBACK_EVENT"},400);
+   const slot=b.selected_sim_slot===null||b.selected_sim_slot===undefined?null:Number(b.selected_sim_slot);
+   if(slot!==null&&(!Number.isInteger(slot)||slot<0||slot>8))return out({error:"INVALID_SELECTED_SIM_SLOT"},400);
+   const carrier=typeof b.selected_sim_carrier==="string"?b.selected_sim_carrier.trim().slice(0,80):"";
+   const errorCode=typeof b.error_code==="string"&&/^[A-Z0-9_]{1,64}$/.test(b.error_code)?b.error_code:null;
+   const {data:existing,error:lookupError}=await db.from("server_calls")
+    .select("id,caller_user_id,carrier_fallback_status").eq("id",callId).maybeSingle();
+   if(lookupError)return out({error:"CARRIER_FALLBACK_LOOKUP_FAILED"},503);
+   if(!existing||existing.caller_user_id!==uid)return out({error:"CALL_ACCESS_DENIED"},403);
+   if(existing.carrier_fallback_status==="handed_off"&&stage!=="handed_off"){
+    return out({ok:true,already_recorded:true,carrier_fallback_status:"handed_off"});
+   }
+   if(existing.carrier_fallback_status===stage){
+    return out({ok:true,already_recorded:true,carrier_fallback_status:stage});
+   }
+   const now=new Date().toISOString();
+   const patch:any={
+    carrier_fallback_method:"selected_sim",
+    carrier_fallback_status:stage,
+    carrier_fallback_sim_slot:slot,
+    carrier_fallback_carrier:carrier||null,
+    updated_at:now
+   };
+   if(stage==="requested"){
+    patch.carrier_fallback_requested_at=now;
+    patch.carrier_fallback_handed_off_at=null;
+    patch.carrier_fallback_failed_at=null;
+    patch.carrier_fallback_error_code=null;
+   }else if(stage==="handed_off"){
+    patch.carrier_fallback_requested_at=now;
+    patch.carrier_fallback_handed_off_at=now;
+    patch.carrier_fallback_failed_at=null;
+    patch.carrier_fallback_error_code=null;
+   }else if(stage==="failed"||stage==="unavailable"){
+    patch.carrier_fallback_requested_at=now;
+    patch.carrier_fallback_handed_off_at=null;
+    patch.carrier_fallback_failed_at=now;
+    patch.carrier_fallback_error_code=errorCode||"CARRIER_FALLBACK_FAILED";
+   }
+   const {data:saved,error:saveError}=await db.from("server_calls").update(patch)
+    .eq("id",callId).eq("caller_user_id",uid)
+    .select("id,carrier_fallback_method,carrier_fallback_status,carrier_fallback_sim_slot,carrier_fallback_carrier,carrier_fallback_requested_at,carrier_fallback_handed_off_at,carrier_fallback_failed_at,carrier_fallback_error_code")
+    .maybeSingle();
+   if(saveError||!saved)return out({error:"CARRIER_FALLBACK_RECORD_FAILED"},503);
+   return out({ok:true,call:saved});
   }
   if(action==="poll"){
    const callId=typeof b.call_id==="string"?b.call_id:"";
@@ -518,7 +568,7 @@ Deno.serve(async(req:Request)=>{
     if(memberError)return out({error:"CALL_ACCESS_LOOKUP_FAILED"},503);
     if(!member)return out({error:"CALL_ACCESS_DENIED"},403);
    }
-   let q=db.from("server_calls").select("id,state,route,created_at,updated_at,expires_at").or("caller_user_id.eq."+uid+",callee_user_id.eq."+uid).order("created_at",{ascending:false}).limit(30);
+   let q=db.from("server_calls").select("id,state,route,created_at,updated_at,expires_at,carrier_fallback_method,carrier_fallback_status,carrier_fallback_sim_slot,carrier_fallback_carrier,carrier_fallback_requested_at,carrier_fallback_handed_off_at,carrier_fallback_failed_at,carrier_fallback_error_code").or("caller_user_id.eq."+uid+",callee_user_id.eq."+uid).order("created_at",{ascending:false}).limit(30);
    if(callId)q=q.eq("id",callId);
    const {data:calls,error}=await q;if(error)return out({error:"CALL_POLL_FAILED"},503);
    let signals:unknown[]=[];
