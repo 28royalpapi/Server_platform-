@@ -12,6 +12,7 @@ on:
       - 'web/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'infra/**'
   push:
     # Run the same release-gating workflow on the active completion branch so
     # newly pushed final fixes are built and tested (not merely source-audited).
@@ -31,6 +32,38 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  realtime-infrastructure-smoke:
+    name: Centrifugo and Redis authenticated WebSocket smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Start the pinned Centrifugo and Redis stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > infra/realtime/.env <<'EOF'
+          CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=server-ci-hmac-secret-0123456789abcdef0123456789abcdef
+          CENTRIFUGO_HTTP_API_KEY=server-ci-api-key-0123456789abcdef0123456789abcdef
+          EOF
+          docker compose -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml up -d --wait
+      - name: Verify authenticated WebSocket subscription and Redis publication fanout
+        env:
+          CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: server-ci-hmac-secret-0123456789abcdef0123456789abcdef
+          CENTRIFUGO_HTTP_API_KEY: server-ci-api-key-0123456789abcdef0123456789abcdef
+          CENTRIFUGO_TEST_WS_URL: ws://127.0.0.1:8000/connection/websocket
+          CENTRIFUGO_TEST_API_URL: http://127.0.0.1:8000/api
+        run: node scripts/realtime-infrastructure-smoke.mjs
+      - name: Show realtime stack diagnostics on failure
+        if: failure()
+        run: docker compose -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml logs --no-color
+      - name: Stop realtime stack and remove ephemeral data
+        if: always()
+        run: docker compose -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml down -v
+
   backend-source-contract-checks:
     runs-on: ubuntu-latest
     steps:
