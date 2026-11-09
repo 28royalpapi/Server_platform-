@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { sendGuestBrowserPush } from "../_shared/guest_web_push.ts";
 const encoder = new TextEncoder();
 
 function base64Url(bytes: Uint8Array): string {
@@ -424,23 +425,41 @@ Deno.serve(async(req:Request)=>{
    }
 
    if(!callee){
+    let guestStatus:"unknown_guest"|"online"|"background_reachable"="unknown_guest";
+    let guestLastSeen:string|null=null;
+    let guestPushRegistered=false;
+    if(to){
+     const {data:guestDevices,error:guestDevicesError}=await db.from("server_guest_push_devices")
+      .select("last_seen_at").eq("phone_e164",to).is("revoked_at",null).limit(12);
+     if(!guestDevicesError&&guestDevices?.length){
+      guestPushRegistered=true;
+      const now=Date.now();
+      const fresh=(guestDevices||[]).filter((device:any)=>Number.isFinite(Date.parse(device.last_seen_at||""))&&
+       now-Date.parse(device.last_seen_at)<=PRESENCE_FRESH_SECONDS*1000);
+      if(fresh.length){
+       guestStatus="online";
+       guestLastSeen=fresh.sort((a:any,b:any)=>Date.parse(b.last_seen_at)-Date.parse(a.last_seen_at))[0].last_seen_at;
+      }else{
+       guestStatus="background_reachable";
+       guestLastSeen=guestDevices.map((device:any)=>device.last_seen_at).filter(Boolean)
+        .sort((a:string,b:string)=>Date.parse(b)-Date.parse(a))[0]||null;
+      }
+     }
+    }
     return out({
      ok:true,
      target_kind:targetKind,
      recipient_availability:{
-      status:"unknown_guest",
-      server_reachable:false,
-      internet_status:"unknown",
-      background_wake_possible:false,
-      last_seen_at:null,
-      explanation:"A phone number alone cannot reveal whether an unregistered recipient currently has mobile data or Wi-Fi. Share the caller-identifying guest preview so they can open the browser and answer over WebRTC."
-     },
-     carrier_fallback:{
-      status:"user_confirmed_dialer",
-      available:!!to,
-      destination_e164:to,
-      method:"android_action_dial",
-      requires_user_confirmation:true
+      status:guestStatus,
+      server_reachable:guestStatus==="online",
+      internet_status:guestStatus==="online"?"recent_guest_browser_connection":"unknown",
+      background_wake_possible:guestPushRegistered,
+      last_seen_at:guestLastSeen,
+      explanation:guestStatus==="online"
+       ?"The recipient's enrolled guest browser recently confirmed internet reachability. Server can send the caller-identified WebRTC invitation to that browser."
+       :guestPushRegistered
+        ?"The recipient has an enrolled browser call-alert subscription. Server can wake that browser over its current internet connection; delivery and live reachability still need confirmation."
+        :"This number has no enrolled guest browser receiver yet. Share one secure invitation so the recipient can enable call alerts on this device."
      }
     });
    }
@@ -591,19 +610,42 @@ Deno.serve(async(req:Request)=>{
    const callerDisplay=callerPhone||"Private caller";
    const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
    const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";
+   const guestPush=await sendGuestBrowserPush(db,to,{
+    call_id:call.id,caller_label:callerDisplay,
+    title:callerDisplay+" is calling you",
+    body:callerDisplay+" is calling you through Server. Tap to open the caller-identifying invitation and answer by internet voice.",
+    url:invitationUrl
+   });
+   const hasPushAccepted=guestPush.accepted>0;
+   const guestAvailabilityStatus=guestPush.recent_online>0?"online":
+    guestPush.registered>0?"background_reachable":"unknown_guest";
+   const deliveryMode=hasPushAccepted?"web_push":"manual_share";
+   const deliveryMessage=hasPushAccepted
+    ?"Server submitted a caller-identified browser call alert to "+guestPush.accepted+" registered device(s). Push-service acceptance is not proof that the notification has appeared; the guest browser confirms when it opens."
+    :"No guest browser receiver accepted an alert. Share this caller-identifying invitation once; the recipient can enable call alerts on that browser for future calls. No SMS is sent.";
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
-    invite_expires_at:expires,delivery_mode:"manual_share",delivery_channel:"manual_share",
+    invite_expires_at:expires,delivery_mode:deliveryMode,delivery_channel:deliveryMode,
     guest_invite_url:invitationUrl,invitation_text:invitationText,
-    // Compatibility alias for older Android builds. This text is not sent automatically.
+    // Compatibility alias for older Android builds. This text is never sent automatically.
     sms_body:invitationText,
-    delivery_message:"The recipient's live Server/browser connection is not confirmed. Share this caller-identifying preview link for a free WebRTC guest call, or choose your SIM for an ordinary carrier call.",
+    delivery_message:deliveryMessage,
     caller_display_label:callerDisplay,
     recipient_availability:{
-     status:"unknown_guest",connected:false,internet_status:"unknown",
-     explanation:"A phone number alone cannot reveal whether the recipient currently has mobile data or Wi-Fi."
+     status:guestAvailabilityStatus,connected:guestPush.recent_online>0,
+     internet_status:guestAvailabilityStatus==="online"?"recent_guest_browser_connection":"unknown",
+     background_wake_possible:guestPush.registered>0,
+     explanation:guestAvailabilityStatus==="online"
+      ?"The guest browser recently confirmed its internet connection."
+      :guestPush.registered>0
+       ?"A browser push receiver is registered; waiting for the recipient to open and confirm this call."
+       :"The recipient has not enrolled a guest browser receiver yet."
     },
-    carrier_fallback:{status:"user_confirmed_dialer",available:!!to,destination_e164:to,method:"android_action_dial",requires_user_confirmation:true}
+    push_delivery:{
+     channel:"web_push",registered_devices:guestPush.registered,
+     accepted_by_push_service:guestPush.accepted,failed:guestPush.failed,
+     device_delivery_confirmed:false,configured:guestPush.configured
+    }
    });
    }
    return out({
