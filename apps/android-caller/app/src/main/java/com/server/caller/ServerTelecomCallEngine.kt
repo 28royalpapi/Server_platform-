@@ -14,6 +14,7 @@ import android.content.Intent
 import android.os.Build
 import android.telecom.Connection
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -209,9 +210,9 @@ internal class ServerTelecomCallEngine(
       // mobile data is actually enabled or disabled.
       connection.setRingbackRequested(route == "server")
       if (route == "guest") {
-        connection.updateServerStatus("Guest recipient not yet connected · preview link ready")
+        connection.updateServerStatus("Unreachable on Server · switching to your selected SIM")
         if (carrierFallbackPhone != null && ServerFallbackSimManager.automaticFallbackEnabled(context)) {
-          failCall("No Server receiver is registered for this number. Continuing through your selected SIM.", carrierFallbackPhone, automaticCarrierFallback = true)
+          failCall("Unreachable on Server. Continuing through your selected SIM.", carrierFallbackPhone, automaticCarrierFallback = true)
           return
         }
       }
@@ -266,20 +267,38 @@ internal class ServerTelecomCallEngine(
       val availability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
       val queuedWake = started.optJSONObject("push_delivery")?.optBoolean("queued", false) ?: false
       val fallbackAvailable = started.optJSONObject("carrier_fallback")?.optBoolean("available", false) ?: false
-      if (availability == "online") {
-        connection.updateServerStatus("Available on Server · recent Internet connection · WebRTC")
+      if (ServerRecipientReachability.isFresh(availability)) {
+        connection.updateServerStatus("Reachable on Server · recent authenticated internet heartbeat · WebRTC")
         Log.i(TAG, "Recipient has a fresh Server presence heartbeat.")
-      } else if (availability == "background_reachable" && queuedWake) {
-        connection.updateServerStatus("Server background alert queued · ringing not confirmed")
-        Log.i(TAG, "Recipient has a registered background endpoint; device delivery is not confirmed.")
+      } else if (ServerRecipientReachability.requiresWakeConfirmation(availability, queuedWake)) {
+        connection.updateServerStatus("Checking Server reachability · waiting for recipient internet heartbeat")
+        Log.i(TAG, "A background push endpoint exists; waiting for the recipient app to confirm its internet connection.")
+        val reachableAfterWake = waitForRecipientServerHeartbeat(target)
+        if (hangupRequested) {
+          finishCall(callId.orEmpty(), "local")
+          return
+        }
+        if (!reachableAfterWake) {
+          val message = if (fallbackAvailable) {
+            "Unreachable on Server. The recipient did not confirm a live Server internet connection; switching to your selected SIM."
+          } else {
+            "Unreachable on Server. This recipient has not enabled verified-number fallback, so Server cannot place a carrier call for this Server ID."
+          }
+          connection.updateServerStatus("Unreachable on Server · selected-SIM fallback")
+          failCall(message, carrierFallbackPhone, automaticCarrierFallback = true)
+          return
+        }
+        connection.updateServerStatus("Reachable on Server · recipient heartbeat confirmed · WebRTC")
       } else {
-        connection.updateServerStatus(
-          if (fallbackAvailable)
-            "Not reachable on Server · mobile-data state unknown · selected SIM available"
-          else
-            "Not reachable on Server · mobile-data state unknown"
-        )
-        Log.w(TAG, "Recipient Server reachability was not confirmed; actual mobile-data state is unknown.")
+        val message = if (fallbackAvailable) {
+          "Unreachable on Server. Switching to your selected SIM."
+        } else {
+          "Unreachable on Server. This recipient has not enabled verified-number fallback, so Server cannot place a carrier call for this Server ID."
+        }
+        connection.updateServerStatus("Unreachable on Server · selected-SIM fallback")
+        Log.w(TAG, "Recipient has no fresh Server receiver heartbeat or wake endpoint.")
+        failCall(message, carrierFallbackPhone, automaticCarrierFallback = true)
+        return
       }
       beginPolling()
     } catch (error: Exception) {
@@ -288,10 +307,12 @@ internal class ServerTelecomCallEngine(
           (!apiError.payload.optBoolean("call_created", true) || apiError.payload.optBoolean("missed_call_saved", false))) {
         val dialNumber = apiError.carrierFallback?.optString("destination_e164")
           ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-        val message = apiError.payload.optString(
-          "message",
-          "This recipient is not currently reachable through Server. Their mobile-data state is unknown. You can use your selected SIM for an ordinary carrier call if you want to continue."
-        )
+        val message = if (dialNumber != null) {
+          "Unreachable on Server. Continuing through your selected SIM."
+        } else {
+          "Unreachable on Server. This Server user has not enabled verified-number fallback, so Server cannot place a carrier call for this Server ID."
+        }
+        connection.updateServerStatus("Unreachable on Server · selected-SIM fallback")
         failCall(message, dialNumber, automaticCarrierFallback = true)
         return
       }
@@ -301,6 +322,31 @@ internal class ServerTelecomCallEngine(
       } else reason.ifBlank { "Unknown call-start error" }
       failCall(message, carrierFallbackPhone, automaticCarrierFallback = false)
     }
+  }
+
+  /**
+   * A registered push token is only a wake candidate, not proof that the
+   * recipient currently has internet. Give the recipient's Android listener a
+   * short window to receive the wake and send a fresh authenticated heartbeat.
+   * Only an "online" heartbeat permits WebRTC; otherwise use the selected SIM.
+   */
+  private suspend fun waitForRecipientServerHeartbeat(target: ServerCallTarget): Boolean {
+    val deadline = System.currentTimeMillis() + 8_000L
+    while (System.currentTimeMillis() < deadline && !disposed) {
+      if (hangupRequested) return false
+      val status = try {
+        api("availability", target.toStartPayload("android_telecom"))
+          .optJSONObject("recipient_availability")
+          ?.optString("status")
+          .orEmpty()
+      } catch (error: Exception) {
+        Log.w(TAG, "Server reachability confirmation retry: " + error.javaClass.simpleName)
+        ""
+      }
+      if (ServerRecipientReachability.isFresh(status)) return true
+      delay(700L)
+    }
+    return false
   }
 
   private suspend fun acceptIncoming(id: String) {
@@ -364,6 +410,14 @@ internal class ServerTelecomCallEngine(
     cleanupPeer()
     ServerCallNotifications.cancel(context, id.orEmpty())
     ServerGuestInviteNotifications.cancel(context, id.orEmpty())
+    val selectedFallbackSim = ServerFallbackSimManager.selectedOption(context)
+    if (automaticCarrierFallback && carrierFallbackPhone != null && selectedFallbackSim != null) {
+      Toast.makeText(
+        context,
+        "Unreachable on Server · calling through ${selectedFallbackSim.label}",
+        Toast.LENGTH_LONG
+      ).show()
+    }
     val carrierResult = if (automaticCarrierFallback) {
       carrierFallbackPhone?.let { ServerCarrierDialer.placeAutomatically(context, it) }
     } else null
