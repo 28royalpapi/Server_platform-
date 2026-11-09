@@ -113,8 +113,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private lateinit var callPanel: LinearLayout
   private lateinit var callButton: Button
   private lateinit var hangupButton: Button
-  private lateinit var carrierFallbackButton: Button
-  private var carrierFallbackNumber: String? = null
 
   private val guestShareLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
     // Return to Android's Phone app only after the foreground share chooser has
@@ -246,14 +244,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-    carrierFallbackButton = button("Call using selected SIM") {
-      handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = false)
-    }.apply { visibility = View.GONE }
-    callPanel.addView(carrierFallbackButton, matchWrap())
-    callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
+MainActivity SIM button    callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply {
-      text = "Server membership and a fresh app heartbeat are not proof of internet availability. A non-member receives a secure guest link by SMS when you have enabled it and your paired SIM gateway is online; they can open it over mobile data or Wi-Fi and tap Answer. A selected SIM remains a separate carrier option when internet status is uncertain."
+      text = "Server calls use the internet only. Online recipients are reached through WebRTC over mobile data or Wi-Fi; recipients without a live Server or guest-browser receiver are shown as unreachable. Guest invitations are shared as secure browser links—Server does not switch calls to a mobile operator."
       textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0)
     })
   }
@@ -296,9 +290,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
     val detail = when (status) {
       "online" -> "A fresh authenticated Server internet heartbeat is available; WebRTC can be attempted."
-      "background_reachable" -> "A push registration exists, but a live internet heartbeat is not confirmed. Server will check again when you call; otherwise the selected SIM is used."
-      "offline" -> "This Server user has no fresh authenticated heartbeat. A selected-SIM fallback may be used when enabled."
-      "unknown_guest" -> "This number has no Server account. Its mobile-data/Wi-Fi status cannot be checked from the number alone. Share the secure browser invitation; when the recipient opens it and taps Answer, the call can connect over WebRTC. A normal selected-SIM call remains a separate option."
+      "background_reachable" -> "A push registration exists, but a live internet heartbeat is not confirmed. Server will wait for the recipient to confirm its internet connection before treating it as reachable."
+      "offline" -> "This Server user has no fresh authenticated internet heartbeat and is currently unreachable on Server."
+      "unknown_guest" -> "This number has no active guest-browser receiver yet. Share the secure browser invitation; when the recipient opens it, enables call alerts and remains connected to the internet, Server can reach that browser through WebRTC."
       else -> ""
     }
     val colour = when {
@@ -658,8 +652,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     AlertDialog.Builder(this)
       .setTitle("This recipient isn't on Server")
       .setMessage(
-        "This number is not linked to a Server account, so its internet status is unknown. Share the secure browser invitation; the recipient can open it and tap Answer to connect over WebRTC. You can also choose a normal cellular call through your selected SIM. " +
-          "A cellular call makes the recipient's ordinary phone ring when their line is registered for voice service. If the phone is switched off or outside voice coverage, the carrier cannot ring it. Standard call charges may apply: your operator applies its normal charges and Server adds no calling charge."
+        "This number is not linked to a Server account yet. Share the secure browser invitation. The recipient opens it, enables Server guest-call alerts and answers in the browser; the call then connects through WebRTC over mobile data or Wi-Fi. Server does not place or hand off a mobile-operator call."
       )
       .setPositiveButton("Share invitation") { _, _ ->
         try {
@@ -669,10 +662,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           setStatus("The invitation is ready, but Android could not open a sharing app.", true)
         }
       }
-      .setNeutralButton("Call using selected SIM") { _, _ ->
-        handoffToCarrierDialer(recipientPhone, callId, allowAutomaticFallback = false)
-      }
-      .setNegativeButton("Cancel") { _, _ ->
+Guest dialog SIM action      .setNegativeButton("Cancel") { _, _ ->
         abandonPendingGuestCall(callId)
       }
       .show()
@@ -694,94 +684,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
-  private suspend fun recordCarrierFallbackHistory(
-    id: String?,
-    stage: String,
-    errorCode: String? = null
-  ) {
-    if (id.isNullOrBlank()) return
-    val selected = ServerFallbackSimManager.selectedOption(this)
-    try {
-      api("record_carrier_fallback", JSONObject()
-        .put("call_id", id)
-        .put("stage", stage)
-        .put("selected_sim_slot", selected?.slotIndex ?: JSONObject.NULL)
-        .put("selected_sim_carrier", selected?.carrierName ?: JSONObject.NULL)
-        .put("error_code", errorCode ?: JSONObject.NULL))
-    } catch (error: Exception) {
-      Log.w("ServerFallback", "Could not persist fallback history: " + error.javaClass.simpleName)
-    }
-  }
-
-  private fun handoffToCarrierDialer(rawNumber: String, pendingCallId: String?, allowAutomaticFallback: Boolean = true) {
-    val number = rawNumber.trim()
-    if (!number.matches(Regex("^\\+[1-9][0-9]{7,14}$"))) {
-      setStatus("A verified or caller-provided phone number is required for a SIM handoff. No carrier call was placed.", true)
-      return
-    }
-    lifecycleScope.launch {
-      val selected = ServerFallbackSimManager.selectedOption(this@MainActivity)
-      val automaticAllowed = allowAutomaticFallback &&
-        ServerFallbackSimManager.automaticFallbackEnabled(this@MainActivity) &&
-        selected != null
-      if (!pendingCallId.isNullOrBlank()) {
-        // Record the requested route on the original Server call before closing
-        // that leg. A later outcome must never imply the carrier answered.
-        recordCarrierFallbackHistory(
-          pendingCallId,
-          if (automaticAllowed) "requested" else "unavailable",
-          if (automaticAllowed) null else "AUTOMATIC_FALLBACK_NOT_AVAILABLE"
-        )
-        try { api("end", JSONObject().put("call_id", pendingCallId)) } catch (_: Exception) {}
-        ServerGuestInviteNotifications.cancel(this@MainActivity, pendingCallId)
-      }
-      cleanPeer()
-      callId = null
-      activeStateSyncedFor = null
-      currentRoute = ""
-      carrierFallbackNumber = null
-      if (::carrierFallbackButton.isInitialized) carrierFallbackButton.visibility = View.GONE
-      callButton.visibility = View.VISIBLE
-      hangupButton.visibility = View.GONE
-      ServerTelecomRegistry.markEnded(pendingCallId)
-
-      val automaticResult = if (automaticAllowed) {
-        ServerCarrierDialer.placeAutomatically(this@MainActivity, number)
-      } else AutomaticCarrierFallbackResult.NOT_OPTED_IN
-
-      if (automaticResult == AutomaticCarrierFallbackResult.PLACED) {
-        recordCarrierFallbackHistory(pendingCallId, "handed_off")
-        setStatus("UNREACHABLE · Server handed this call to ${selected?.label}. Your operator now handles the normal cellular call and its charges.")
-        return@launch
-      }
-
-      val errorCode = automaticResult.name
-      if (!pendingCallId.isNullOrBlank() && automaticAllowed) {
-        recordCarrierFallbackHistory(pendingCallId, "failed", errorCode)
-      }
-
-      // Do not silently open the phone dialler and imply that automatic fallback
-      // succeeded. A manual retry remains available only when the user explicitly
-      // chooses the visible SIM action.
-      if (!allowAutomaticFallback) {
-        val opened = ServerCarrierDialer.open(this@MainActivity, number)
-        setStatus(
-          if (opened) "Manual carrier dialler opened. Review the number and tap Call; your operator's usual charges apply."
-          else "Android could not open the phone dialler. No carrier call was placed.",
-          !opened
-        )
-      } else {
-        setStatus(
-          "UNREACHABLE · Automatic SIM fallback could not be placed ($errorCode). Check your selected SIM, CALL_PHONE permission and fallback consent.",
-          true
-        )
-      }
-    }
-  }
-
   private fun startCall(): Job = lifecycleScope.launch {
-    carrierFallbackNumber = null
-    if (::carrierFallbackButton.isInitialized) carrierFallbackButton.visibility = View.GONE
     recordTelecomDebugStage("start_call_entered")
     val typedTarget = targetInput.text.toString().trim()
     val serverId = typedTarget.uppercase()
@@ -793,18 +696,13 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       setStatus("The destination country could not be resolved from this contact. Allow Contacts access or use an international number with its country code. No carrier call was placed.", true)
       return@launch
     }
-    carrierFallbackNumber = normalizedPhone
     val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     val activeNetwork = connectivity.activeNetwork
-    val networkCapabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+    val networkCapabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(activeNetwork) }
     if (!isServerInternetUsable(networkCapabilities)) {
       recordTelecomDebugStage("start_call_no_internet_capability")
       ServerTelecomRegistry.markEnded()
-      if (normalizedPhone != null) {
-        handoffToCarrierDialer(normalizedPhone, null)
-      } else {
-        setStatus("UNREACHABLE · no phone number is available for the selected-SIM fallback.", true)
-      }
+      setStatus("UNREACHABLE · this phone has no active internet connection. Server calls require mobile data or Wi-Fi.", true)
       return@launch
     }
     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -837,14 +735,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       renderRecipientAvailability(started.optJSONObject("recipient_availability"))
       callId = started.getString("call_id"); ServerTelecomRegistry.setCurrentCallId(callId)
       activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
-      val fallback = started.optJSONObject("carrier_fallback")
-      carrierFallbackNumber = fallback?.takeIf { it.optBoolean("available", false) }
-        ?.optString("destination_e164")?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-        ?: normalizedPhone
-      carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
-      // "guest" means no Server account is linked to this number. It is not a
-      // device-reachability result. Continue to the invitation/WebRTC flow first;
-      // carrier calling remains a separate, explicit action in the UI/notification.
+      // "guest" means the destination must be reached through its guest browser
+      // receiver. It is not an instruction to use a mobile-operator call.
       val initialAvailability = started.optJSONObject("recipient_availability")
       val initialStatus = initialAvailability?.optString("status").orEmpty()
       val pushQueued = started.optJSONObject("push_delivery")?.optBoolean("queued", false) == true
@@ -886,7 +778,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val deliveryMode = started.optString("delivery_mode", "")
       val invitationBody = started.optString("invitation_text",
         started.optString("sms_body", ""))
-      if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
+      if (currentRoute == "guest" && deliveryMode == "manual_share" && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
         setStatus("Recipient availability is unknown until their browser connects. The guest-call link is ready; the recipient can open it over Wi-Fi or mobile data and tap Answer. No SIM call has been placed.")
@@ -915,9 +807,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         renderRecipientAvailability(apiError.payload.optJSONObject("recipient_availability"))
         val missedSaved = apiError.payload.optBoolean("missed_call_saved", false)
         recordTelecomDebugStage(if (missedSaved) "recipient_offline_missed_call_saved" else "recipient_offline_no_call_created")
-        val fallback = apiError.carrierFallback
-        carrierFallbackNumber = fallback?.optString("destination_e164")
-          ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
         val missedCallId = apiError.payload.optString("call_id")
           .takeIf { it.matches(Regex("^[0-9a-fA-F-]{36}$")) }
         if (missedCallId != null) {
@@ -928,17 +817,13 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         cleanPeer()
         activeStateSyncedFor = null
         val message = if (missedSaved) {
-          "No fresh Server-app response. A missed-call entry was saved, but this does not prove the recipient has no internet; Wi-Fi or mobile data may still work. You can choose a carrier call manually."
+          "UNREACHABLE · the recipient's Server receiver did not confirm an internet connection. A missed-call entry was saved; no mobile-operator call was placed."
         } else {
-          "No fresh Server-app response. The recipient's general internet status is unknown; a carrier call is available only as a manual choice."
+          "UNREACHABLE · the recipient's Server receiver is not online. No mobile-operator call was placed."
         }
         setStatus(message, true)
-        carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
-        if (carrierFallbackNumber != null) {
-          // A stale app heartbeat must never trigger an automatic paid SIM call.
-          handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), missedCallId, allowAutomaticFallback = false)
-        } else if (pendingSystemDialerReturn) {
-          ServerCallEngineStatusNotifications.showFailure(this@MainActivity, message, null)
+        if (pendingSystemDialerReturn) {
+          ServerCallEngineStatusNotifications.showFailure(this@MainActivity, message)
           Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
           returnToSystemPhoneUi()
         }
@@ -949,13 +834,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
       cleanPeer(); callId = null
-      val userMessage = "The Server internet call could not be established: " + (e.message ?: "Unknown error") + ". This does not prove the recipient has no internet; choose the carrier option manually if needed."
-      if (carrierFallbackNumber != null) {
-        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = false)
-      } else {
-        setStatus(userMessage, true)
-        if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
-      }
+      val userMessage = "The Server internet call could not be established: " + (e.message ?: "Unknown error") + ". No mobile-operator fallback was attempted."
+      setStatus(userMessage, true)
+      if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
     } finally { callButton.isEnabled = true }
   }
   private suspend fun incomingLoop() {
@@ -1222,10 +1103,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           }
         }
         PeerConnection.IceConnectionState.FAILED -> {
-          val message = "UNREACHABLE · Server could not establish the internet voice path."
-          val fallback = carrierFallbackNumber
+          val message = "UNREACHABLE · Server could not establish the internet voice path. No mobile-operator call was attempted."
           setStatus(message, true)
-          if (fallback != null) handoffToCarrierDialer(fallback, callId)
+          lifecycleScope.launch { endCall() }
         }
         PeerConnection.IceConnectionState.DISCONNECTED -> setStatus("Connection lost. Trying to recover…", true)
         else -> Unit
