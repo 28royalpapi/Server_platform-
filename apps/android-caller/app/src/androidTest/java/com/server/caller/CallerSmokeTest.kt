@@ -571,6 +571,14 @@ class CallerSmokeTest {
     val handle = ServerTelecomRegistry.handle(context)
     val callId = "incoming-" + UUID.randomUUID().toString()
     val callerPhone = "+2348030000001"
+    val expectedCallerName = if (Build.VERSION.SDK_INT >= 29) {
+      insertDemoContact(context, "Habib TNC", callerPhone)
+      "Habib TNC"
+    } else {
+      // UiAutomation shell-identity adoption is available from API 29. API 28
+      // still verifies native Telecom ringing and raw-number presentation.
+      callerPhone
+    }
 
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
@@ -588,8 +596,8 @@ class CallerSmokeTest {
       assertEquals("Android Telecom did not call ServerConnectionService and start a ringing incoming connection",
         Connection.STATE_RINGING, state)
 
-      assertEquals("An unsaved caller must display the real E.164 number rather than a private label",
-        callerPhone, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      assertEquals("Telecom must show the locally saved caller name, or the real number when no fixture can be written",
+        expectedCallerName, ServerTelecomRegistry.incomingCallerDisplayName(callId))
       // The default dialer may render a Telecom call as full-screen, heads-up
       // or notification UI depending on Android/OEM. Do not require one exact
       // English string in one surface. The real system Telecom RINGING state and
@@ -646,6 +654,39 @@ class CallerSmokeTest {
         Connection.STATE_DISCONNECTED, connection.state)
     } finally {
       ServerTelecomRegistry.markEnded(callId)
+    }
+  }
+
+  private fun insertDemoContact(context: Context, displayName: String, phone: String) {
+    require(Build.VERSION.SDK_INT >= 29) {
+      "The test contact fixture uses UiAutomation shell identity, available from API 29."
+    }
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val operations = arrayListOf<android.content.ContentProviderOperation>()
+    val rawContact = operations.size
+    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+      .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+      .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+      .build())
+    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+      .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+      .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+      .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
+      .build())
+    operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+      .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+      .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+      .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
+      .withValue(ContactsContract.Data.DATA2, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+      .build())
+
+    // Only the test fixture write uses shell identity. Name resolution below still
+    // runs inside Server with its ordinary READ_CONTACTS permission.
+    instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.WRITE_CONTACTS)
+    try {
+      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
+    } finally {
+      instrumentation.uiAutomation.dropShellPermissionIdentity()
     }
   }
 
