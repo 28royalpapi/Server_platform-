@@ -906,6 +906,10 @@ assert.match(calls,/p_scope:"recipient_availability"/,"recipient availability ch
 assert.match(calls,/A phone number alone cannot reveal whether an unregistered recipient currently has mobile data or Wi-Fi/,"unknown guest data connectivity is never guessed from a phone number");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/Server cannot inspect a stranger's phone settings/,"onboarding distinguishes Server reachability from a stranger's mobile-data toggle");
+assert.match(html,/verify a phone number and explicitly allow number-based calls below/,
+  "onboarding explains recipient verification and explicit number-sharing consent for offline Server ID carrier fallback");
+assert.match(html,/their selected SIM can place a normal carrier call to you/,
+  "the recipient understands that their consent enables the caller's own selected-SIM fallback");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
   "Android instrumentation covers fresh heartbeat and background wake classification");
 
