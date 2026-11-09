@@ -651,28 +651,34 @@ class CallerSmokeTest {
   }
 
   private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    // Create the fixture through Android's shell content provider command. This
-    // avoids adding WRITE_CONTACTS to the shipped app manifest solely for tests,
-    // and works on API 28 where UiAutomation shell-permission adoption is absent.
+    // Use the privileged instrumentation shell so this fixture does not add
+    // WRITE_CONTACTS to the shipped application manifest.
     fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
-    val raw = runShellCommand(
+    val insertOutput = runShellCommand(
       "content insert --uri content://com.android.contacts/raw_contacts 2>&1"
     )
-    val rawId = Regex("raw_contacts/(\\d+)").find(raw)?.groupValues?.get(1)
-      ?: throw AssertionError("Could not create the test contact raw row through Android shell (exit/output): " + raw)
-    runShellCommand(
+    val queryOutput = runShellCommand(
+      "content query --uri content://com.android.contacts/raw_contacts" +
+        " --projection _id --sort '_id DESC' 2>&1"
+    )
+    val rawId = Regex("_id=(\\d+)").findAll(queryOutput).lastOrNull()?.groupValues?.get(1)
+      ?: throw AssertionError("Could not create/read test contact raw row. insert=" +
+        insertOutput.take(500) + "; query=" + queryOutput.take(1000))
+    val nameOutput = runShellCommand(
       "content insert --uri content://com.android.contacts/data" +
         " --bind raw_contact_id:i:" + rawId +
         " --bind mimetype:s:vnd.android.cursor.item/name" +
         " --bind data1:s:" + shellQuote(displayName) + " 2>&1"
     )
-    runShellCommand(
+    val phoneOutput = runShellCommand(
       "content insert --uri content://com.android.contacts/data" +
         " --bind raw_contact_id:i:" + rawId +
         " --bind mimetype:s:vnd.android.cursor.item/phone_v2" +
         " --bind data1:s:" + shellQuote(phone) +
         " --bind data2:i:2 2>&1"
     )
+    assertFalse("Could not insert contact name: " + nameOutput, nameOutput.contains("Exception"))
+    assertFalse("Could not insert contact phone: " + phoneOutput, phoneOutput.contains("Exception"))
   }
 
   private fun clickTextWithRetry(
