@@ -892,6 +892,7 @@ class CallerSmokeTest {
     val previousTargetKind = prefs.getString("debug_last_call_target_kind", null)
     val previousTelecomStage = prefs.getString("debug_last_telecom_stage", null)
     val previousEngineStarted = prefs.getBoolean("debug_telecom_connection_engine_started", false)
+    val previousAccountMatches = prefs.getBoolean("debug_last_telecom_request_account_matches", false)
     val previousCallFailure = prefs.getString("debug_last_call_failure", null)
     val previousDefaultOutgoing = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
     val device = UiDevice.getInstance(instrumentation)
@@ -914,6 +915,8 @@ class CallerSmokeTest {
         .remove("debug_last_call_target_kind")
         .remove("debug_last_telecom_stage")
         .remove("debug_telecom_connection_engine_started")
+        .remove("debug_last_telecom_request_account_matches")
+        .remove("debug_last_telecom_manager_account_present")
         .remove("debug_last_call_failure")
         .commit()
 
@@ -1128,6 +1131,8 @@ class CallerSmokeTest {
         "phone", prefs.getString("debug_last_call_target_kind", null))
       assertEquals("Outgoing Android Telecom request must use the telephone URI scheme",
         "tel", prefs.getString("debug_last_telecom_request_scheme", null))
+      assertTrue("The one-time chooser selection must resolve to the exact Server PhoneAccount",
+        prefs.getBoolean("debug_last_telecom_request_account_matches", false))
       assertEquals("Android Telecom must preserve the complete E.164 destination including the + prefix",
         dialledNumber.length, prefs.getInt("debug_last_telecom_request_target_length", -1))
 
@@ -1220,6 +1225,7 @@ class CallerSmokeTest {
       if (previousTargetKind == null) edit.remove("debug_last_call_target_kind") else edit.putString("debug_last_call_target_kind", previousTargetKind)
       if (previousTelecomStage == null) edit.remove("debug_last_telecom_stage") else edit.putString("debug_last_telecom_stage", previousTelecomStage)
       edit.putBoolean("debug_telecom_connection_engine_started", previousEngineStarted)
+      edit.putBoolean("debug_last_telecom_request_account_matches", previousAccountMatches)
       if (previousCallFailure == null) edit.remove("debug_last_call_failure") else edit.putString("debug_last_call_failure", previousCallFailure)
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
@@ -1553,6 +1559,10 @@ class CallerSmokeTest {
       ServerRecipientReachability.isFresh("offline"))
     assertFalse("An unregistered phone number has no Server receiver",
       ServerRecipientReachability.isFresh("unknown_guest"))
+    assertTrue("An unregistered phone's internet status is unknown, not offline",
+      ServerRecipientReachability.isUnknownGuest("unknown_guest"))
+    assertFalse("A Server offline state must not be mistaken for an unregistered guest",
+      ServerRecipientReachability.isUnknownGuest("offline"))
 
     assertTrue("A background push registration requires heartbeat confirmation",
       ServerRecipientReachability.requiresWakeConfirmation("background_reachable", true))
