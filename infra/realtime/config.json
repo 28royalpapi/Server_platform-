@@ -15,5 +15,15 @@
   },
   "log": {
     "level": "info"
+  },
+  "channel": {
+    "namespaces": [
+      {
+        "name": "server-user"
+      },
+      {
+        "name": "server-call"
+      }
+    ]
   }
 }
