@@ -651,7 +651,15 @@ class CallerSmokeTest {
 
   private fun insertDemoContact(context: Context, displayName: String, phone: String) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.WRITE_CONTACTS)
+    val usesPermissionAdoptionApi = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+    if (usesPermissionAdoptionApi) {
+      instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.WRITE_CONTACTS)
+    } else {
+      // UiAutomation.adoptShellPermissionIdentity(String...) is unavailable on
+      // Android 9/API 28. Grant only WRITE_CONTACTS to this debug test package
+      // through the emulator shell for the duration of this fixture.
+      runShellCommand("pm grant ${context.packageName} ${Manifest.permission.WRITE_CONTACTS}")
+    }
     try {
       val operations = arrayListOf<android.content.ContentProviderOperation>()
       val rawContact = operations.size
@@ -672,7 +680,11 @@ class CallerSmokeTest {
         .build())
       context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
     } finally {
-      instrumentation.uiAutomation.dropShellPermissionIdentity()
+      if (usesPermissionAdoptionApi) {
+        instrumentation.uiAutomation.dropShellPermissionIdentity()
+      } else {
+        runShellCommand("pm revoke ${context.packageName} ${Manifest.permission.WRITE_CONTACTS}")
+      }
     }
   }
 
