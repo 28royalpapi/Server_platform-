@@ -430,18 +430,21 @@ Deno.serve(async(req:Request)=>{
     let guestPushRegistered=false;
     if(to){
      const {data:guestDevices,error:guestDevicesError}=await db.from("server_guest_push_devices")
-      .select("last_seen_at").eq("phone_e164",to).is("revoked_at",null).limit(12);
-     if(!guestDevicesError&&guestDevices?.length){
+      .select("last_seen_at,expiration_at").eq("phone_e164",to).is("revoked_at",null).limit(12);
+     const now=Date.now();
+     const liveGuestDevices=(guestDevices||[]).filter((device:any)=>
+      !device.expiration_at||Date.parse(device.expiration_at)>now
+     );
+     if(!guestDevicesError&&liveGuestDevices.length){
       guestPushRegistered=true;
-      const now=Date.now();
-      const fresh=(guestDevices||[]).filter((device:any)=>Number.isFinite(Date.parse(device.last_seen_at||""))&&
+      const fresh=liveGuestDevices.filter((device:any)=>Number.isFinite(Date.parse(device.last_seen_at||""))&&
        now-Date.parse(device.last_seen_at)<=PRESENCE_FRESH_SECONDS*1000);
       if(fresh.length){
        guestStatus="online";
        guestLastSeen=fresh.sort((a:any,b:any)=>Date.parse(b.last_seen_at)-Date.parse(a.last_seen_at))[0].last_seen_at;
       }else{
        guestStatus="background_reachable";
-       guestLastSeen=guestDevices.map((device:any)=>device.last_seen_at).filter(Boolean)
+       guestLastSeen=liveGuestDevices.map((device:any)=>device.last_seen_at).filter(Boolean)
         .sort((a:string,b:string)=>Date.parse(b)-Date.parse(a))[0]||null;
       }
      }
