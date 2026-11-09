@@ -21,7 +21,7 @@ alter table public.server_guest_push_devices add column if not exists last_seen_
 alter table public.server_guest_push_devices add column if not exists updated_at timestamptz not null default now();
 alter table public.server_guest_push_devices add column if not exists revoked_at timestamptz;
 create unique index if not exists server_guest_push_devices_endpoint_uidx
-  on public.server_guest_push_devices(endpoint) where endpoint is not null;
+  on public.server_guest_push_devices(endpoint);
 create index if not exists server_guest_push_devices_phone_live_idx
   on public.server_guest_push_devices(phone_e164, last_seen_at desc)
   where revoked_at is null;
