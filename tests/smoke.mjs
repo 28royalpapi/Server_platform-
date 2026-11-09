@@ -29,6 +29,8 @@ const android17InstallScript=read("scripts/android17-16kb-acceptance.sh");
 const liveGuestTransitionContract=read("scripts/live-guest-transition-contract.mjs");
 const offlineInbox=read("web/offline-inbox.js");
 const guestServiceWorker=read("web/server-guest-sw.js");
+const guestWebPushMigration=read("supabase/migrations/20261109165000_server_guest_browser_web_push.sql");
+const guestWebPushSender=read("supabase/functions/_shared/guest_web_push.ts");
 const offlineArchitecture=read("docs/offline-delivery.md");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
@@ -80,6 +82,7 @@ const gateway=read("supabase/functions/server-gateway/index.ts");
 const calls=read("supabase/functions/server-calls/index.ts");
 const guest=read("supabase/functions/server-guest/index.ts");
 const guestPreview=read("supabase/functions/server-guest-preview/index.ts");
+const guestBrowserHtml=read("web/guest.html");
 const guestPreviewImage=read("web/images/server-incoming-call-preview.svg");
 const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
 const gatewayGuestClaimMigration=read("supabase/migrations/20261106170100_server_gateway_guest_owner_claim.sql");
@@ -904,6 +907,41 @@ assert.match(guestBrowserE2e,/server-guest-preview/,"the browser E2E accepts the
 assert.match(guestBrowserE2e,/SERVER_GUEST_OG_CARD_PASS/,"browser E2E verifies caller identity in Open Graph metadata and the PNG bytes");
 assert.match(guestBrowserE2e,/new URL\(invitationCandidate\)/,"the browser E2E parses and opens the exact shared preview link");
 assert.match(guestPreview,/og:title/,"the guest preview publishes a social-card caller title for messaging apps");
+
+assert.match(guestWebPushMigration,/create table if not exists public\.server_guest_push_devices/,
+  "guest browser subscriptions are stored against the called E.164 number");
+assert.match(guestWebPushMigration,/create table if not exists public\.server_guest_push_config/,
+  "the server-only VAPID keypair has a private service-role storage location");
+assert.match(guestWebPushMigration,/revoke all on public\.server_guest_push_devices from anon, authenticated/,
+  "browser push endpoints and encryption keys are not exposed to public clients");
+assert.match(guestWebPushSender,/buildPushPayload/,
+  "guest notifications use RFC-compliant encrypted Web Push rather than a custom unencrypted payload");
+assert.match(guestWebPushSender,/options: \{ ttl: 120, urgency: "high" \}/,
+  "guest call alerts use a bounded high-urgency push lifetime");
+assert.match(guest,/action==="push_config"/,
+  "the invitation page can obtain the public VAPID key without exposing its private key");
+assert.match(guest,/action==="push_subscribe"/,
+  "a guest can bind an explicitly approved browser subscription to the invitation's phone number");
+assert.match(guest,/action==="push_presence"/,
+  "an open guest browser can refresh its internet-reachability heartbeat");
+assert.match(guestWeb,/Notification\.requestPermission\(\)/,
+  "guest browser push permission is requested from the explicit enable-alerts button");
+assert.match(guestWeb,/pushManager\.subscribe/,
+  "the guest page enrolls a real browser Push API endpoint");
+assert.match(guestWeb,/api\("push_presence"/,
+  "the guest page reports fresh browser reachability while it is visible");
+assert.match(guestBrowserHtml,/id="enable-guest-alerts"/,
+  "non-Server recipients can enable call alerts on the browser invitation page");
+assert.match(guestServiceWorker,/addEventListener\("push"/,
+  "the service worker can display incoming guest-call notifications while the page is closed");
+assert.match(guestServiceWorker,/addEventListener\("notificationclick"/,
+  "tapping a guest notification opens the caller-identified WebRTC invitation");
+assert.match(calls,/sendGuestBrowserPush/,
+  "call creation looks up the recipient's number-bound guest browser receivers");
+assert.match(calls,/accepted_by_push_service/,
+  "the caller sees push-provider acceptance separately from confirmed device delivery");
+assert.match(calls,/delivery_mode:deliveryMode/,
+  "guest call creation selects browser push when enrolled and manual share for first-contact activation");
 assert.match(guestPreview,/og:image/,"the guest preview publishes incoming-call artwork for rich link cards");
 assert.match(guestPreview,/og:image:alt/,"the preview image alt text names the actual caller identity");
 assert.match(guestPreview,/content-type.*image[\\/]png/,"caller-specific Open Graph artwork is served as PNG rather than SVG");
