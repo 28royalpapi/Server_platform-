@@ -151,8 +151,10 @@ assert.match(calls,/carrier_fallback:\{status:carrierFallbackPhone\?"user_confir
   "offline Server recipients receive a caller-confirmed SIM dialler option only when a number may be shared");
 assert.match(calls,/method:"android_action_dial",requires_user_confirmation:true/,
   "the API describes a user-confirmed Android dialler handoff, not an automatic carrier call");
-assert.match(calls,/status:"unknown_guest",connected:false,internet_status:"unknown"/,
-  "a non-Server recipient is honestly marked unknown until its browser connects; mobile-data state is not guessed");
+assert.match(calls,/status:guestStatus/,
+  "guest availability distinguishes a fresh browser heartbeat, a background Web Push subscription and a never-enrolled number");
+assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
+  "only a fresh browser heartbeat is classified as online; a push subscription alone is not proof of current internet");
 assert.match(calls,/recipient_availability:recipientAvailability/,
   "successful Server call creation returns the reachability classification to Android");
 assert.match(calls,/return out\(\{[\s\S]*?ok:true,call_id:call\.id,route,call,ice_servers:callIceServers/,
