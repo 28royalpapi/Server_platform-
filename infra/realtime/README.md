@@ -55,6 +55,42 @@ free. A free-tier VM may be useful for a development pilot but is not a dependab
 100k-concurrency production commitment. Keep Supabase/Postgres out of the audio
 media path and never create one database connection per call.
 
+## Optional self-hosted TURN relay
+
+TURN is needed when a mobile carrier, Wi-Fi router, VPN or firewall prevents a
+direct peer-to-peer ICE path. The repository includes Coturn as an optional
+Docker Compose profile; it is not started by the default signalling-only stack.
+
+1. Set `SERVER_TURN_EXTERNAL_IP` to the VM's public IPv4 address. On a cloud VM
+   using 1:1 NAT, use Coturn's `PUBLIC/PRIVATE` format with both addresses.
+2. Set `SERVER_TURN_SHARED_SECRET` to a separate random secret (at least 32
+   bytes). Do not reuse the Redis password, Centrifugo HMAC secret or API key.
+3. Open inbound UDP and TCP port 3478 and the configured UDP relay range
+   49160–65535 in both the cloud firewall/security list and the host firewall.
+   Keep Redis private. The initial relay range is broad to avoid a low allocation
+   ceiling; it is not proof of a 100k-call relay capacity.
+4. Start the TURN profile with
+   `docker compose --profile turn up -d coturn`.
+5. Set the following Supabase Edge Function secrets on the **Server Backend**
+   project and redeploy `server-calls`:
+   - `SERVER_TURN_URLS=turn:REALTIME_HOST:3478?transport=udp,turn:REALTIME_HOST:3478?transport=tcp`
+   - `SERVER_TURN_SHARED_SECRET=<same as SERVER_TURN_SHARED_SECRET in the VM .env>`
+6. Run a new live call contract and verify its ICE response reports
+   `ice_server_mode=coturn-turn`. Then perform real two-phone calls over different
+   networks and verify ICE selects a relay candidate. A returned TURN URL alone
+   does not prove the relay is reachable.
+
+Coturn uses time-limited REST credentials. The shared secret remains on the VM
+and in the Supabase function environment; it is never sent to the mobile clients.
+Direct peer-to-peer paths are still preferred, with TURN used only when direct
+connectivity cannot be established.
+
+The bundled profile is a single-node pilot. A large relay fleet requires multiple
+Coturn hosts/regions, DNS or load-balancing policy, per-host bandwidth/port
+monitoring, DDoS/rate controls and measured relay-capacity tests. TURN media
+bandwidth is a real infrastructure cost; the 10 TB monthly Always Free egress
+allowance offered by some VM providers cannot support unlimited relayed calls.
+
 ## Fallback behaviour
 
 Postgres remains authoritative. Realtime is an acceleration/notification plane;
