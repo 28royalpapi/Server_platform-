@@ -1,0 +1,17 @@
+{$REALTIME_HOST} {
+  encode zstd gzip
+
+  @websocket path /connection/websocket
+  handle @websocket {
+    reverse_proxy centrifugo:8000
+  }
+
+  # Supabase Edge Functions publish with the server-only API key. Keep all
+  # other Centrifugo HTTP API endpoints unreachable from the public internet.
+  @publish path /api/publish
+  handle @publish {
+    reverse_proxy centrifugo:8000
+  }
+
+  respond 404
+}
