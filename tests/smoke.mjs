@@ -904,7 +904,7 @@ assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"u
 assert.match(calls,/guestPushRegistered/,
   "a number with no live browser heartbeat can still be classified as background-reachable when a guest push receiver is enrolled");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
-assert.match(html,/Server cannot inspect a stranger's phone settings/,"onboarding distinguishes Server reachability from a stranger's mobile-data toggle");
+assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
 assert.match(html,/verify a phone number and explicitly allow number-based calls below/,
   "onboarding explains recipient verification and explicit consent for Server number calling");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
@@ -972,7 +972,7 @@ assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve/,
   "Android supplies the recipient-local contact name to its native incoming-call surfaces");
 assert.match(androidTelecom,/setCallerDisplayName\(callerIdentity, TelecomManager\.PRESENTATION_ALLOWED\)/,
   "an unsaved caller is presented using the actual E.164 number instead of a private label or Server ID");
-assert.match(html,/show this number as my caller ID/,
+assert.match(html,/show it as my caller ID/,
   "phone-number consent explains that a verified number is also used as outgoing caller ID");
 assert.match(androidTests,/Habib TNC/,
   "Android Telecom instrumentation covers a recipient-saved contact name");
