@@ -850,20 +850,22 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val initialAvailability = started.optJSONObject("recipient_availability")
       val initialStatus = initialAvailability?.optString("status").orEmpty()
       val pushQueued = started.optJSONObject("push_delivery")?.optBoolean("queued", false) == true
-      if (currentRoute == "server" && initialStatus == "background_reachable" && pushQueued) {
-        setStatus("Checking Server reachability before choosing the call route…")
-        val targetPayload = if (isServerId) JSONObject().put("to_server_id", serverId)
-          else JSONObject().put("to_phone", normalizedPhone)
+      if (currentRoute == "server" && initialStatus == "background_reachable") {
         var confirmed = false
-        val deadline = System.currentTimeMillis() + 8_000L
-        while (System.currentTimeMillis() < deadline && !confirmed) {
-          delay(700L)
-          try {
-            val check = api("availability", targetPayload)
-            val status = check.optJSONObject("recipient_availability")?.optString("status").orEmpty()
-            confirmed = ServerRecipientReachability.isFresh(status)
-          } catch (_: Exception) {
-            // An API failure is not evidence of an online receiver.
+        if (pushQueued) {
+          setStatus("Checking Server reachability before choosing the call route…")
+          val targetPayload = if (isServerId) JSONObject().put("to_server_id", serverId)
+            else JSONObject().put("to_phone", normalizedPhone)
+          val deadline = System.currentTimeMillis() + 8_000L
+          while (System.currentTimeMillis() < deadline && !confirmed) {
+            delay(700L)
+            try {
+              val check = api("availability", targetPayload)
+              val status = check.optJSONObject("recipient_availability")?.optString("status").orEmpty()
+              confirmed = ServerRecipientReachability.isFresh(status)
+            } catch (_: Exception) {
+              // An API failure is not evidence of an online receiver.
+            }
           }
         }
         if (!confirmed && carrierFallbackNumber != null &&
