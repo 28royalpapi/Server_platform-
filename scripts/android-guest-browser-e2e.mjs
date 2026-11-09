@@ -13,7 +13,7 @@ const parsedInvitation = new URL(invitationCandidate);
 const directGuestToken = parsedInvitation.pathname.endsWith("/guest.html")
   ? parsedInvitation.hash.match(/^#token=([0-9a-f]{64})$/i)?.[1]
   : null;
-const previewToken = /\/server-guest-preview$/i.test(parsedInvitation.pathname)
+  if (new URL(page.url()).pathname.endsWith("/server-guest-preview")) {
   ? parsedInvitation.searchParams.get("token")
   : null;
 if (!(directGuestToken || (previewToken && /^[0-9a-f]{64}$/i.test(previewToken)))) {
