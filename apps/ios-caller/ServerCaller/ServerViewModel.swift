@@ -84,7 +84,7 @@ final class ServerViewModel: ObservableObject {
 
     func handleAppHandoff(_ url: URL) async {
         guard url.scheme == "server" else { return }
-        if url.host == "sim-setup" { update("Website onboarding opened Server. iOS does not expose SIM slots; create your Server identity here, then use the authorized default-calling integration when Apple permits it."); return }
+        if url.host == "device-setup" { update("Website onboarding opened Server. Create your Server identity here, then enable the authorized default-calling integration when Apple permits it."); return }
         guard url.host == "setup" else { return }
         guard let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "handoff" })?.value,

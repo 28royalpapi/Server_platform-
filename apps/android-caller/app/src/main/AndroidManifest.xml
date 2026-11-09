@@ -2,8 +2,6 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.CALL_PHONE" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
-  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-  <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -33,6 +31,12 @@
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="server" android:host="device-setup" />
       </intent-filter>
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
