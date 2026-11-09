@@ -551,6 +551,7 @@ final class ServerViewModel: ObservableObject {
         incomingTask?.cancel()
         incomingTask = Task { [weak self] in
             guard let self else { return }
+            var lastPresenceHeartbeat = Date.distantPast
             while !Task.isCancelled && self.isSignedIn {
                 if !self.realtimeConnected {
                     do {
@@ -558,6 +559,15 @@ final class ServerViewModel: ObservableObject {
                         let rows = result["calls"] as? [[String: Any]] ?? []
                         await self.handleIncomingRows(rows)
                     } catch { /* durable polling is the fallback when push/socket is unavailable */ }
+                } else if Date().timeIntervalSince(lastPresenceHeartbeat) >= 15 {
+                    // Keep backend availability fresh without restoring the
+                    // high-frequency incoming-call polling loop.
+                    do {
+                        _ = try await self.api("presence", body: [:])
+                        lastPresenceHeartbeat = Date()
+                    } catch {
+                        self.realtimeConnected = false
+                    }
                 }
                 try? await Task.sleep(for: .seconds(self.realtimeConnected ? 5 : 2))
             }
