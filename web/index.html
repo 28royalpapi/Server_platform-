@@ -18,7 +18,7 @@
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
       <h1>One identity.<br><span>Call over the internet.</span></h1>
-      <p>Server is a hybrid calling service. When the recipient's Server receiver is reachable over the internet, voice travels through WebRTC. If Server cannot confirm a reachable receiver, you can choose a normal call from your own mobile SIM; your mobile operator applies its usual charges.</p>
+      <p>Every call starts in Server and receives a Server call record. If the recipient's registered Server receiver has a fresh internet connection, voice travels through WebRTC. If the recipient is not reachable on Server—or the number is not registered for Server—the connector automatically switches to the SIM you selected during onboarding. The cellular call then runs entirely on your mobile operator's network; your operator applies its normal charges and Server adds no calling charge.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
@@ -39,12 +39,12 @@
         <button class="primary full" id="open-server-app" type="button">I've installed Server — continue setup <span aria-hidden="true">→</span></button>
         <p id="fallback" class="fine-print hidden">The phone integration did not open. A browser cannot register an account with Android's system calling interface by itself; install the Server calling component and try again.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Your Server ID is your internet-calling identity. Your existing mobile number and carrier service remain unchanged. You can optionally verify and link a number later, with your permission, so other Server users can find you that way.</span></div>
-        <div class="next-note"><strong>How recipient availability works</strong><span>Available on Server means a registered Server receiver has recently connected. A registered background receiver may also receive an alert, but delivery is not guaranteed. Not reachable on Server does not prove that mobile data is off: Server cannot read another phone's network state from its number alone. For an unregistered recipient, availability stays unknown until their browser opens the guest invitation.</span></div>
+        <div class="next-note"><strong>How recipient availability works</strong><span>Reachable means the recipient's Server app or connector has sent a recent authenticated heartbeat over the internet. If that heartbeat is stale, Server treats the receiver as not reachable for WebRTC and uses the caller's selected SIM. For a phone number that is not registered with Server, there is no Server receiver to measure, so it uses the selected SIM directly. Server cannot inspect a stranger's phone settings or prove that mobile data is switched off from a number alone; the label is “Unreachable on Server”, not a claim about the phone's data toggle.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
         <p id="ios-install-note" class="fine-print">iPhone uses a separate native Server app and Apple's calling-app permissions. The Android APK above cannot be installed on iPhone; the iOS setup will be released separately.</p>
       </div>
       <div id="native-setup" class="hidden">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>Server tries the internet route first. When a Server recipient is confirmed unreachable, you can choose whether Server should immediately continue through your selected mobile SIM or leave the final Call tap to you.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>Every call is registered in Server. Reachable Server recipients are called over WebRTC. If the recipient is not reachable on Server, or the number is not a Server account, Server automatically places a normal carrier call through the SIM you select below.</p></div></div>
         <div id="call-permission-step" class="hidden">
           <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio, Phone-state access for Android calling-account status and your fallback SIM choices, and notifications for incoming calls. Server reads only the active SIM carrier label and slot you choose. It does not read SIM phone numbers, ICCIDs or IMSIs.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
@@ -52,11 +52,11 @@
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Allow permissions and continue <span aria-hidden="true">→</span></button>
         </div>
         <div id="fallback-sim-step" class="hidden">
-          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred fallback SIM</h2><p>Choose the actual SIM Server should use when its internet route cannot reach the recipient. A selected SIM is required for automatic fallback; manual dialler fallback remains available.</p></div></div>
+          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred fallback SIM</h2><p>Select the exact SIM Server must use for cellular fallback. When the recipient is unreachable on Server, Android will switch straight to this SIM so the recipient's normal phone rings over the carrier network.</p></div></div>
           <div id="fallback-sim-options" class="sim-options" role="group" aria-label="Preferred fallback SIM"></div>
-          <p id="fallback-sim-note" class="fine-print" role="status" aria-live="polite">Choose a preferred line, or ask Android to let you choose every time.</p>
-          <label class="check-row" for="automatic-carrier-fallback"><input id="automatic-carrier-fallback" type="checkbox"><span>Automatically place a normal carrier call through this SIM when Server confirms the recipient is unreachable.</span></label>
-          <p class="fine-print">When enabled, Server ends the failed internet call and Android Telecom places an ordinary cellular call through your selected SIM without another Call tap. Your mobile operator applies its usual voice or plan charges. Server cannot read your airtime balance; the operator handles insufficient-credit announcements. Leave this unchecked to review the number and press Call yourself in the normal phone dialler.</p>
+          <p id="fallback-sim-note" class="fine-print" role="status" aria-live="polite">Choose one active SIM. This choice is used automatically when Server cannot reach the recipient over the internet.</p>
+          <label class="check-row" for="automatic-carrier-fallback"><input id="automatic-carrier-fallback" type="checkbox"><span>I authorize Server to automatically place a normal carrier call through this SIM when the recipient is unreachable on Server.</span></label>
+          <p class="fine-print">When enabled, Server ends its WebRTC attempt and Android Telecom immediately places an ordinary cellular call through this exact SIM, without a second Call tap. The recipient sees a normal carrier call and can answer with mobile voice service. Your mobile operator applies its usual voice or plan charges; Server does not bill you for that cellular call.</p>
           <button class="primary full" id="save-fallback-sim" type="button">Save fallback choice and create my Server ID <span aria-hidden="true">→</span></button>
           <p class="fine-print">SIM labels and slots are used only to identify your selected line. Server never reads or uploads your SIM phone number or serial identifiers.</p>
         </div>
@@ -64,7 +64,7 @@
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Your Server ID is ready. Server uses internet voice when the recipient is reachable. When they are not reachable on Server, you can use your preferred SIM for an ordinary carrier call; your operator's charges apply.</p>
+          <p class="done-text">Your Server ID is ready. Reachable Server users are called using WebRTC. If the recipient is not reachable on Server—or is not registered with Server—your selected SIM is used for the normal carrier call. Server records the attempt; your mobile operator handles the voice call and its charges.</p>
 
           <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
           <section id="phone-link-step" class="phone-link-step hidden">
@@ -93,7 +93,7 @@
             <button class="secondary full" id="skip-phone-link" type="button">Skip number verification</button>
           </section>
 
-          <p id="calling-account-note" class="done-text">Next, enable Server under Android Calling accounts. Server is the internet route; your cellular SIMs remain ordinary carrier routes. When Server cannot confirm the recipient's availability, the caller can choose the preferred SIM fallback and confirm the normal phone call.</p>
+          <p id="calling-account-note" class="done-text">Next, enable Server under Android Calling accounts. Server remains the internet-calling route. When the recipient cannot be reached through Server, the connector automatically hands the call to the SIM you selected; the phone's normal cellular call screen then takes over.</p>
           <button class="secondary full" id="enable-calling-account" type="button">Enable Server in phone settings</button>
           <button class="primary full" id="open-phone-dialer" type="button">Open my normal phone dialer <span aria-hidden="true">→</span></button>
           <p class="fine-print">Server is an Android internet-calling account, not a second cellular SIM. Android dialers differ, so the exact placement of Server in the system's call choices depends on the phone and dialer version.</p>
@@ -144,7 +144,7 @@
           <div class="walkthrough-copy">
             <span>STEP 05</span>
             <h3>Enable Server in Calling accounts</h3>
-            <p>Turn on Server in Android Calling accounts. Set outgoing calls to Ask every time where your phone provides that option.</p>
+            <p>Turn on Server in Android Calling accounts. Choose Server for internet calls; the selected cellular SIM is used automatically only when the recipient cannot be reached through Server.</p>
           </div>
         </article>
         <article class="walkthrough-card">
@@ -156,7 +156,7 @@
           </div>
         </article>
       </div>
-      <p class="walkthrough-note"><strong>About these pictures:</strong> They are explanatory illustrations, not screenshots from every Android phone. Exact prompts and call-choice layouts vary by device. Server first attempts an internet call to a reachable Server device or a guest browser. When the recipient is not reachable on Server, the caller may use their selected SIM for an ordinary carrier call; their mobile operator applies its charges.</p>
+      <p class="walkthrough-note"><strong>About these pictures:</strong> They are explanatory illustrations, not screenshots from every Android phone. Exact prompts and call-choice layouts vary by device. Server uses WebRTC only when the registered recipient has a fresh Server connection. Otherwise, or when the destination is not a Server account, Android switches to the selected SIM. The carrier call is handled and charged by the mobile operator, not Server.</p>
     </section>
     <footer><span>SERVER · NATIVE SETUP</span><span>Website onboarding · Native calling bridge</span></footer>
   </main>
