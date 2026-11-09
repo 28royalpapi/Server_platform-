@@ -476,8 +476,8 @@ assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backen
    "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
 assert.match(androidTests,/launcherShowsHybridOnboardingWithFallbackSimChoice/);
 assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every stable Android 8–16 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
-assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 17"), "every stable Android 8–16 API must execute all 17 acceptance tests without skipped or failed tests");
-assert.ok(android17Preview.includes("scripts/android17-16kb-acceptance.sh") && android17Preview.includes("assert-android-test-count.py --expected-tests 17"), "Android 17 remains separately tested with the full 17-test 16 KB acceptance suite");
+assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 21"), "every stable Android 8–16 API must execute all 21 acceptance tests without skipped or failed tests");
+assert.ok(android17Preview.includes("scripts/android17-16kb-acceptance.sh") && android17Preview.includes("assert-android-test-count.py --expected-tests 21"), "Android 17 remains separately tested with the full 21-test 16 KB acceptance suite");
 assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.includes("emulator-boot-timeout: 600") && android17Preview.includes("timeout-minutes: 50") && android17Preview.includes("disk-size: 8G"), "Android 17 ARM64 preview receives the appropriate 4 GB guest RAM, 8 GB storage and 10-minute boot budget on the 7 GB Apple Silicon runner");
 assert.ok(!nativeWorkflow.slice(nativeWorkflow.indexOf("  publish-android-preview-release:")).includes("android-17-preview-compatibility"), "an unstable Android 17 preview emulator does not block publication after the stable Android release matrix passes");
 assert.match(android17Acceptance,/getconf PAGE_SIZE/);
@@ -1043,8 +1043,8 @@ assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArgu
   "Android 12 and Android 16 run the complete shared instrumentation suite");
 assert.ok(androidTests.includes("fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings"));
 assert.ok(androidTests.includes("fun missedServerCallNotificationOffersQuietCallbackAction"));
-assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --expected-tests 17"),
-  "the main API 34 emulator must execute all 17 acceptance tests without skips or failures");
+assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --expected-tests 21"),
+  "the main API 34 emulator must execute all 21 acceptance tests without skips or failures");
 
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
 assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
