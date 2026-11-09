@@ -817,19 +817,15 @@ class CallerSmokeTest {
       add(Manifest.permission.READ_CONTACTS)
       if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
     }
-    if (Build.VERSION.SDK_INT >= 28) {
-      // Grant through UiAutomation. Running "pm grant" against the package
-      // under instrumentation can terminate the very process running the test.
-      permissions.forEach { permission ->
-        if (context.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-          instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission)
-        }
-      }
-    } else {
-      // API 26–27 compatibility workflows do not execute the Telecom test suite.
-      permissions.forEach { permission ->
+    // Grant runtime permissions through the instrumentation shell identity.
+    // UiAutomation.grantRuntimePermission repeatedly caused the instrumentation
+    // process to die on API 28+ emulator images before Telecom could be tested.
+    permissions.forEach { permission ->
+      if (context.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
         runShellCommand("pm grant ${context.packageName} $permission")
       }
+      assertEquals("Android test fixture permission was not granted: $permission",
+        android.content.pm.PackageManager.PERMISSION_GRANTED, context.checkSelfPermission(permission))
     }
   }
   private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
