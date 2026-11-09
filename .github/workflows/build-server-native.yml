@@ -56,6 +56,15 @@ jobs:
           EOF
           docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml up -d --wait
           docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml ps
+      - name: Verify Coturn accepts a time-limited authenticated TURN allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          TURN_SECRET="$(awk -F= '$1 == "SERVER_TURN_SHARED_SECRET" {print substr($0, index($0, "=") + 1)}' infra/realtime/.env)"
+          test "${#TURN_SECRET}" -ge 32
+          TURN_USERNAME="$(( $(date +%s) + 600 )):server-turn-smoke"
+          docker exec realtime-coturn-1 turnutils_uclient \
+            -X -n 1 -Y alloc -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
       - name: Validate optional Coturn relay compose configuration
         run: |
           docker compose --profile turn --env-file infra/realtime/.env \
