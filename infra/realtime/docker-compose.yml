@@ -30,7 +30,6 @@ services:
       CENTRIFUGO_ENGINE_TYPE: redis
       CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://redis:6379
       CENTRIFUGO_ADMIN_ENABLED: "false"
-      CENTRIFUGO_CLIENT_ALLOWED_ORIGINS: '["https://server-onboarding-ochre.vercel.app"]'
     volumes:
       - ./config.json:/centrifugo/config.json:ro
     expose:
