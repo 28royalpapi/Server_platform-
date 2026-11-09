@@ -144,9 +144,11 @@ try {
   assert.equal(joined.call?.state, "connecting");
   const realtime = await guest(token, "realtime_token");
   if (realtime.realtime_available === true) {
-    assert.match(realtime.url || "", /^wss?:\\/\\//);
-    assert.match(realtime.token || "", /^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/);
-    const claims = JSON.parse(Buffer.from(realtime.token.split(".")[1], "base64url").toString("utf8"));
+    assert.ok((realtime.url || "").startsWith("wss://") || (realtime.url || "").startsWith("ws://"));
+    const realtimeTokenParts = (realtime.token || "").split(".");
+    assert.equal(realtimeTokenParts.length, 3);
+    assert.ok(realtimeTokenParts.every(part => /^[A-Za-z0-9_-]+$/.test(part)));
+    const claims = JSON.parse(Buffer.from(realtimeTokenParts[1], "base64url").toString("utf8"));
     assert.ok(Array.isArray(claims.channels));
     assert.ok(claims.channels.includes("$server-call:" + created.call_id));
     pass("guest Centrifugo token is scoped to its answered call");
