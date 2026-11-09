@@ -305,8 +305,10 @@ assert.match(androidTests,/resolveActiveSubscriptionId\("opaque-account-id", act
 assert.match(androidFallbackSim,/Manifest\.permission\.READ_PHONE_STATE/);
 assert.doesNotMatch(androidFallbackSim,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
   "SIM fallback selection never invokes APIs that read subscriber phone numbers or serial identifiers");
-assert.match(androidSetup,/registerDevice\(acceptedTerms: Boolean\)/,
-  "Server ID registration is performed by the website's native permission bridge");
+assert.match(androidSetup,/registerDevice\(displayName: String, acceptedTerms: Boolean\)/,
+  "Server ID registration saves the caller-chosen name through the website's native permission bridge");
+assert.match(androidSetup,/put\("display_name", normalizedDisplayName\)/,
+  "Android passes the caller display name to the authenticated Server profile endpoint");
 assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,
   "Android phone-state access is requested only for its Telecom system-account API");
 assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
