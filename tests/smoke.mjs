@@ -848,7 +848,7 @@ assert.match(androidManifest,/ServerCarrierDialActivity/,
   "the explicit carrier handoff Activity is registered in the Android manifest");
 assert.match(androidMain,/button\("Call using selected SIM"\)/,
   "the main app exposes the caller-confirmed selected-SIM fallback after Server reports unavailable");
-assert.match(html,/Server does not bill you for that cellular call/,"onboarding states the mobile operator handles cellular call charges and Server adds no calling fee");
+assert.match(html,/Server does not bill you for it/,"onboarding states the mobile operator handles cellular call charges and Server adds no calling fee");
 assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
 assert.match(androidEngine,/waiting for the recipient app to confirm its internet connection/,"a registered background push token is not treated as proof of internet reachability");
 assert.match(androidEngine,/carrierFallbackPhone = target\.phoneNumber/,"the Android call engine retains the phone destination so the selected SIM can be offered when the caller has no data");
