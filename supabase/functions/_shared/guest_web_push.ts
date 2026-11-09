@@ -120,19 +120,18 @@ export async function sendGuestBrowserPush(
   }
 
   const now = Date.now();
-  const recentOnline = devices.filter((device: any) =>
+  const eligibleDevices = devices.filter((device: any) =>
+    !device.expiration_at || Date.parse(device.expiration_at) > now
+  );
+  const recentOnline = eligibleDevices.filter((device: any) =>
     Number.isFinite(Date.parse(device.last_seen_at || "")) &&
     now - Date.parse(device.last_seen_at) <= FRESH_GUEST_SECONDS * 1000
   ).length;
 
   let accepted = 0;
-  let failed = 0;
-  await Promise.all(devices.map(async (device: any) => {
+  let failed = devices.length - eligibleDevices.length;
+  await Promise.all(eligibleDevices.map(async (device: any) => {
     if (!validPushEndpoint(device.endpoint) || !device.p256dh || !device.auth) {
-      failed++;
-      return;
-    }
-    if (device.expiration_at && Date.parse(device.expiration_at) <= now) {
       await db.from("server_guest_push_devices")
         .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", device.id);
@@ -182,7 +181,7 @@ export async function sendGuestBrowserPush(
   }));
 
   return {
-    registered: devices.length,
+    registered: eligibleDevices.length,
     recent_online: recentOnline,
     accepted,
     failed,
