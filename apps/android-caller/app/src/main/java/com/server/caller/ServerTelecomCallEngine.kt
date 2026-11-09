@@ -94,10 +94,7 @@ internal class ServerTelecomCallEngine(
   private var callId: String? = null
   private var route = "server"
   private var lastSeq = 0L
-  // Retain the E.164 destination for the later ICE callback, which can fail
-  // after placeOutgoing has already returned.
-  private var carrierFallbackPhone: String? = null
-  private var activeStateSyncedFor: String? = null
+Engine phone field  private var activeStateSyncedFor: String? = null
   private var iceConnected = false
   private var remoteAudioTrackReady = false
   private var lastMediaSyncAttemptAt = 0L
@@ -162,26 +159,18 @@ internal class ServerTelecomCallEngine(
         .remove("debug_last_outbound_audio_rtp_energy")
         .apply()
     }
-    carrierFallbackPhone = null
-    try {
-      // Resolve the phone destination before testing the caller's data connection.
-      // If Server cannot even start an internet attempt, Android can still open
-      // the same destination through the user's preferred carrier SIM.
+Engine reset field    try {
+      // Resolve the target first; Server calling always requires an internet path.
       val target = ServerCallTarget.parse(rawTarget) { value -> normalizePhone(value) }
         ?: throw IllegalStateException("The destination could not be resolved. Use a valid Server ID or an international telephone number. No carrier call was placed.")
-      carrierFallbackPhone = target.phoneNumber
-      val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+Engine target fallback      val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
       val capabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
       if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) != true) {
-        failCall(
-          "Server cannot reach the internet from this phone. Continuing through the selected SIM if automatic fallback is enabled.",
-          carrierFallbackPhone,
-          automaticCarrierFallback = true
-        )
+        failCall("UNREACHABLE · Server cannot reach the internet from this phone. Connect to mobile data or Wi-Fi.")
         return
       }
       if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-        throw IllegalStateException("Microphone permission is missing for Server internet calling. You can use your selected SIM for a normal carrier call.")
+        throw IllegalStateException("Microphone permission is required for Server internet calling.")
       }
       if (BuildConfig.DEBUG) {
         prefs.edit()
@@ -201,19 +190,13 @@ internal class ServerTelecomCallEngine(
         return
       }
       route = started.optString("route", "guest")
-      val backendFallback = started.optJSONObject("carrier_fallback")
-        ?.takeIf { it.optBoolean("available", false) }
-        ?.optString("destination_e164")
-        ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-      if (backendFallback != null) carrierFallbackPhone = backendFallback
-      // Availability is Server reachability, never a claim that a phone number's
+Engine fallback payload      // Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
       connection.setRingbackRequested(route == "server")
       if (route == "guest") {
         // The number is not registered as a Server identity. This does NOT tell us
         // whether its ordinary handset has mobile data or Wi-Fi. Keep the guest
-        // WebRTC invitation alive and let the caller explicitly share it; the
-        // notification also offers a separate selected-SIM carrier action.
+        // invitation on the browser/WebRTC path; carrier calling is not a fallback.
         connection.updateServerStatus("Guest invitation · recipient internet status unknown")
         Log.i(TAG, "Non-Server destination: internet reachability is unknown; continuing with the browser invitation.")
       }
@@ -267,8 +250,7 @@ internal class ServerTelecomCallEngine(
       if (route != "server") throw IllegalStateException("Server returned an unsupported call route.")
       val availability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
       val queuedWake = started.optJSONObject("push_delivery")?.optBoolean("queued", false) ?: false
-      val fallbackAvailable = started.optJSONObject("carrier_fallback")?.optBoolean("available", false) ?: false
-      if (ServerRecipientReachability.isFresh(availability)) {
+Engine fallback availability      if (ServerRecipientReachability.isFresh(availability)) {
         connection.updateServerStatus("Reachable on Server · recent authenticated internet heartbeat · WebRTC")
         Log.i(TAG, "Recipient has a fresh Server presence heartbeat.")
       } else if (ServerRecipientReachability.requiresWakeConfirmation(availability, queuedWake)) {
@@ -280,25 +262,17 @@ internal class ServerTelecomCallEngine(
           return
         }
         if (!reachableAfterWake) {
-          val message = if (fallbackAvailable) {
-            "Unreachable on Server. The recipient did not confirm a live Server internet connection; switching to your selected SIM."
-          } else {
-            "Unreachable on Server. This recipient has not enabled verified-number fallback, so Server cannot place a carrier call for this Server ID."
-          }
-          connection.updateServerStatus("Unreachable on Server · selected-SIM fallback")
-          failCall(message, carrierFallbackPhone, automaticCarrierFallback = true)
+          val message = "UNREACHABLE · the recipient did not confirm a live Server internet connection."
+          connection.updateServerStatus("Unreachable on Server")
+          failCall(message)
           return
         }
         connection.updateServerStatus("Reachable on Server · recipient heartbeat confirmed · WebRTC")
       } else {
-        val message = if (fallbackAvailable) {
-          "Unreachable on Server. Switching to your selected SIM."
-        } else {
-          "Unreachable on Server. This recipient has not enabled verified-number fallback, so Server cannot place a carrier call for this Server ID."
-        }
-        connection.updateServerStatus("Unreachable on Server · selected-SIM fallback")
+        val message = "UNREACHABLE · the recipient has no fresh Server receiver heartbeat or background wake endpoint."
+        connection.updateServerStatus("Unreachable on Server")
         Log.w(TAG, "Recipient has no fresh Server receiver heartbeat or wake endpoint.")
-        failCall(message, carrierFallbackPhone, automaticCarrierFallback = true)
+        failCall(message)
         return
       }
       beginPolling()
@@ -306,29 +280,22 @@ internal class ServerTelecomCallEngine(
       val apiError = error as? ServerCallApiException
       if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE" &&
           (!apiError.payload.optBoolean("call_created", true) || apiError.payload.optBoolean("missed_call_saved", false))) {
-        // The backend has already saved this offline attempt as a missed call.
-        // Keep its ID so the selected-SIM handoff is attached to the same history row.
+        // The backend saved the missed-call entry. Offline means unreachable on
+        // Server; it never means that we should place a carrier call.
         val missedCallId = apiError.payload.optString("call_id").takeIf { it.matches(Regex("^[0-9a-fA-F-]{36}$")) }
         if (missedCallId != null) {
           callId = missedCallId
           ServerTelecomRegistry.setCurrentCallId(missedCallId)
         }
-        val dialNumber = apiError.carrierFallback?.optString("destination_e164")
-          ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-        val message = if (dialNumber != null) {
-          "Unreachable on Server. Continuing through your selected SIM."
-        } else {
-          "Unreachable on Server. This Server user has not enabled verified-number fallback, so Server cannot place a carrier call for this Server ID."
-        }
-        connection.updateServerStatus("Unreachable on Server · selected-SIM fallback")
-        failCall(message, dialNumber, automaticCarrierFallback = true)
+        connection.updateServerStatus("Unreachable on Server")
+        failCall("UNREACHABLE · the recipient's Server receiver did not confirm an active internet connection.")
         return
       }
       val reason = error.message.orEmpty()
       val message = if (reason.contains("RECIPIENT_NOT_SERVER_ENABLED")) {
-        "This number is not enabled for Server internet calls. Use your carrier SIM for a normal mobile call, or have the recipient enable Server number calling."
+        "This number is not enabled for Server internet calls. The recipient must enable a Server or guest-browser receiver."
       } else reason.ifBlank { "Unknown call-start error" }
-      failCall(message, carrierFallbackPhone, automaticCarrierFallback = false)
+      failCall(message)
     }
   }
 
@@ -336,7 +303,7 @@ internal class ServerTelecomCallEngine(
    * A registered push token is only a wake candidate, not proof that the
    * recipient currently has internet. Give the recipient's Android listener a
    * short window to receive the wake and send a fresh authenticated heartbeat.
-   * Only an "online" heartbeat permits WebRTC; otherwise use the selected SIM.
+   * Only an "online" heartbeat permits WebRTC; otherwise the recipient is unreachable.
    */
   private suspend fun waitForRecipientServerHeartbeat(target: ServerCallTarget): Boolean {
     val deadline = System.currentTimeMillis() + 8_000L
@@ -400,106 +367,22 @@ internal class ServerTelecomCallEngine(
     }
   }
 
-  private suspend fun failCall(
-    message: String,
-    carrierFallbackPhone: String? = null,
-    automaticCarrierFallback: Boolean = false
-  ) {
+  private suspend fun failCall(message: String) {
     if (disposed || failCallStarted) return
     failCallStarted = true
     recordStage("call_setup_failed")
     if (BuildConfig.DEBUG) prefs.edit().putString("debug_last_call_failure", message.take(240)).apply()
 
-    val selectedFallbackSim = ServerFallbackSimManager.selectedOption(context)
-    // Persist the intended route before ending the Server leg. The final status
-    // is written only after Telecom either accepts or rejects the carrier call.
-    if (automaticCarrierFallback) {
-      val initialStage = if (carrierFallbackPhone != null) "requested" else "unavailable"
-      val initialError = if (carrierFallbackPhone == null) "RECIPIENT_NUMBER_NOT_AVAILABLE" else null
-      persistCarrierFallbackHistory(initialStage, selectedFallbackSim, initialError)
-    }
-
     val id = callId
     if (!id.isNullOrBlank()) {
       try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
     }
-    // End and release the Server/WebRTC leg before requesting a new cellular call.
     connection.markEnded()
     cleanupPeer()
     ServerCallNotifications.cancel(context, id.orEmpty())
     ServerGuestInviteNotifications.cancel(context, id.orEmpty())
-
-    if (automaticCarrierFallback && carrierFallbackPhone != null && selectedFallbackSim != null) {
-      Toast.makeText(
-        context,
-        "Unreachable on Server · calling through ${selectedFallbackSim.label}",
-        Toast.LENGTH_LONG
-      ).show()
-    }
-    val carrierResult = if (automaticCarrierFallback) {
-      carrierFallbackPhone?.let { ServerCarrierDialer.placeAutomatically(context, it) }
-    } else null
-
-    when (carrierResult) {
-      AutomaticCarrierFallbackResult.PLACED -> {
-        persistCarrierFallbackHistory("handed_off", selectedFallbackSim, null)
-        recordStage("automatic_carrier_fallback_requested")
-        Log.i(TAG, "Server recorded the selected-SIM handoff; Android Telecom accepted the carrier-call request.")
-      }
-      AutomaticCarrierFallbackResult.NOT_OPTED_IN,
-      AutomaticCarrierFallbackResult.CALL_PERMISSION_MISSING,
-      AutomaticCarrierFallbackResult.SELECTED_SIM_UNAVAILABLE,
-      AutomaticCarrierFallbackResult.INVALID_NUMBER -> {
-        val reason = carrierResult.name
-        persistCarrierFallbackHistory("unavailable", selectedFallbackSim, reason)
-        ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
-      }
-      AutomaticCarrierFallbackResult.TELECOM_REJECTED,
-      AutomaticCarrierFallbackResult.FAILED -> {
-        val reason = carrierResult.name
-        persistCarrierFallbackHistory("failed", selectedFallbackSim, reason)
-        ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
-      }
-      null -> {
-        if (automaticCarrierFallback) {
-          // A carrier destination or a usable selected SIM was not available.
-          persistCarrierFallbackHistory(
-            "unavailable",
-            selectedFallbackSim,
-            if (carrierFallbackPhone == null) "RECIPIENT_NUMBER_NOT_AVAILABLE" else "SELECTED_SIM_UNAVAILABLE"
-          )
-        }
-        ServerCallEngineStatusNotifications.showFailure(context, message, carrierFallbackPhone)
-      }
-    }
+    ServerCallEngineStatusNotifications.showFailure(context, message)
     release()
-  }
-
-  /**
-   * Attach the caller-side selected-SIM handoff to the same durable call row.
-   * "handed_off" means Android Telecom accepted placeCall; it is not a claim
-   * that the remote subscriber answered or that the carrier completed the call.
-   */
-  private suspend fun persistCarrierFallbackHistory(
-    stage: String,
-    selectedSim: ServerFallbackSimOption?,
-    errorCode: String?
-  ) {
-    val id = callId?.takeIf { it.isNotBlank() } ?: return
-    try {
-      api("record_carrier_fallback", JSONObject()
-        .put("call_id", id)
-        .put("stage", stage)
-        .put("selected_sim_slot", selectedSim?.slotIndex ?: JSONObject.NULL)
-        .put("selected_sim_carrier", selectedSim?.carrierName ?: JSONObject.NULL)
-        .put("error_code", errorCode ?: JSONObject.NULL)
-      )
-    } catch (error: Exception) {
-      Log.w(TAG, "Server carrier-fallback history update failed: " + error.javaClass.simpleName)
-      if (BuildConfig.DEBUG) {
-        prefs.edit().putString("debug_last_carrier_fallback_history_error", error.javaClass.simpleName).apply()
-      }
-    }
   }
 
   private suspend fun connectRealtime(id: String) {
@@ -1011,11 +894,7 @@ internal class ServerTelecomCallEngine(
         PeerConnection.IceConnectionState.FAILED -> {
           iceConnected = false
           recordStage("ice_transport_failed")
-          failCall(
-            "Server could not establish a peer-to-peer ICE path on this network. Continuing through the selected SIM if automatic fallback is enabled.",
-            carrierFallbackPhone,
-            automaticCarrierFallback = true
-          )
+          failCall("UNREACHABLE · Server could not establish a peer-to-peer ICE path on this network. No mobile-operator call was attempted.")
         }
         else -> Unit
       }
@@ -1061,7 +940,7 @@ internal class ServerTelecomCallEngine(
 
 internal object ServerCallEngineStatusNotifications {
   private const val CHANNEL = "server-call-status-v1"
-  fun showFailure(context: Context, message: String, carrierFallbackPhone: String? = null) {
+  fun showFailure(context: Context, message: String) {
     if (Build.VERSION.SDK_INT >= 33 &&
       context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -1076,16 +955,6 @@ internal object ServerCallEngineStatusNotifications {
       .setContentText(message.take(180))
       .setStyle(NotificationCompat.BigTextStyle().bigText(message))
       .setAutoCancel(true)
-    val dialIntent = carrierFallbackPhone?.let { ServerCarrierDialer.createIntent(context, it) }
-    if (dialIntent != null) {
-      val pending = PendingIntent.getActivity(
-        context,
-        8602 + (carrierFallbackPhone.hashCode() and 0x7FFF),
-        dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-      )
-      builder.addAction(android.R.drawable.sym_action_call, "Call using selected SIM", pending)
-    }
     manager.notify(8601, builder.build())
   }
 }
