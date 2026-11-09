@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { callRealtimeChannel, deferRealtime, issueRealtimeToken, publishRealtime } from "../_shared/centrifugo.ts";
+import { getGuestPushVapidKeys } from "../_shared/guest_web_push.ts";
 const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,GET,OPTIONS","content-type":"application/json","cache-control":"no-store"};
 const out=(x:unknown,s=200)=>new Response(JSON.stringify(x),{status:s,headers:cors});
 const BASE_ICE_SERVERS = [
@@ -88,6 +89,17 @@ let db:any;try{db=client()}catch{return out({error:"SERVER_NOT_CONFIGURED"},503)
 const {data:invite,error:ie}=await db.from("server_guest_invites").select("id,call_id,phone_e164,expires_at,joined_at,revoked_at").eq("token_hash",await sha(raw)).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
 if(ie||!invite)return out({error:"GUEST_INVITE_EXPIRED_OR_INVALID"},401);
 const action=String(b.action||"");
+const validGuestPushEndpoint=(value:unknown):value is string=>{
+ if(typeof value!=="string"||value.length>2048)return false;
+ try{
+  const host=new URL(value).hostname.toLowerCase();
+  return new URL(value).protocol==="https:"&&(
+   host==="fcm.googleapis.com"||host==="push.services.mozilla.com"||
+   host.endsWith(".push.services.mozilla.com")||host==="web.push.apple.com"||
+   host==="push.apple.com"||host.endsWith(".push.apple.com")
+  );
+ }catch{return false;}
+};
 function transitionFailure(transition:any){
  const code=String(transition?.error||"CALL_TRANSITION_FAILED");
  const status=code==="GUEST_INVITE_EXPIRED_OR_INVALID"?401:code==="CALL_NOT_FOUND"?404:
@@ -96,6 +108,53 @@ function transitionFailure(transition:any){
  return out({error:code,...(transition?.state?{state:transition.state}:{})},status);
 }
 
+if(action==="push_config"){
+ const keys=await getGuestPushVapidKeys(db);
+ if(!keys)return out({error:"GUEST_PUSH_CONFIGURATION_UNAVAILABLE"},503);
+ return out({ok:true,vapid_public_key:keys.publicKey});
+}
+if(action==="push_subscribe"){
+ if(b.consent!==true)return out({error:"GUEST_PUSH_CONSENT_REQUIRED"},400);
+ if(typeof invite.phone_e164!=="string"||!/^\\+[1-9][0-9]{7,14}$/.test(invite.phone_e164))return out({error:"GUEST_PUSH_PHONE_REQUIRED"},409);
+ const subscription=b.subscription;
+ const endpoint=subscription?.endpoint;
+ const p256dh=subscription?.keys?.p256dh;
+ const auth=subscription?.keys?.auth;
+ if(!validGuestPushEndpoint(endpoint)||typeof p256dh!=="string"||!/^[A-Za-z0-9_-]{80,160}$/.test(p256dh)||
+    typeof auth!=="string"||!/^[A-Za-z0-9_-]{16,80}$/.test(auth)){
+  return out({error:"INVALID_GUEST_PUSH_SUBSCRIPTION"},400);
+ }
+ const now=new Date().toISOString();
+ const expiration=Number(subscription.expirationTime);
+ const expirationAt=Number.isFinite(expiration)&&expiration>0?new Date(expiration).toISOString():null;
+ const {error:saveError}=await db.from("server_guest_push_devices").upsert({
+  phone_e164:invite.phone_e164,endpoint,p256dh,auth,expiration_at:expirationAt,
+  last_seen_at:now,updated_at:now,revoked_at:null
+ },{onConflict:"endpoint"});
+ if(saveError)return out({error:"GUEST_PUSH_SUBSCRIPTION_SAVE_FAILED"},503);
+ return out({ok:true,subscribed:true,receiver:"browser"});
+}
+if(action==="push_presence"){
+ const endpoint=b.endpoint;
+ if(!validGuestPushEndpoint(endpoint))return out({error:"INVALID_GUEST_PUSH_ENDPOINT"},400);
+ const now=new Date().toISOString();
+ const {data:updated,error:updateError}=await db.from("server_guest_push_devices")
+  .update({last_seen_at:now,updated_at:now})
+  .eq("phone_e164",invite.phone_e164).eq("endpoint",endpoint).is("revoked_at",null)
+  .select("id").maybeSingle();
+ if(updateError)return out({error:"GUEST_PUSH_PRESENCE_FAILED"},503);
+ return out({ok:!!updated,online:!!updated,last_seen_at:updated?now:null});
+}
+if(action==="push_unsubscribe"){
+ const endpoint=b.endpoint;
+ if(!validGuestPushEndpoint(endpoint))return out({error:"INVALID_GUEST_PUSH_ENDPOINT"},400);
+ const now=new Date().toISOString();
+ const {error:revokeError}=await db.from("server_guest_push_devices")
+  .update({revoked_at:now,updated_at:now})
+  .eq("phone_e164",invite.phone_e164).eq("endpoint",endpoint).is("revoked_at",null);
+ if(revokeError)return out({error:"GUEST_PUSH_UNSUBSCRIBE_FAILED"},503);
+ return out({ok:true,subscribed:false});
+}
 async function loadGuestCall(){
  const {data:call,error}=await db.from("server_calls")
   .select("id,state,route,caller_user_id,created_at,updated_at,expires_at")
