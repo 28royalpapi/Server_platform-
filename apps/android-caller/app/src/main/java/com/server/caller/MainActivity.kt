@@ -246,7 +246,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-    carrierFallbackButton = button("Call manually using selected SIM") {
+    carrierFallbackButton = button("Call using selected SIM") {
       handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = false)
     }.apply { visibility = View.GONE }
     callPanel.addView(carrierFallbackButton, matchWrap())
