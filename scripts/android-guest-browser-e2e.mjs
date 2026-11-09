@@ -62,6 +62,14 @@ const context = await browser.newContext({
 const previewResponse = await context.request.get(invitationUrl, { maxRedirects: 0 });
 if (!previewResponse.ok()) throw new Error("Caller-identifying Open Graph page returned HTTP " + previewResponse.status());
 const previewHtml = await previewResponse.text();
+const guestLinkMatch = previewHtml.match(/<a\\s+href="([^"]+)"[^>]*>\\s*Open incoming call\\s*<\\/a>/i);
+if (!guestLinkMatch) throw new Error("Guest preview is missing its secure Open incoming call link.");
+const guestPageUrl = new URL(guestLinkMatch[1].replace(/&amp;/g, "&"), invitationUrl);
+if (guestPageUrl.hostname !== "server-onboarding-ochre.vercel.app" ||
+    !guestPageUrl.pathname.endsWith("/guest.html") ||
+    !/^#token=[0-9a-f]{64}$/i.test(guestPageUrl.hash)) {
+  throw new Error("Guest preview link did not resolve to the expected secure Server guest page.");
+}
 const titleMatch = previewHtml.match(/<meta property="og:title" content="([^"]+)"/);
 const imageMatch = previewHtml.match(/<meta property="og:image" content="([^"]+)"/);
 if (!titleMatch || !imageMatch) throw new Error("Guest preview is missing its caller title or Open Graph image.");
@@ -115,15 +123,19 @@ page.on("response", response => { if (response.status() >= 400) process.stderr.w
 
 try {
   await page.goto(invitationUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-  // The Open Graph preview is a real recipient-facing interstitial with a
-  // visible Open incoming call link. Normally its inline redirect opens the
-  // guest screen automatically; explicitly follow that same link if a browser
-  // or test harness suppresses the script-driven redirect.
-  if (new URL(page.url()).pathname.endsWith("/server-guest-preview")) {
-    const openCall = page.locator('a[href*="/guest.html"]');
-    await openCall.waitFor({ state: "visible", timeout: 10000 });
-    await openCall.click();
-    await page.waitForURL(url => url.pathname.endsWith("/guest.html"), { timeout: 15000 });
+  // The preview document redirects to the exact guest URL in its visible
+  // "Open incoming call" link. Prefer the normal inline redirect, but fall
+  // back to that already-validated href rather than relying on a selector in
+  // a document that may be navigating while Playwright attaches.
+  if (!new URL(page.url()).pathname.endsWith("/guest.html")) {
+    try {
+      await page.waitForURL(url => url.pathname.endsWith("/guest.html"), { timeout: 3000 });
+    } catch {
+      await page.goto(guestPageUrl.toString(), { waitUntil: "domcontentloaded", timeout: 60000 });
+    }
+  }
+  if (!new URL(page.url()).pathname.endsWith("/guest.html")) {
+    throw new Error("The validated guest invitation did not open the Server guest call page: " + page.url());
   }
   try {
     await page.locator("#join-call").waitFor({ state: "visible", timeout: 30000 });
