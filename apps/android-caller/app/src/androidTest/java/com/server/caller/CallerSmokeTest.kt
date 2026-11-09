@@ -227,7 +227,7 @@ class CallerSmokeTest {
       null, ServerPhoneNumberNormalizer.toE164WithContactMetadata("08012345678", null, null, null, contactMatched = false))
   }
 
-  @Test fun guestCallInvitationNotificationOffersShareAndSelectedSimActions() {
+  @Test fun guestCallInvitationNotificationOffersInternetShareOnly() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -253,13 +253,8 @@ class CallerSmokeTest {
       assertNotNull("The secure guest invitation notification was not posted", posted)
       assertTrue("The notification must offer an explicit Share invitation action",
         posted!!.notification.actions.any { it.title.toString() == "Share invitation" })
-      assertTrue("The guest notification must also offer the caller-confirmed carrier flash-call handoff",
+      assertFalse("A guest WebRTC invitation must never expose a carrier/SIM fallback action",
         posted!!.notification.actions.any { it.title.toString() == "Call using selected SIM" })
-      val carrierIntent = ServerCarrierDialer.createIntent(phone)
-      assertEquals("The carrier fallback must open Android's native dialler, not place a call silently",
-        Intent.ACTION_DIAL, carrierIntent?.action)
-      assertEquals("The carrier dialler must target the intended E.164 number",
-        phone, carrierIntent?.data?.schemeSpecificPart)
       assertNotNull("Tapping the notification must open the native share activity", posted.notification.contentIntent)
 
       val chooser = ServerGuestInviteShareActivity.createShareChooserIntent(phone, invitation)
