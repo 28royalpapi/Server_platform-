@@ -144,7 +144,7 @@ try {
   assert.equal(joined.call?.state, "connecting");
   const realtime = await guest(token, "realtime_token");
   if (realtime.realtime_available === true) {
-    assert.ok((realtime.url || "").startsWith("wss://") || (realtime.url || "").startsWith("ws://"));
+    assert.ok((realtime.url || "").startsWith("wss://"));
     const realtimeTokenParts = (realtime.token || "").split(".");
     assert.equal(realtimeTokenParts.length, 3);
     assert.ok(realtimeTokenParts.every(part => /^[A-Za-z0-9_-]+$/.test(part)));
@@ -153,7 +153,7 @@ try {
     assert.ok(claims.channels.includes("$server-call:" + created.call_id));
     pass("guest Centrifugo token is scoped to its answered call");
   } else {
-    process.stdout.write("WARN CENTRIFUGO_NOT_CONFIGURED: guest browser must use compatibility HTTP polling; this is not the high-concurrency realtime path.\\n");
+    process.stdout.write("WARN CENTRIFUGO_NOT_CONFIGURED: guest browser must use compatibility HTTP polling; this is not the high-concurrency realtime path.\n");
   }
   const claimed = await inspect(token);
   assert.equal(claimed.joined, true);
