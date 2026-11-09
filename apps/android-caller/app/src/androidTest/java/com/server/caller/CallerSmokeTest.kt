@@ -651,34 +651,33 @@ class CallerSmokeTest {
   }
 
   private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    // Use the privileged instrumentation shell so this fixture does not add
-    // WRITE_CONTACTS to the shipped application manifest.
-    fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
-    val insertOutput = runShellCommand(
-      "content insert --uri content://com.android.contacts/raw_contacts 2>&1"
-    )
-    val queryOutput = runShellCommand(
-      "content query --uri content://com.android.contacts/raw_contacts" +
-        " --projection _id --sort '_id DESC' 2>&1"
-    )
-    val rawId = Regex("_id=(\\d+)").findAll(queryOutput).lastOrNull()?.groupValues?.get(1)
-      ?: throw AssertionError("Could not create/read test contact raw row. insert=" +
-        insertOutput.take(500) + "; query=" + queryOutput.take(1000))
-    val nameOutput = runShellCommand(
-      "content insert --uri content://com.android.contacts/data" +
-        " --bind raw_contact_id:i:" + rawId +
-        " --bind mimetype:s:vnd.android.cursor.item/name" +
-        " --bind data1:s:" + shellQuote(displayName) + " 2>&1"
-    )
-    val phoneOutput = runShellCommand(
-      "content insert --uri content://com.android.contacts/data" +
-        " --bind raw_contact_id:i:" + rawId +
-        " --bind mimetype:s:vnd.android.cursor.item/phone_v2" +
-        " --bind data1:s:" + shellQuote(phone) +
-        " --bind data2:i:2 2>&1"
-    )
-    assertFalse("Could not insert contact name: " + nameOutput, nameOutput.contains("Exception"))
-    assertFalse("Could not insert contact phone: " + phoneOutput, phoneOutput.contains("Exception"))
+    // Instrumentation adopts the shell identity only while inserting this
+    // isolated fixture. This API is available on supported Android 8+ test SDKs
+    // and avoids adding WRITE_CONTACTS to Server's production manifest.
+    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+    automation.adoptShellPermissionIdentity()
+    try {
+      val operations = arrayListOf<android.content.ContentProviderOperation>()
+      val rawContact = operations.size
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
+        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+        .build())
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
+        .build())
+      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
+        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
+        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
+        .build())
+      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
+    } finally {
+      automation.dropShellPermissionIdentity()
+    }
   }
 
   private fun clickTextWithRetry(
