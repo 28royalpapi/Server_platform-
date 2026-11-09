@@ -803,7 +803,7 @@ assert.match(androidMain,/Standard call charges may apply/,"Android warns that c
 assert.doesNotMatch(androidCarrierDialer,/Intent\\.ACTION_CALL/,"the carrier fallback never silently places the call");
 assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
 assert.match(androidMain,/REACHABLE · SERVER \/ WEBRTC/,"the caller sees the reachable Server/WebRTC state");
-assert.match(androidMain,/UNREACHABLE · SELECTED SIM/,"the caller sees the unreachable/selected-SIM state");
+assert.match(androidMain,/GUEST INVITATION · INTERNET STATUS UNKNOWN/,"a non-Server number is shown as a guest with unknown internet status, not as offline");
 assert.match(androidMain,/PeerConnection\.IceConnectionState\.FAILED[\s\S]*?handoffToCarrierDialer\(fallback, callId\)/,"a failed WebRTC media path triggers selected-SIM fallback");
 assert.match(androidMain,/Recipient availability is unknown until their browser connects/,
   "a guest invitation is not misrepresented as an active ring before the guest joins");
@@ -830,10 +830,12 @@ assert.match(androidEngine,/waitForRecipientServerHeartbeat\(target\)/,
   "Android waits for a fresh presence heartbeat after a background wake before continuing WebRTC");
 assert.match(androidEngine,/delay\(700L\)/,
   "the background wake confirmation uses bounded heartbeat retries");
-assert.match(androidEngine,/route == "guest"[\s\S]{0,500}automaticCarrierFallback = true/,
-  "a non-Server phone number with no Server receiver automatically uses the selected SIM");
-assert.match(androidEngine,/Unreachable on Server · switching to your selected SIM/,
-  "the caller is told when a non-Server destination moves to the carrier route");
+assert.doesNotMatch(androidEngine,/if \(route == "guest"\)[\s\S]{0,500}automaticCarrierFallback = true/,
+  "a non-Server number must not be treated as a confirmed-offline Server user or auto-switched to the SIM");
+assert.match(androidEngine,/Guest invitation · recipient internet status unknown/,
+  "the Telecom guest route preserves the invitation and does not claim to know the recipient's mobile-data state");
+assert.doesNotMatch(androidMain,/currentRoute == "guest"[\s\S]{0,350}handoffToCarrierDialer/,
+  "the in-app guest route must not bypass the browser invitation with automatic carrier fallback");
 assert.match(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest invitation notification exposes the same carrier handoff as the app UI");
 assert.match(androidGuestNotifications,/"Call using selected SIM"/,
