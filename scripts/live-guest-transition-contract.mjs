@@ -15,6 +15,7 @@ const destination = "+12025550147"; // Reserved fictional number; no recipient o
 const baseHeaders = { apikey: publishableKey };
 const createdCallIds = new Set();
 let accessToken = "";
+const callerName = "Server Test " + randomUUID().slice(0, 8);
 let activeGuestToken = "";
 let testPushEndpoint = "";
 let checks = 0;
@@ -93,6 +94,7 @@ try {
     action: "register_device",
     installation_id: randomUUID(),
     device_secret: randomBytes(32).toString("hex"),
+    display_name: callerName,
     accepted_terms: true,
     terms_version: "server-terms-1.0",
     privacy_version: "server-privacy-1.0"
@@ -115,7 +117,7 @@ try {
   const previewHtml = await previewResponse.text();
   assert.match(previewHtml, /property="og:title"/);
   assert.match(previewHtml, /property="og:image"/);
-  assert.match(previewHtml, /PRIVATE CALLER/i, "unlinked test identity must not leak its Server ID");
+  assert.ok(previewHtml.includes(callerName), "Open Graph title must show the caller's chosen display name");
   const imageHref = previewHtml.match(/property="og:image" content="([^"]+)"/)?.[1]?.replace(/&amp;/g, "&");
   assert.ok(imageHref, "OG image URL must be present");
   const imageResponse = await fetch(new URL(imageHref, created.guest_invite_url), {
@@ -125,15 +127,16 @@ try {
   assert.match(imageResponse.headers.get("content-type") || "", /image\/png/i);
   const png = Buffer.from(await imageResponse.arrayBuffer());
   assert.ok(png.length > 256 && png.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])));
-  assert.ok(png.includes(Buffer.from("Caller=PRIVATE CALLER")));
-  pass("live Open Graph preview and per-invitation PNG", "caller label matches in HTML and image metadata");
+  assert.ok(png.includes(Buffer.from("Caller=" + callerName)));
+  pass("live Open Graph preview and per-invitation PNG", "the caller-chosen display name matches in HTML and image metadata");
 
   const initial = await inspect(token);
   assert.equal(initial.call_id, created.call_id);
   assert.equal(initial.call?.state, "ringing");
   assert.equal(initial.joined, false);
-  assert.equal(initial.caller_label, "Private caller");
-  pass("guest invite inspection and private caller identity");
+  assert.equal(initial.caller_label, callerName);
+  assert.equal(initial.caller_display_name, callerName);
+  pass("guest invite inspection returns the caller-chosen display name");
 
   // Enrol a synthetic browser receiver. The endpoint is deliberately never sent a
   // push notification; this only proves subscription, key provisioning and presence.

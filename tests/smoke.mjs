@@ -1088,7 +1088,8 @@ assert.match(guestPreview,/GUEST_PREVIEW_CALLER_PROFILE_LOOKUP_FAILED/);
 
 assert.match(liveGuestTransitionContract,/"join"/);
 assert.match(liveGuestTransitionContract,/og:title/);
-assert.doesNotMatch(liveGuestTransitionContract,/Caller=PRIVATE CALLER/);
+assert.match(liveGuestTransitionContract,/Caller=/,"live guest integration inspects caller identity metadata");
+assert.doesNotMatch(liveGuestTransitionContract,/PRIVATE CALLER/);
 assert.ok(liveGuestTransitionContract.includes("server-terms-1.0"));
 assert.doesNotMatch(liveGuestTransitionContract,/request_otp|verify_otp|server-send-sms/,
   "the live guest lifecycle test must never queue SMS or contact a real carrier number");
