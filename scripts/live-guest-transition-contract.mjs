@@ -15,6 +15,8 @@ const destination = "+12025550147"; // Reserved fictional number; no recipient o
 const baseHeaders = { apikey: publishableKey };
 const createdCallIds = new Set();
 let accessToken = "";
+let activeGuestToken = "";
+let testPushEndpoint = "";
 let checks = 0;
 
 function pass(name, detail = "") {
@@ -74,6 +76,9 @@ async function assertCallState(token, state) {
 }
 
 async function cleanup() {
+  if (activeGuestToken && testPushEndpoint) {
+    try { await guest(activeGuestToken, "push_unsubscribe", { endpoint: testPushEndpoint }); } catch {}
+  }
   for (const callId of createdCallIds) {
     try { await request("server-calls", { action: "end", call_id: callId }); } catch {}
   }
@@ -129,6 +134,44 @@ try {
   assert.equal(initial.joined, false);
   assert.equal(initial.caller_label, "Private caller");
   pass("guest invite inspection and private caller identity");
+
+  // Enrol a synthetic browser receiver. The endpoint is deliberately never sent a
+  // push notification; this only proves subscription, key provisioning and presence.
+  const pushConfig = await guest(token, "push_config");
+  assert.match(pushConfig.vapid_public_key || "", /^[A-Za-z0-9_-]{80,100}$/);
+  pass("server-side VAPID keypair provisioned; only the public key is returned");
+
+  const fakeSubscription = {
+    endpoint: "https://fcm.googleapis.com/fcm/send/server-contract-" + randomUUID(),
+    expirationTime: null,
+    keys: {
+      p256dh: randomBytes(65).toString("base64url"),
+      auth: randomBytes(16).toString("base64url")
+    }
+  };
+  activeGuestToken = token;
+  testPushEndpoint = fakeSubscription.endpoint;
+  const subscribed = await guest(token, "push_subscribe", {
+    consent: true, subscription: fakeSubscription
+  });
+  assert.equal(subscribed.ok, true);
+  assert.equal(subscribed.subscribed, true);
+  const presence = await guest(token, "push_presence", { endpoint: fakeSubscription.endpoint });
+  assert.equal(presence.ok, true);
+  assert.equal(presence.online, true);
+  const available = await request("server-calls", {
+    action: "availability", to_phone: destination
+  });
+  assert.equal(available.recipient_availability?.status, "online");
+  assert.equal(available.recipient_availability?.background_wake_possible, true);
+  pass("a number-bound browser heartbeat changes guest reachability from unknown to online");
+
+  const unsubscribed = await guest(token, "push_unsubscribe", { endpoint: fakeSubscription.endpoint });
+  assert.equal(unsubscribed.ok, true);
+  assert.equal(unsubscribed.subscribed, false);
+  activeGuestToken = "";
+  testPushEndpoint = "";
+  pass("guest browser subscription can be revoked without an account or SMS");
 
   const joinAttempts = await Promise.allSettled([
     guest(token, "join"),
