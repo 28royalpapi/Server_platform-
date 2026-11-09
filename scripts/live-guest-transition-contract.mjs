@@ -142,6 +142,17 @@ try {
   const joined = successfulJoins[0].value;
   assert.equal(joined.ok, true);
   assert.equal(joined.call?.state, "connecting");
+  const realtime = await guest(token, "realtime_token");
+  if (realtime.realtime_available === true) {
+    assert.match(realtime.url || "", /^wss?:\\/\\//);
+    assert.match(realtime.token || "", /^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/);
+    const claims = JSON.parse(Buffer.from(realtime.token.split(".")[1], "base64url").toString("utf8"));
+    assert.ok(Array.isArray(claims.channels));
+    assert.ok(claims.channels.includes("$server-call:" + created.call_id));
+    pass("guest Centrifugo token is scoped to its answered call");
+  } else {
+    process.stdout.write("WARN CENTRIFUGO_NOT_CONFIGURED: guest browser must use compatibility HTTP polling; this is not the high-concurrency realtime path.\\n");
+  }
   const claimed = await inspect(token);
   assert.equal(claimed.joined, true);
   pass("one-time guest join claim serialized", "one browser joins; the competing session receives HTTP 409");
