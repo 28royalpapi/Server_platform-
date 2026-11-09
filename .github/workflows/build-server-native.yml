@@ -50,8 +50,11 @@ jobs:
           REDIS_PASSWORD=server-ci-redis-password-0123456789abcdef
           CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=server-ci-hmac-secret-0123456789abcdef0123456789abcdef
           CENTRIFUGO_HTTP_API_KEY=server-ci-api-key-0123456789abcdef0123456789abcdef
+          SERVER_TURN_SHARED_SECRET=server-ci-turn-secret-0123456789abcdef0123456789abcdef
+          SERVER_TURN_EXTERNAL_IP=
           EOF
-          docker compose -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml up -d --wait
+          docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml up -d --wait
+          docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml ps
       - name: Validate optional Coturn relay compose configuration
         env:
           TURN_REALM: turn.example.invalid
@@ -70,10 +73,10 @@ jobs:
         run: node scripts/realtime-infrastructure-smoke.mjs
       - name: Show realtime stack diagnostics on failure
         if: failure()
-        run: docker compose -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml logs --no-color
+        run: docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml logs --no-color
       - name: Stop realtime stack and remove ephemeral data
         if: always()
-        run: docker compose -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml down -v
+        run: docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml down -v
 
   backend-source-contract-checks:
     runs-on: ubuntu-latest
