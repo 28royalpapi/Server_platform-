@@ -18,6 +18,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,79 +28,91 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
-  @Test fun launcherOpensWebsiteOnboardingInsteadOfCustomDialer() {
+  @Test fun serverCallRequiresValidatedInternetAndShowsClearOfflineStatePredicate() {
+    assertFalse("No active network must block Server internet calling",
+      isServerInternetUsable(false, false))
+    assertFalse("A connected transport without INTERNET capability must not start a Server call",
+      isServerInternetUsable(false, true))
+    assertFalse("Internet that Android has not validated must not be treated as usable",
+      isServerInternetUsable(true, false))
+    assertTrue("Validated Wi-Fi or mobile data must allow Server to attempt the call",
+      isServerInternetUsable(true, true))
+  }
+
+  @Test fun launcherShowsServerIdFirstOnboardingWithoutSimPermissions() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    // Start from a clean permission state so the screen recording captures
-    // Android's real runtime permission prompt, not a silently pre-granted permission.
-    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_STATE) } catch (_: Exception) {}
-    try { instrumentation.uiAutomation.revokeRuntimePermission(context.packageName, Manifest.permission.READ_PHONE_NUMBERS) } catch (_: Exception) {}
-    context.getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
-      .putBoolean("server_open_dialer_after_account_enable", false)
-      .remove("selected_sim_subscription_id")
-      .remove("selected_sim_slot")
-      .remove("selected_sim_carrier")
-      .remove("selected_sim_phone")
-      .commit()
+    assertEquals("Server must not request access to SIM phone numbers",
+      android.content.pm.PackageManager.PERMISSION_DENIED,
+      context.checkSelfPermission("android.permission.READ_PHONE_NUMBERS"))
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     assertNotNull("Server does not expose a launcher entry", launchIntent)
-    assertEquals("The launcher must open the website onboarding bridge",
+    assertEquals("The launcher must open the Server website onboarding bridge",
       ServerSetupWebActivity::class.java.name, launchIntent!!.component?.className)
 
     ActivityScenario.launch<ServerSetupWebActivity>(launchIntent).use {
       val device = UiDevice.getInstance(instrumentation)
-      assertTrue("Website onboarding brand is not visible",
+      assertTrue("Server onboarding brand is not visible",
         device.wait(Until.hasObject(By.text("server")), 20_000))
-      assertTrue("SIM-first web onboarding step is not visible",
-        device.wait(Until.hasObject(By.textContains("Choose your SIM")), 20_000))
-      val detectButton = device.wait(Until.findObject(By.textContains("Allow SIM access and detect SIMs")), 10_000)
-      assertNotNull("SIM permission/detection button is not visible", detectButton)
-      detectButton!!.click()
-      var sawAndroidPermissionPrompt = false
-      repeat(3) {
-        val allowButton = device.wait(Until.findObject(By.text("Allow")), 2500)
-        if (allowButton != null) {
-          sawAndroidPermissionPrompt = true
-          allowButton.click()
-          Thread.sleep(450)
-        }
-      }
-      assertTrue("The emulator must show Android's actual SIM permission prompt", sawAndroidPermissionPrompt)
+      assertTrue("Server ID-first setup heading is not visible",
+        device.wait(Until.hasObject(By.textContains("Create your Server identity")), 20_000))
+      assertTrue("The setup must explain that SIM selection is not required",
+        device.wait(Until.hasObject(By.textContains("No SIM selection and no SMS OTP are required")), 10_000))
+      assertTrue("The old SIM-selection UI must not appear",
+        !device.hasObject(By.textContains("Choose your SIM")))
+      assertTrue("The old SIM permission button must not appear",
+        !device.hasObject(By.textContains("Allow SIM access")))
+      val terms = device.wait(Until.findObject(By.textContains("I accept the Terms of Service")), 10_000)
+      assertNotNull("Legal acceptance must remain part of account creation", terms)
+      // Accept terms while the consent control is visible, then scroll to the
+      // primary action which sits below the fold on phone-sized screens.
+      terms!!.click()
+      device.swipe(device.displayWidth / 2, device.displayHeight * 4 / 5,
+        device.displayWidth / 2, device.displayHeight / 3, 20)
+      val createButton = device.wait(Until.findObject(By.textContains("Create my Server ID")), 5_000)
+      assertNotNull("Server identity creation action is not visible after scrolling", createButton)
+      assertTrue("Accepting the terms should enable Server ID creation", createButton!!.isEnabled)
+      assertTrue("Onboarding unexpectedly opened a custom number-entry dialer",
+        !device.hasObject(By.textContains("Call a number")))
+    }
+  }
 
-      val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
-      val activeSim = try {
-        subscriptionManager.activeSubscriptionInfoList.orEmpty().sortedBy { it.simSlotIndex }.firstOrNull()
-      } catch (_: Exception) { null }
-      val expectedId = activeSim?.subscriptionId ?: -1001
-      val expectedSlot = activeSim?.simSlotIndex?.takeIf { it >= 0 }?.plus(1) ?: 1
-      val visibleLabel = if (activeSim == null) "Emulator test SIM" else "SIM " + expectedSlot + " ·"
-      val simChoice = device.wait(Until.findObject(By.textContains(visibleLabel)), 12_000)
-      assertNotNull("The website did not render an active SIM or labelled emulator test SIM", simChoice)
-      // WebView rerenders the SIM list immediately after it handles a native-bridge
-      // event. UiObject2 can become stale between lookup and click, so always query
-      // a fresh accessibility node and retry this interaction if that race occurs.
-      assertTrue("The SIM option became stale while onboarding refreshed its list",
-        clickTextWithRetry(device, visibleLabel))
+  @Test fun enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    grantTelecomPermissions(context)
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val device = UiDevice.getInstance(instrumentation)
+    val handle = ServerTelecomRegistry.handle(context)
+    val callId = "incoming-" + UUID.randomUUID().toString()
+    val callerIdentity = "SVR-ABCDEF1234"
 
-      val savedPrefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-      assertEquals("Selecting a SIM in the website must persist its selected subscription id",
-        expectedId, savedPrefs.getInt("selected_sim_subscription_id", -1))
-      assertTrue("The website did not update its visible selection status",
-        device.wait(Until.hasObject(By.textContains("Selected SIM")), 5_000))
-      if (activeSim == null) {
-        assertEquals("The emulator fixture must be labelled as a mock rather than a carrier line",
-          "Emulator test SIM (not a real line)", savedPrefs.getString("selected_sim_carrier", ""))
-      } else {
-        assertEquals("The selected subscription must persist its real slot",
-          activeSim.simSlotIndex, savedPrefs.getInt("selected_sim_slot", -1))
+    ServerTelecomRegistry.register(context)
+    ensureAccountEnabled(context, device, handle, "Server")
+    try {
+      // Exercise Android Telecom's actual incoming-call callback. This is not a
+      // direct unit construction of ServerTelecomConnection: Telecom must invoke
+      // ServerConnectionService.onCreateIncomingConnection for the assertion.
+      ServerTelecomRegistry.reportIncoming(context, callId, callerIdentity)
+      val deadline = System.currentTimeMillis() + 12_000
+      var state: Int? = null
+      while (System.currentTimeMillis() < deadline && state == null) {
+        state = ServerTelecomRegistry.incomingConnectionState(callId)
+        Thread.sleep(100)
       }
-      val continueButton = findTextOnScrollableScreen(context, device, "Continue to calling permissions")
-      assertNotNull("SIM selection did not advance the web flow. See ServerUITest hierarchy in logcat.", continueButton)
-      continueButton!!.click()
-      assertNotNull("The website did not advance to the calling-permission step",
-        findTextOnScrollableScreen(context, device, "Allow Server calling"))
-      assertTrue("A custom number-entry dialer unexpectedly appeared",
-        !device.hasObject(By.text("Call a number")))
+      assertEquals("Android Telecom did not call ServerConnectionService and start a ringing incoming connection",
+        Connection.STATE_RINGING, state)
+
+      // Verify the caller label was handed to Telecom's Connection object. Some
+      // OEM/system call surfaces display "Unknown" for an internet call without a
+      // shared telephone number, while still showing the Server call provider UI.
+      assertEquals("Telecom did not receive the caller's Server identity as the display name",
+        callerIdentity, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      val serverCallUi = device.wait(Until.hasObject(By.textContains("Incoming call via Server")), 8_000)
+      assertTrue("Android did not expose the incoming call through its system Phone UI", serverCallUi)
+    } finally {
+      ServerTelecomRegistry.markEnded(callId)
+      device.pressHome()
     }
   }
 
@@ -209,15 +222,15 @@ class CallerSmokeTest {
     return android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
   }
 
-  private fun grantPhoneMetadataPermissions(context: Context) {
+  private fun grantTelecomPermissions(context: Context) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.RECORD_AUDIO)) {
+    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO)) {
       try { instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission) } catch (_: Exception) {}
     }
   }
   private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    return telecom.getPhoneAccount(handle)?.isEnabled == true
+    return telecom.callCapablePhoneAccounts.contains(handle)
   }
 
   private fun ensureAccountEnabled(
@@ -226,7 +239,7 @@ class CallerSmokeTest {
     handle: android.telecom.PhoneAccountHandle,
     label: String
   ) {
-    grantPhoneMetadataPermissions(context)
+    grantTelecomPermissions(context)
     if (accountEnabled(context, handle)) return
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -234,18 +247,18 @@ class CallerSmokeTest {
     // On AOSP Android 14, CHANGE_PHONE_ACCOUNTS first opens a settings landing
     // page with an "All calling accounts" row. The registered providers are one
     // level deeper; searching for Server on the landing page can never succeed.
-    var accountRow = device.findObject(By.text(label))
-    if (accountRow == null) {
-      val allAccounts = findTextOnScrollableScreen(context, device, "All calling accounts")
-      if (allAccounts != null) {
-        allAccounts.click()
+    var accountRowVisible = device.wait(Until.hasObject(By.text(label)), 1_000)
+    if (!accountRowVisible) {
+      val openedAllAccounts = clickTextWithRetry(device, "All calling accounts", timeoutMs = 8_000)
+      if (openedAllAccounts) {
         device.wait(Until.hasObject(By.textContains("All calling accounts")), 2_000)
         Thread.sleep(300)
       }
-      accountRow = findTextOnScrollableScreen(context, device, label)
+      accountRowVisible = device.wait(Until.hasObject(By.text(label)), 8_000)
     }
-    assertNotNull("Android calling-account list did not show $label. See ServerUITest hierarchy in logcat.", accountRow)
-    accountRow!!.click()
+    assertTrue("Android calling-account list did not show $label. See ServerUITest hierarchy in logcat.", accountRowVisible)
+    assertTrue("Could not reliably open the $label calling-account settings",
+      clickTextWithRetry(device, label, exact = true, timeoutMs = 8_000))
     val deadline = System.currentTimeMillis() + 10_000
     while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) {
       val toggle = device.findObject(By.clazz("android.widget.Switch"))
@@ -260,6 +273,7 @@ class CallerSmokeTest {
   @Test fun preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
+    grantTelecomPermissions(context)
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
     val serverHandle = ServerTelecomRegistry.handle(context)
@@ -314,25 +328,18 @@ class CallerSmokeTest {
       assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
       assertTrue("The mock provider must be enabled to prove a real multi-provider picker", testHandle in callCapableAccounts)
 
-      // Create a clearly fake emulator contact and select it through the system
-      // Contacts UI, matching the user's real dialer -> contact -> Server flow.
-      insertDemoContact(context, "Server Demo Contact", "+15550001001")
+      // Open Android's real Phone app with a test number already entered.
+      // This avoids depending on the emulator's optional Contacts provider while
+      // still testing the system outgoing-account chooser used after the user taps Call.
       device.pressHome()
-      context.startActivity(Intent(Intent.ACTION_VIEW, ContactsContract.Contacts.CONTENT_URI)
+      context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+15550001001"))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-      val demoContact = device.wait(Until.findObject(By.text("Server Demo Contact")), 15_000)
-      assertNotNull("The Android Contacts app did not show the emulator's Server Demo Contact", demoContact)
-      demoContact!!.click()
-
-      val numberRow = device.wait(Until.findObject(By.textContains("555")), 10_000)
-      assertNotNull("The selected contact's phone number was not visible in Contacts", numberRow)
-      numberRow!!.click()
-
-      // Some Contacts versions open the dialer with the number populated; in
-      // others the number row proceeds directly to the system outgoing-call flow.
+      val dialerReady = device.wait(Until.hasObject(By.textContains("555")), 12_000)
+      assertTrue("Android's system Phone dialer did not open with the requested number", dialerReady)
       val callButton = device.wait(Until.findObject(By.descContains("Call")), 6_000)
-        ?: device.wait(Until.findObject(By.text("Call")), 1_500)
-      if (callButton != null) callButton.click()
+        ?: device.wait(Until.findObject(By.text("Call")), 2_000)
+      assertNotNull("Android's Phone dialer did not expose its Call action", callButton)
+      callButton!!.click()
 
       val chooserDeadline = System.currentTimeMillis() + 15_000
       var serverChoice: androidx.test.uiautomator.UiObject2? = null
@@ -389,35 +396,103 @@ class CallerSmokeTest {
     }
   }
 
-  @Test fun serverRegistersAsSystemManagedPhoneAccountAndCarriesSelectedNumberMetadata() {
-    val context = InstrumentationRegistry.getInstrumentation().targetContext
-    grantPhoneMetadataPermissions(context)
-    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    val handle = ServerTelecomRegistry.handle(context)
+  @Test fun telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
     val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
-    val previousNumber = prefs.getString("selected_sim_phone", null)
+    val previousToken = prefs.getString("access_token", null)
+    val previousExpiry = prefs.getLong("access_expiry", 0L)
+    val previousMarker = prefs.getString("debug_last_telecom_hangup_call_id", null)
+    val callId = "telecom-hangup-" + UUID.randomUUID().toString()
+
+    // Simulate Android recreating MainActivity after the original in-memory call
+    // state has disappeared. The Telecom Connection still supplies its call ID.
+    prefs.edit().remove("access_token").putLong("access_expiry", 0L)
+      .remove("debug_last_telecom_hangup_call_id").commit()
+    val intent = Intent(context, MainActivity::class.java).apply {
+      putExtra("server_action", "hangup")
+      putExtra("server_call_id", callId)
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    }
 
     try {
-      prefs.edit().putString("selected_sim_phone", "+2348012345678").commit()
-      ServerTelecomRegistry.register(context)
-      val account = telecom.getPhoneAccount(handle)
+      ActivityScenario.launch<MainActivity>(intent).use {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < deadline &&
+          prefs.getString("debug_last_telecom_hangup_call_id", null) != callId) {
+          Thread.sleep(50)
+        }
+        assertEquals(
+          "A recreated MainActivity must use the call ID supplied by Android Telecom, not a missing in-memory call ID",
+          callId,
+          prefs.getString("debug_last_telecom_hangup_call_id", null)
+        )
+      }
+    } finally {
+      val edit = prefs.edit()
+      if (previousToken == null) edit.remove("access_token") else edit.putString("access_token", previousToken)
+      edit.putLong("access_expiry", previousExpiry)
+      if (previousMarker == null) edit.remove("debug_last_telecom_hangup_call_id")
+      else edit.putString("debug_last_telecom_hangup_call_id", previousMarker)
+      edit.commit()
+    }
+  }
 
-      assertNotNull("Android Telecom did not register the Server calling account", account)
+  @Test fun serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    grantTelecomPermissions(context)
+    val prefs = context.getSharedPreferences("server-session", Context.MODE_PRIVATE)
+    val previousNumber = prefs.getString("selected_sim_phone", null)
+    val previousLinked = prefs.getBoolean("server_phone_number_linked", false)
+    val previousLinkedPhone = prefs.getString("server_linked_phone", null)
+    val previousNumberConsent = prefs.getBoolean("allow_number_based_server_calls", false)
+
+    try {
+      // A legacy SIM-derived number must never be silently attached to Server.
+      prefs.edit().putString("selected_sim_phone", "+2348012345678")
+        .putBoolean("server_phone_number_linked", false).remove("server_linked_phone").commit()
+      ServerTelecomRegistry.register(context)
+      var account = ServerTelecomRegistry.buildPhoneAccount(context)
+      assertEquals("An unverified SIM number must not become Server calling identity metadata",
+        null, account.address)
+
+      // Only an explicitly verified-and-linked number may be shown as Telecom metadata.
+      prefs.edit().putBoolean("server_phone_number_linked", true)
+        .putString("server_linked_phone", "+2348012345678")
+        .putBoolean("allow_number_based_server_calls", false).commit()
+      ServerTelecomRegistry.register(context)
+      account = ServerTelecomRegistry.buildPhoneAccount(context)
+      assertEquals("Verified number must remain private until the user opts into number-based calls",
+        null, account.address)
+
+      prefs.edit().putBoolean("allow_number_based_server_calls", true).commit()
+      ServerTelecomRegistry.register(context)
+      account = ServerTelecomRegistry.buildPhoneAccount(context)
       assertTrue("Server account is not a call-provider account",
-        (account!!.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
+        (account.capabilities and PhoneAccount.CAPABILITY_CALL_PROVIDER) != 0)
       assertTrue("Server must be a system-managed call provider, not self-managed",
         (account.capabilities and PhoneAccount.CAPABILITY_SELF_MANAGED) == 0)
       assertTrue("Server must explicitly advertise tel URI support so the normal dialer can route numbers to it",
         account.supportedUriSchemes.contains(PhoneAccount.SCHEME_TEL))
       assertTrue("Server must not masquerade as a cellular SIM",
         (account.capabilities and PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION) == 0)
-      assertEquals("The selected SIM number must be carried as account metadata",
+      assertEquals("Only the explicitly linked and consented number should be exposed as account metadata",
         Uri.parse("tel:+2348012345678"), account.address)
+
+      prefs.edit().putBoolean("allow_number_based_server_calls", false).commit()
+      ServerTelecomRegistry.register(context)
+      account = ServerTelecomRegistry.buildPhoneAccount(context)
+      assertEquals("Revoking number-call consent must remove the number from Telecom metadata",
+        null, account.address)
     } finally {
       val edit = prefs.edit()
       if (previousNumber == null) edit.remove("selected_sim_phone") else edit.putString("selected_sim_phone", previousNumber)
+      edit.putBoolean("server_phone_number_linked", previousLinked)
+      if (previousLinkedPhone == null) edit.remove("server_linked_phone") else edit.putString("server_linked_phone", previousLinkedPhone)
+      edit.putBoolean("allow_number_based_server_calls", previousNumberConsent)
       edit.commit()
       ServerTelecomRegistry.register(context)
     }
   }
+
 }

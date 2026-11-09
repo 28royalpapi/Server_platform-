@@ -34,6 +34,9 @@ import java.time.Instant
 class ServerIncomingCallService : Service() {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private var pollingJob: Job? = null
+  // Process-local by design: if Android recreates the service, active calls must be
+  // re-reported to Telecom instead of being suppressed by stale persisted IDs.
+  private val reportedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
   private val prefs by lazy { getSharedPreferences("server-session", Context.MODE_PRIVATE) }
 
   override fun onCreate() {
@@ -42,10 +45,10 @@ class ServerIncomingCallService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    if (!ServerTelecomRegistry.isEnabled(this) || prefs.getString("access_token", null).isNullOrBlank()) {
-      stopSelf()
-      return START_NOT_STICKY
-    }
+    // Android starts a foreground service with a strict startup deadline. Promote
+    // it immediately, before making Telecom/session eligibility checks or network
+    // calls; otherwise the OS can terminate the process with
+    // ForegroundServiceDidNotStartInTimeException on a Telecom hand-off.
     try {
       val notification = buildNotification()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -55,6 +58,14 @@ class ServerIncomingCallService : Service() {
       }
     } catch (error: Exception) {
       Log.w(TAG, "Could not start Server call listener: " + error.javaClass.simpleName)
+      stopSelf()
+      return START_NOT_STICKY
+    }
+
+    // The service is safely foregrounded now; it can stop cleanly when the user
+    // has disabled Server or when the local Server session is no longer valid.
+    if (!ServerTelecomRegistry.isEnabled(this) || prefs.getString("access_token", null).isNullOrBlank()) {
+      stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
       return START_NOT_STICKY
     }
@@ -91,17 +102,17 @@ class ServerIncomingCallService : Service() {
             val callId = row.optString("id")
             if (callId.isBlank()) continue
             liveCallIds.add(callId)
-            val reported = prefs.getStringSet(KEY_REPORTED_IDS, emptySet()).orEmpty()
-            if (callId in reported) continue
+            if (!reportedCallIds.add(callId)) continue
 
             val caller = row.optString("caller_server_id").takeIf { it.isNotBlank() }
               ?: row.optString("caller_phone_e164").takeIf { it.isNotBlank() }
               ?: "Server caller"
             try {
               ServerTelecomRegistry.reportIncoming(this, callId, caller)
-              val bounded = (reported + callId).toList().takeLast(MAX_REPORTED_IDS).toSet()
-              prefs.edit().putStringSet(KEY_REPORTED_IDS, bounded).apply()
             } catch (error: Exception) {
+              // Retry on the next poll if Telecom rejected this report. The set
+              // prevents duplicate rings only after a successful hand-off.
+              reportedCallIds.remove(callId)
               Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
             }
           }
@@ -210,8 +221,6 @@ class ServerIncomingCallService : Service() {
     private const val TAG = "ServerIncomingCalls"
     private const val CHANNEL_ID = "server-incoming-calls"
     private const val NOTIFICATION_ID = 7338
-    private const val KEY_REPORTED_IDS = "server_reported_incoming_call_ids"
-    private const val MAX_REPORTED_IDS = 300
     private const val POLL_INTERVAL_MS = 2200L
 
     fun start(context: Context) {
