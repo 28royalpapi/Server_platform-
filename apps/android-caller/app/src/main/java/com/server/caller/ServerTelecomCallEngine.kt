@@ -210,11 +210,12 @@ internal class ServerTelecomCallEngine(
       // mobile data is actually enabled or disabled.
       connection.setRingbackRequested(route == "server")
       if (route == "guest") {
-        connection.updateServerStatus("Unreachable on Server · switching to your selected SIM")
-        if (carrierFallbackPhone != null && ServerFallbackSimManager.automaticFallbackEnabled(context)) {
-          failCall("Unreachable on Server. Continuing through your selected SIM.", carrierFallbackPhone, automaticCarrierFallback = true)
-          return
-        }
+        // The number is not registered as a Server identity. This does NOT tell us
+        // whether its ordinary handset has mobile data or Wi-Fi. Keep the guest
+        // WebRTC invitation alive and let the caller explicitly share it; the
+        // notification also offers a separate selected-SIM carrier action.
+        connection.updateServerStatus("Guest invitation · recipient internet status unknown")
+        Log.i(TAG, "Non-Server destination: internet reachability is unknown; continuing with the browser invitation.")
       }
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
