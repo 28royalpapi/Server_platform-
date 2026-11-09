@@ -74,7 +74,7 @@ try {
   await completed;
   assert.equal(connected, true);
   assert.equal(published, true);
-  process.stdout.write("PASS Centrifugo authenticated WebSocket connect, JWT server-side channel subscription, Redis-backed publication fanout, and HTTP API publish.\\n");
+  process.stdout.write("PASS Centrifugo authenticated WebSocket connect, JWT server-side channel subscription, Redis-backed publication fanout, and HTTP API publish.\n");
 } finally {
   try { socket.close(); } catch {}
 }
