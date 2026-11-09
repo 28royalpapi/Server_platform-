@@ -221,9 +221,7 @@ Engine fallback payload      // Availability is Server reachability, never a cla
       }
       recordStage("call_offer_submitted")
       if (route == "guest") {
-        val invitation = started.optString("invitation_text").ifBlank {
-          started.optString("sms_body")
-        }
+        val invitation = started.optString("invitation_text")
         if (invitation.isBlank()) throw IllegalStateException("Server did not return a secure guest invitation.")
         // Keep the invitation available to the debug-only virtual-device E2E
         // harness. The release build never writes this bearer token to local storage.
