@@ -1024,7 +1024,7 @@ assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
 assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
-assert.match(calls,/caller-identifying preview link/,
+assert.match(calls,/Open this previewable invitation to answer over the internet/,
   "non-Server invitation explains that the recipient can answer through the browser without an app");
 assert.match(guestPreview,/"PRIVATE CALLER"/,
   "the Open Graph preview never exposes an opaque Server ID when caller-number sharing is disabled");
