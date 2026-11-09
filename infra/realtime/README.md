@@ -31,29 +31,31 @@ backend-to-Centrifugo network where the hosting topology permits it.
 
 ## Optional self-hosted TURN relay
 
-The signalling stack does not relay audio. For WebRTC calls that cannot establish a
-direct peer-to-peer route, deploy Coturn on a Linux host with a public IP:
+The signalling stack does not relay audio. WebRTC calls that cannot establish a
+direct peer-to-peer route need a TURN relay. The pinned Coturn service is included
+as an optional Compose profile:
 
-1. Add a unique `TURN_REALM`, the host's real public IPv4 as `TURN_EXTERNAL_IP`,
-   and a separate random `SERVER_TURN_SHARED_SECRET` to `.env`.
-2. Start the signalling stack and Coturn overlay:
-   `docker compose -f docker-compose.yml -f docker-compose.turn.yml up -d`.
+1. Set `REALTIME_HOST` to the public DNS name used by the TURN endpoint,
+   `SERVER_TURN_EXTERNAL_IP` to the VPS public IPv4 address (or
+   `public/private` when the host is behind 1:1 NAT), and
+   `SERVER_TURN_SHARED_SECRET` to a separate random secret of at least 32 bytes.
+2. From `infra/realtime`, start the base stack and the relay:
+   `docker compose --profile turn up -d`.
 3. Allow inbound TCP+UDP 3478 and UDP 49160-65535 in the host firewall and cloud
-   security group. Do not expose the Redis port or Centrifugo's internal 8000 port.
+   security group. Do not expose Redis or Centrifugo's internal HTTP port.
 4. Set these Supabase Edge Function secrets on the Server Backend project:
-   - `SERVER_TURN_URLS=turn:TURN_REALM:3478?transport=udp,turn:TURN_REALM:3478?transport=tcp`
-     (replace `TURN_REALM` with the actual public DNS hostname; do not include the
-     literal placeholder).
+   - `SERVER_TURN_URLS=turn:REALTIME_HOST:3478?transport=udp,turn:REALTIME_HOST:3478?transport=tcp`
+     (replace `REALTIME_HOST` with the actual hostname).
    - `SERVER_TURN_SHARED_SECRET` to the same secret configured for Coturn.
-5. Redeploy `server-calls` and `server-guest`. Confirm their live call-start
-   responses return `coturn-turn` and temporary credentials, then test from
-   separate mobile networks.
+5. Redeploy `server-calls` and `server-guest`. Confirm live call-start responses
+   return `coturn-turn` and temporary credentials, then test from separate mobile
+   networks.
 
-This overlay provides UDP and TCP TURN on port 3478, but not TURN-over-TLS.
-Networks that block both UDP and non-TLS TURN/TCP may still require a TLS-enabled
-relay endpoint on an allowed port. A single host and this port range are a pilot
-configuration, not a 100k-call capacity claim. TURN relays consume real bandwidth
-and compute even though Coturn itself is open-source.
+This relay supports UDP and TCP on port 3478, but not TURN-over-TLS. Networks that
+block both UDP and non-TLS TURN/TCP may still require a TLS-enabled endpoint on an
+allowed port. The single-host profile is a pilot configuration, not a 100k-call
+capacity claim. TURN relays consume real bandwidth and compute even though Coturn
+itself is open-source.
 
 ## Scale-out
 
