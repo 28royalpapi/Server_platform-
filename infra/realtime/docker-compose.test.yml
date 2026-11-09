@@ -6,5 +6,5 @@ services:
   coturn:
     environment:
       # The CI relay clients run on a private Docker subnet. This exception is
-      # confined to this test overlay; production Coturn keeps private peers denied.
-      SERVER_TURN_TEST_ALLOW_PRIVATE_PEERS: "1"
+      # confined to this test overlay; production Coturn keeps loopback peers denied.
+      SERVER_TURN_TEST_ALLOW_LOOPBACK_PEERS: "1"
