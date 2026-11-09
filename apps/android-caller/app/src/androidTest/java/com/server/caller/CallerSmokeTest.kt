@@ -651,42 +651,29 @@ class CallerSmokeTest {
   }
 
   private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val usesPermissionAdoptionApi = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-    if (usesPermissionAdoptionApi) {
-      instrumentation.uiAutomation.adoptShellPermissionIdentity(Manifest.permission.WRITE_CONTACTS)
-    } else {
-      // UiAutomation.adoptShellPermissionIdentity(String...) is unavailable on
-      // Android 9/API 28. Grant only WRITE_CONTACTS to this debug test package
-      // through the emulator shell for the duration of this fixture.
-      runShellCommand("pm grant ${context.packageName} ${Manifest.permission.WRITE_CONTACTS}")
-    }
-    try {
-      val operations = arrayListOf<android.content.ContentProviderOperation>()
-      val rawContact = operations.size
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
-        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-        .build())
-      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
-    } finally {
-      if (usesPermissionAdoptionApi) {
-        instrumentation.uiAutomation.dropShellPermissionIdentity()
-      } else {
-        runShellCommand("pm revoke ${context.packageName} ${Manifest.permission.WRITE_CONTACTS}")
-      }
-    }
+    // Create the fixture through Android's shell content provider command. This
+    // avoids adding WRITE_CONTACTS to the shipped app manifest solely for tests,
+    // and works on API 28 where UiAutomation shell-permission adoption is absent.
+    fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+    val raw = runShellCommand(
+      "content insert --uri content://com.android.contacts/raw_contacts" +
+        " --bind account_type:s: --bind account_name:s:"
+    )
+    val rawId = Regex("raw_contacts/(\\d+)").find(raw)?.groupValues?.get(1)
+      ?: throw AssertionError("Could not create the test contact raw row through Android shell: " + raw)
+    runShellCommand(
+      "content insert --uri content://com.android.contacts/data" +
+        " --bind raw_contact_id:i:" + rawId +
+        " --bind mimetype:s:vnd.android.cursor.item/name" +
+        " --bind data1:s:" + shellQuote(displayName)
+    )
+    runShellCommand(
+      "content insert --uri content://com.android.contacts/data" +
+        " --bind raw_contact_id:i:" + rawId +
+        " --bind mimetype:s:vnd.android.cursor.item/phone_v2" +
+        " --bind data1:s:" + shellQuote(phone) +
+        " --bind data2:i:2"
+    )
   }
 
   private fun clickTextWithRetry(
