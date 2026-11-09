@@ -72,20 +72,40 @@ if (!callerIdentity || !previewHtml.includes("og:image:alt")) {
 // Open Graph HTML attributes escape query-string separators as &amp;.
 const imageHref = imageMatch[1].replace(/&amp;/g, "&");
 const imageUrl = new URL(imageHref, invitationUrl).toString();
-const imageResponse = await context.request.get(imageUrl);
-if (!imageResponse.ok()) throw new Error("Caller-specific preview image returned HTTP " + imageResponse.status());
-if (!String(imageResponse.headers()["content-type"] || "").toLowerCase().includes("image/png")) {
-  throw new Error("Caller preview image is not served as image/png.");
+let ogCardError = null;
+try {
+  let imageResponse = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    imageResponse = await context.request.get(imageUrl);
+    if (imageResponse.ok()) break;
+    if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 750));
+  }
+  if (!imageResponse?.ok()) {
+    const detail = await imageResponse?.text().catch(() => "");
+    throw new Error("Caller-specific preview image returned HTTP " +
+      imageResponse?.status() + (detail ? ": " + detail.slice(0, 180) : ""));
+  }
+  if (!String(imageResponse.headers()["content-type"] || "").toLowerCase().includes("image/png")) {
+    throw new Error("Caller preview image is not served as image/png.");
+  }
+  const imageBytes = await imageResponse.body();
+  const pngSignature = Buffer.from([137,80,78,71,13,10,26,10]);
+  if (imageBytes.length < 256 || !imageBytes.subarray(0,8).equals(pngSignature)) {
+    throw new Error("Caller preview image is not a valid PNG.");
+  }
+  if (!imageBytes.includes(Buffer.from("Caller="+callerIdentity))) {
+    throw new Error("Open Graph PNG does not contain the same caller identity shown in og:title.");
+  }
+  process.stdout.write("SERVER_GUEST_OG_CARD_PASS: caller identity is visible in metadata and embedded in the per-invitation PNG.\\n");
+} catch (error) {
+  ogCardError = error.message || String(error);
+  await writeFile(join(artifactDir, "guest-og-preview-failure.json"), JSON.stringify({
+    invitationHost: parsedInvitation.host,
+    imageHost: new URL(imageUrl).host,
+    error: ogCardError
+  }, null, 2));
+  process.stderr.write("SERVER_GUEST_OG_CARD_FAIL: " + ogCardError + "\\n");
 }
-const imageBytes = await imageResponse.body();
-const pngSignature = Buffer.from([137,80,78,71,13,10,26,10]);
-if (imageBytes.length < 256 || !imageBytes.subarray(0,8).equals(pngSignature)) {
-  throw new Error("Caller preview image is not a valid PNG.");
-}
-if (!imageBytes.includes(Buffer.from("Caller="+callerIdentity))) {
-  throw new Error("Open Graph PNG does not contain the same caller identity shown in og:title.");
-}
-process.stdout.write("SERVER_GUEST_OG_CARD_PASS: caller identity is visible in metadata and embedded in the per-invitation PNG.\\n");
 const page = await context.newPage();
 page.setDefaultTimeout(25000);
 page.on("pageerror", error => process.stderr.write("Guest page error: " + error.message + "\n"));
@@ -141,6 +161,9 @@ try {
   );
   await page.screenshot({ path: join(artifactDir, "guest-call-ended.png"), fullPage: true });
   process.stdout.write("SERVER_GUEST_BROWSER_HANGUP_PASS: guest Leave action ended the live session.\n");
+  if (ogCardError) {
+    throw new Error("The live guest call completed, but Open Graph image acceptance failed: " + ogCardError);
+  }
 } catch (error) {
   await page.screenshot({ path: join(artifactDir, "guest-call-failure.png"), fullPage: true }).catch(() => {});
   process.stderr.write("Guest browser diagnostic status: " +
