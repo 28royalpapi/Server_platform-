@@ -37,12 +37,16 @@ export async function getGuestPushVapidKeys(db: any): Promise<{
   subject: string;
   publicKey: string;
   privateKey: string;
-} | null> {
+}> {
+  let stage = "read-config";
   try {
     const read = () => db.from("server_guest_push_config")
       .select("subject,public_key,private_key").eq("id", 1).maybeSingle();
     const existing = await read();
-    if (existing.error) return null;
+    if (existing.error) {
+      console.error("GUEST_PUSH_VAPID_CONFIG_READ_FAILED", existing.error.code || "UNKNOWN");
+      return null;
+    }
     if (existing.data?.public_key && existing.data?.private_key) {
       return {
         subject: existing.data.subject,
@@ -51,15 +55,20 @@ export async function getGuestPushVapidKeys(db: any): Promise<{
       };
     }
 
-    // Generate a standards-based VAPID P-256 keypair on first use. Only the public
-    // half is sent to browsers; the private half stays in the service-role table.
+    stage = "generate-p256-keypair";
     const pair = await crypto.subtle.generateKey(
       { name: "ECDSA", namedCurve: "P-256" },
       true,
       ["sign", "verify"]
     );
+    stage = "export-jwk";
     const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
-    if (!jwk.x || !jwk.y || !jwk.d) return null;
+    if (!jwk.x || !jwk.y || !jwk.d) {
+      console.error("GUEST_PUSH_VAPID_JWK_INCOMPLETE", {
+        hasX: !!jwk.x, hasY: !!jwk.y, hasD: !!jwk.d
+      });
+      return null;
+    }
     const publicBytes = new Uint8Array([
       4,
       ...fromBase64Url(jwk.x),
@@ -72,17 +81,27 @@ export async function getGuestPushVapidKeys(db: any): Promise<{
       private_key: jwk.d,
       updated_at: new Date().toISOString()
     };
+    stage = "save-config";
     const { error: saveError } = await db.from("server_guest_push_config")
       .upsert(row, { onConflict: "id", ignoreDuplicates: true });
-    if (saveError) return null;
+    if (saveError) {
+      console.error("GUEST_PUSH_VAPID_CONFIG_SAVE_FAILED", saveError.code || "UNKNOWN");
+      return null;
+    }
+    stage = "verify-saved-config";
     const saved = await read();
-    if (saved.error || !saved.data?.public_key || !saved.data?.private_key) return null;
+    if (saved.error || !saved.data?.public_key || !saved.data?.private_key) {
+      console.error("GUEST_PUSH_VAPID_CONFIG_VERIFY_FAILED", saved.error?.code || "MISSING_KEYS");
+      return null;
+    }
     return {
       subject: saved.data.subject,
       publicKey: saved.data.public_key,
       privateKey: saved.data.private_key
     };
-  } catch {
+  } catch (error) {
+    console.error("GUEST_PUSH_VAPID_CONFIG_FAILED", stage,
+      error instanceof Error ? error.name : "UNKNOWN_ERROR");
     return null;
   }
 }
