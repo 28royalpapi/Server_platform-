@@ -42,6 +42,7 @@ const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/call
 const androidIdentityResolver=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallerIdentityResolver.kt");
 const androidIncoming=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallService.kt");
 const androidEngine=read("apps/android-caller/app/src/main/java/com/server/caller/ServerTelecomCallEngine.kt");
+const androidReachability=read("apps/android-caller/app/src/main/java/com/server/caller/ServerRecipientReachability.kt");
 const androidPhoneNormalizer=read("apps/android-caller/app/src/main/java/com/server/caller/ServerPhoneNumberNormalizer.kt");
 const androidGuestNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteNotifications.kt");
 const androidGuestShare=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteShareActivity.kt");
@@ -811,6 +812,18 @@ assert.match(androidMain,/allowAutomaticFallback = false/,
   "generic outgoing API errors retain the manual SIM handoff instead of automatically creating a second call");
 assert.match(androidEngine,/ServerCarrierDialer\.placeAutomatically/,
   "the system Telecom call path routes eligible failures through the selected SIM only after explicit consent");
+assert.match(androidReachability,/fun isFresh\(status: String\): Boolean = status == "online"/,
+  "only a fresh authenticated Server heartbeat is eligible for WebRTC");
+assert.match(androidReachability,/status == "background_reachable" && pushQueued/,
+  "a background push token requires confirmation from the recipient app before WebRTC");
+assert.match(androidEngine,/waitForRecipientServerHeartbeat\(target\)/,
+  "Android waits for a fresh presence heartbeat after a background wake before continuing WebRTC");
+assert.match(androidEngine,/delay\(700L\)/,
+  "the background wake confirmation uses bounded heartbeat retries");
+assert.match(androidEngine,/route == "guest"[\s\S]{0,500}automaticCarrierFallback = true/,
+  "a non-Server phone number with no Server receiver automatically uses the selected SIM");
+assert.match(androidEngine,/Unreachable on Server · switching to your selected SIM/,
+  "the caller is told when a non-Server destination moves to the carrier route");
 assert.match(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest invitation notification exposes the same carrier handoff as the app UI");
 assert.match(androidGuestNotifications,/"Call using selected SIM"/,
@@ -835,9 +848,9 @@ assert.match(androidManifest,/ServerCarrierDialActivity/,
   "the explicit carrier handoff Activity is registered in the Android manifest");
 assert.match(androidMain,/button\("Call using selected SIM"\)/,
   "the main app exposes the caller-confirmed selected-SIM fallback after Server reports unavailable");
-assert.match(html,/Server cannot read your airtime balance/,"onboarding explains that the carrier checks prepaid balance and returns its normal insufficient-credit message");
+assert.match(html,/Server does not bill you for that cellular call/,"onboarding states the mobile operator handles cellular call charges and Server adds no calling fee");
 assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
-assert.match(androidEngine,/device delivery is not confirmed/,"Android Telecom logs background delivery without claiming that the phone rang");
+assert.match(androidEngine,/waiting for the recipient app to confirm its internet connection/,"a registered background push token is not treated as proof of internet reachability");
 assert.match(androidEngine,/carrierFallbackPhone = target\.phoneNumber/,"the Android call engine retains the phone destination so the selected SIM can be offered when the caller has no data");
 assert.match(androidEngine,/ICE path on this network[\s\S]{0,260}carrierFallbackPhone/,"a failed WebRTC network path offers the caller-confirmed carrier SIM fallback");
 
@@ -891,6 +904,11 @@ assert.match(calls,/server-guest-preview\?token=/,"guest share links open a dyna
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
 assert.match(calls,/p_scope:"recipient_availability"/,"recipient availability checks are rate-limited per authenticated caller");
 assert.match(calls,/A phone number alone cannot reveal whether an unregistered recipient currently has mobile data or Wi-Fi/,"unknown guest data connectivity is never guessed from a phone number");
+assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
+assert.match(html,/Server cannot inspect a stranger's phone settings/,"onboarding distinguishes Server reachability from a stranger's mobile-data toggle");
+assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
+  "Android instrumentation covers fresh heartbeat and background wake classification");
+
 assert.match(guestBrowserE2e,/server-guest-preview/,"the browser E2E accepts the caller-identifying Open Graph preview URL");
 assert.match(guestBrowserE2e,/SERVER_GUEST_OG_CARD_PASS/,"browser E2E verifies caller identity in Open Graph metadata and the PNG bytes");
 assert.match(guestBrowserE2e,/new URL\(invitationCandidate\)/,"the browser E2E parses and opens the exact shared preview link");
