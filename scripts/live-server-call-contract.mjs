@@ -95,6 +95,19 @@ try {
   calls.push({ id: started.call_id, owner: caller });
   pass("online Server-to-Server route created", "callee presence was confirmed; no guest link or carrier route used");
 
+  const realtime = await callAction(caller, "realtime_token", { call_id: started.call_id });
+  if (realtime.realtime_available === true) {
+    assert.match(realtime.url || "", /^wss?:\\/\\//);
+    assert.match(realtime.token || "", /^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/);
+    const claims = JSON.parse(Buffer.from(realtime.token.split(".")[1], "base64url").toString("utf8"));
+    assert.ok(Array.isArray(claims.channels));
+    assert.ok(claims.channels.includes("$server-user:" + caller.user.id));
+    assert.ok(claims.channels.includes("$server-call:" + started.call_id));
+    pass("Centrifugo realtime token is scoped to caller identity and this call");
+  } else {
+    process.stdout.write("WARN CENTRIFUGO_NOT_CONFIGURED: call events still use durable HTTP reconciliation; this is not the high-concurrency realtime path.\\n");
+  }
+
   const incoming = await callAction(onlineCallee, "incoming");
   const ringing = (incoming.calls || []).find(row => row.id === started.call_id);
   assert.ok(ringing, "the recipient's authenticated incoming list must contain the ringing call");
