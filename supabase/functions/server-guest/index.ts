@@ -115,7 +115,7 @@ if(action==="push_config"){
 }
 if(action==="push_subscribe"){
  if(b.consent!==true)return out({error:"GUEST_PUSH_CONSENT_REQUIRED"},400);
- if(typeof invite.phone_e164!=="string"||!/^\\+[1-9][0-9]{7,14}$/.test(invite.phone_e164))return out({error:"GUEST_PUSH_PHONE_REQUIRED"},409);
+ if(typeof invite.phone_e164!=="string"||!/^\+[1-9][0-9]{7,14}$/.test(invite.phone_e164))return out({error:"GUEST_PUSH_PHONE_REQUIRED"},409);
  const subscription=b.subscription;
  const endpoint=subscription?.endpoint;
  const p256dh=subscription?.keys?.p256dh;
