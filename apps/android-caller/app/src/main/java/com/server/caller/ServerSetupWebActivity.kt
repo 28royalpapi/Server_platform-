@@ -419,6 +419,32 @@ class ServerSetupWebActivity : Activity() {
       .put("phone", prefs.getString("server_linked_phone", "").orEmpty())
       .put("allowNumberCalls", prefs.getBoolean("allow_number_based_server_calls", false)).toString()
 
+    @JavascriptInterface fun getGuestInviteSmsConsent(): String =
+      prefs.getBoolean("allow_guest_invite_sms", false).toString()
+
+    @JavascriptInterface fun setGuestInviteSmsConsent(enabled: Boolean) {
+      Thread {
+        val access = prefs.getString("access_token", null).orEmpty()
+        val result = if (!Regex("^[0-9a-f]{64}$").matches(access)) {
+          JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+        } else {
+          try {
+            requestServerAuth(
+              JSONObject().put("action", "set_guest_invite_sms_consent")
+                .put("allow_guest_invite_sms", enabled),
+              access
+            )
+          } catch (_: Exception) {
+            JSONObject().put("ok", false).put("error", "GUEST_INVITE_SMS_CONSENT_SAVE_FAILED")
+          }
+        }
+        if (result.optBoolean("ok")) {
+          prefs.edit().putBoolean("allow_guest_invite_sms", result.optBoolean("allow_guest_invite_sms", enabled)).apply()
+        }
+        callbackToWebsite("onServerGuestSmsConsentResult", result)
+      }.start()
+    }
+
     @JavascriptInterface fun setNumberCallConsent(allowNumberCalls: Boolean) {
       Thread {
         val access = prefs.getString("access_token", null).orEmpty()
