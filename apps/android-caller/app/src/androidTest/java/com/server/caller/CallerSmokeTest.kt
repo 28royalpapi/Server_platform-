@@ -3,12 +3,14 @@ package com.server.caller
 import android.os.Build
 import android.Manifest
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.telecom.Connection
 import android.telecom.PhoneAccount
+import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.util.Log
 import android.webkit.WebView
@@ -48,6 +50,44 @@ import java.util.Collections
 
 @RunWith(AndroidJUnit4::class)
 class CallerSmokeTest {
+  @Test fun fallbackSimResolutionUsesOnlyTheExactActiveSubscription() {
+    assertEquals(12, ServerFallbackSimManager.resolveActiveSubscriptionId(
+      accountId = "12", activeSubscriptionIds = setOf(11, 12), apiLevel = 29, telephonySubscriptionId = null
+    ))
+    // Android 11+ resolves the PhoneAccountHandle through TelephonyManager;
+    // the mapped subscription, not another active line, must be selected.
+    assertEquals(12, ServerFallbackSimManager.resolveActiveSubscriptionId(
+      accountId = "11", activeSubscriptionIds = setOf(11, 12), apiLevel = 30, telephonySubscriptionId = 12
+    ))
+    assertEquals(null, ServerFallbackSimManager.resolveActiveSubscriptionId(
+      accountId = "12", activeSubscriptionIds = setOf(11), apiLevel = 30, telephonySubscriptionId = 12
+    ))
+    assertEquals(null, ServerFallbackSimManager.resolveActiveSubscriptionId(
+      accountId = "999", activeSubscriptionIds = setOf(11, 12), apiLevel = 29, telephonySubscriptionId = null
+    ))
+  }
+
+  @Test fun carrierFallbackExtrasPinTheExactCallerSelectedPhoneAccount() {
+    val selected = PhoneAccountHandle(
+      ComponentName("com.example.carrier", "com.example.carrier.TelephonyConnectionService"),
+      "subscription-12"
+    )
+    val extras = ServerCarrierDialer.buildPlaceCallExtras(selected)
+    @Suppress("DEPRECATION")
+    val routedAccount = extras.getParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE) as? PhoneAccountHandle
+    assertEquals("Carrier fallback must be sent through the exact saved PhoneAccount, never the system's default SIM.",
+      selected, routedAccount)
+  }
+
+  @Test fun reachableMeansFreshServerInternetHeartbeatNotPushOrPhoneNumberPresence() {
+    assertTrue(ServerRecipientReachability.isFresh("online"))
+    assertFalse(ServerRecipientReachability.isFresh("background_reachable"))
+    assertFalse(ServerRecipientReachability.isFresh("offline"))
+    assertFalse(ServerRecipientReachability.isFresh("unknown"))
+    assertTrue(ServerRecipientReachability.requiresWakeConfirmation("background_reachable", true))
+    assertFalse(ServerRecipientReachability.requiresWakeConfirmation("background_reachable", false))
+    assertFalse(ServerRecipientReachability.requiresWakeConfirmation("online", true))
+  }
   @Test fun expiredSessionRecoversSameServerIdentityFromPersistedDeviceCredentials() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val prefs = context.getSharedPreferences("server-session-recovery-test", Context.MODE_PRIVATE)
