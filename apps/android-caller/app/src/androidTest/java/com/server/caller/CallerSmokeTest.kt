@@ -517,7 +517,7 @@ class CallerSmokeTest {
       while (System.currentTimeMillis() < uiDeadline) {
         nativeUiState = evaluateSetupWebView(
           scenario,
-          "(function(){var visible=function(e){if(!e)return false;var r=e.getBoundingClientRect(),s=window.getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&r.bottom>0&&r.top<window.innerHeight;};var brand=document.querySelector('.brand-name');var native=document.querySelector('#native-setup');var heading=native&&native.querySelector('.step-title h2');var text=native?(native.textContent||''):'';return [document.readyState,brand?(brand.textContent||'').trim().toLowerCase():'missing-brand',visible(brand),visible(native),visible(heading),text.indexOf('Server tries the internet route first')>=0 && text.indexOf('Choose a preferred fallback SIM')>=0].join('|');})()"
+          "(function(){var visible=function(e){if(!e)return false;var r=e.getBoundingClientRect(),s=window.getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&r.bottom>0&&r.top<window.innerHeight;};var brand=document.querySelector('.brand-name');var native=document.querySelector('#native-setup');var heading=native&&native.querySelector('.step-title h2');var text=native?(native.textContent||''):'';return [document.readyState,brand?(brand.textContent||'').trim().toLowerCase():'missing-brand',visible(brand),visible(native),visible(heading),text.indexOf('Every call is registered in Server')>=0 && text.indexOf('Select the exact SIM Server must use for cellular fallback')>=0].join('|');})()"
         )
         if (nativeUiState == "complete|server|true|true|true|true") break
         Thread.sleep(250)
@@ -525,7 +525,7 @@ class CallerSmokeTest {
       assertEquals("Server's bundled onboarding must render its brand, hybrid explanation and fallback-SIM step in WebView. DOM state: " + nativeUiState,
         "complete|server|true|true|true|true", nativeUiState)
       assertEquals("The fallback SIM choice must exist in the actual onboarding DOM", "true",
-        evaluateSetupWebView(scenario, "(function(){return !!document.querySelector('#fallback-sim-step') && !!document.querySelector('#fallback-sim-options') && !!document.querySelector('#save-fallback-sim');})()"))
+        evaluateSetupWebView(scenario, "(function(){var step=document.querySelector('#fallback-sim-step');var consent=document.querySelector('#automatic-carrier-fallback');return !!step && !!document.querySelector('#fallback-sim-options') && !!document.querySelector('#save-fallback-sim') && !!consent && consent.type==='checkbox' && !consent.checked && (step.textContent||'').includes('normal charges');})()"))
       assertTrue("The old SIM permission button must not appear",
         !device.hasObject(By.textContains("Allow SIM access")))
 
@@ -1500,6 +1500,26 @@ class CallerSmokeTest {
       edit.commit()
       ServerTelecomRegistry.register(context)
     }
+  }
+
+  @Test fun serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake() {
+    assertTrue("Only a fresh authenticated Server heartbeat is WebRTC reachable",
+      ServerRecipientReachability.isFresh("online"))
+    assertFalse("A push token without a live heartbeat is not yet reachable",
+      ServerRecipientReachability.isFresh("background_reachable"))
+    assertFalse("A stale Server session is unreachable",
+      ServerRecipientReachability.isFresh("offline"))
+    assertFalse("An unregistered phone number has no Server receiver",
+      ServerRecipientReachability.isFresh("unknown_guest"))
+
+    assertTrue("A background push registration requires heartbeat confirmation",
+      ServerRecipientReachability.requiresWakeConfirmation("background_reachable", true))
+    assertFalse("No queued push means there is no wake path to wait for",
+      ServerRecipientReachability.requiresWakeConfirmation("background_reachable", false))
+    assertFalse("An already-online recipient does not need wake confirmation",
+      ServerRecipientReachability.requiresWakeConfirmation("online", true))
+    assertFalse("An offline recipient cannot be considered wakeable without a registered endpoint",
+      ServerRecipientReachability.requiresWakeConfirmation("offline", true))
   }
 
 }
