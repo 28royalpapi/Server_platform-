@@ -1,20 +1,14 @@
 services:
   redis:
     image: redis:7.4.2-alpine
+    entrypoint: ["/bin/sh", "-ec"]
     command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --appendfsync
-      - everysec
-      - --maxmemory-policy
-      - noeviction
-      - --requirepass
-      - ${REDIS_PASSWORD:?Set a unique REDIS_PASSWORD in infra/realtime/.env}
+      - |
+        exec redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction --requirepass "$REDIS_PASSWORD"
+    env_file:
+      - .env
     volumes:
       - server-realtime-redis:/data
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set a unique REDIS_PASSWORD in infra/realtime/.env}
     networks:
       - server-realtime
     restart: unless-stopped
@@ -51,10 +45,8 @@ services:
           set -- "$@" --external-ip="$SERVER_TURN_EXTERNAL_IP"
         fi
         exec turnserver "$@"
-    environment:
-      REALTIME_HOST: ${REALTIME_HOST:?Set REALTIME_HOST in infra/realtime/.env}
-      SERVER_TURN_SHARED_SECRET: ${SERVER_TURN_SHARED_SECRET:?Set a unique SERVER_TURN_SHARED_SECRET}
-      SERVER_TURN_EXTERNAL_IP: ${SERVER_TURN_EXTERNAL_IP:-}
+    env_file:
+      - .env
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "turnutils_stunclient -p 3478 127.0.0.1 >/dev/null 2>&1"]
@@ -88,13 +80,17 @@ services:
 
   centrifugo:
     image: centrifugo/centrifugo:v6.9.7
-    command: ["centrifugo", "-c", "config.json"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export CENTRIFUGO_ENGINE_REDIS_PASSWORD="$REDIS_PASSWORD"
+        exec centrifugo -c config.json
     env_file:
       - .env
     environment:
       CENTRIFUGO_HTTP_SERVER_PORT: "8000"
       CENTRIFUGO_ENGINE_TYPE: redis
-      CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://:${REDIS_PASSWORD:?Set a unique REDIS_PASSWORD in infra/realtime/.env}@redis:6379
+      CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://redis:6379
       CENTRIFUGO_ADMIN_ENABLED: "false"
     volumes:
       - ./config.json:/centrifugo/config.json:ro
