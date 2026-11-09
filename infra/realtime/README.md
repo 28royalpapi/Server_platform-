@@ -8,8 +8,9 @@ Centrifugo carries low-latency call events; WebRTC carries audio.
 ## Local / staging startup
 
 1. Copy `.env.example` to `.env`.
-2. Generate two independent random secrets (at least 32 bytes each) and place them
-   in `.env`. Do not reuse Supabase keys, JWTs, or each other.
+2. Generate three independent random secrets and place them in `.env`: a Redis password,
+   a Centrifugo client-token HMAC secret (at least 32 random bytes), and a distinct
+   Centrifugo HTTP API key. Do not reuse Supabase keys, JWTs, or each other.
 3. Run `docker compose up -d` from this directory.
 4. Put a TLS WebSocket reverse proxy/load balancer in front of the Centrifugo
    service. Public clients connect to
@@ -33,7 +34,7 @@ backend-to-Centrifugo network where the hosting topology permits it.
 The included compose file is a single-node staging baseline, not a 100,000-call
 capacity certification. Centrifugo uses Redis as its shared engine so multiple
 Centrifugo nodes can exchange publications. For production, run multiple pinned
-Centrifugo replicas behind a WebSocket-capable load balancer, keep Redis private,
+Centrifugo replicas behind a WebSocket-capable load balancer, keep Redis private and password-authenticated,
 monitor Redis CPU/memory/latency and Centrifugo connection/event metrics, and
 increase Redis capacity or shard only from measured bottlenecks. Configure OS
 file-descriptor limits and connection/time-out limits on every proxy and node.
