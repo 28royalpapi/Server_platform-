@@ -283,8 +283,12 @@ assert.match(app,/userAgent\.toLowerCase\(\)\.includes\("; wv"\)/);
 assert.match(app,/setNumberCallConsent/);
 assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
-assert.doesNotMatch(androidMain,/READ_PHONE_NUMBERS|SubscriptionManager|selected_sim_/,
-  "the Android call engine does not enumerate or depend on a selected SIM");
+assert.doesNotMatch(androidMain,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
+  "the Android call activity must not enumerate SIMs or read protected SIM identifiers directly");
+assert.match(androidMain,/ServerFallbackSimManager\.automaticFallbackEnabled/,
+  "the Android call activity delegates the user's saved fallback consent to the isolated SIM selector");
+assert.match(androidMain,/recordCarrierFallbackHistory/,
+  "the Android call activity records the selected-SIM handoff outcome on the original Server call");
 assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
   "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
 assert.match(androidSetup,/ServerFallbackSimManager\.optionsJson/);
