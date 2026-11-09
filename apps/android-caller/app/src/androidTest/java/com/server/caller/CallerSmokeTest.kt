@@ -571,7 +571,6 @@ class CallerSmokeTest {
     val handle = ServerTelecomRegistry.handle(context)
     val callId = "incoming-" + UUID.randomUUID().toString()
     val callerPhone = "+2348030000001"
-    insertDemoContact(context, "Habib TNC", callerPhone)
 
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
@@ -589,8 +588,8 @@ class CallerSmokeTest {
       assertEquals("Android Telecom did not call ServerConnectionService and start a ringing incoming connection",
         Connection.STATE_RINGING, state)
 
-      assertEquals("Telecom did not resolve the contact name saved by the recipient",
-        "Habib TNC", ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      assertEquals("An unsaved caller must display the real E.164 number rather than a private label",
+        callerPhone, ServerTelecomRegistry.incomingCallerDisplayName(callId))
       // The default dialer may render a Telecom call as full-screen, heads-up
       // or notification UI depending on Android/OEM. Do not require one exact
       // English string in one surface. The real system Telecom RINGING state and
@@ -647,44 +646,6 @@ class CallerSmokeTest {
         Connection.STATE_DISCONNECTED, connection.state)
     } finally {
       ServerTelecomRegistry.markEnded(callId)
-    }
-  }
-
-  private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    // WRITE_CONTACTS is merged only into the debug build used by instrumentation;
-    // the production release manifest never declares this permission.
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    // WRITE_CONTACTS is granted only to the debug test target; the release
-    // APK does not request this permission.
-    runShellCommand("pm grant " + context.packageName + " " + Manifest.permission.WRITE_CONTACTS)
-    assertEquals(
-      "The debug-only contact fixture permission must be granted before setup",
-      android.content.pm.PackageManager.PERMISSION_GRANTED,
-      context.checkSelfPermission(Manifest.permission.WRITE_CONTACTS)
-    )
-    try {
-      val operations = arrayListOf<android.content.ContentProviderOperation>()
-      val rawContact = operations.size
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, displayName)
-        .build())
-      operations.add(android.content.ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContact)
-        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
-        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-        .build())
-      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
-    } finally {
-      try {
-        runShellCommand("pm revoke " + context.packageName + " " + Manifest.permission.WRITE_CONTACTS)
-      } catch (_: Exception) {}
     }
   }
 
@@ -767,14 +728,26 @@ class CallerSmokeTest {
   }
 
   private fun grantTelecomPermissions(context: Context) {
-    // UiAutomation.grantRuntimePermission is not present on API 26 (Android 8).
-    // The instrumentation shell permission grant works on every supported test
-    // image and keeps these test-only grants out of the app's runtime flow.
-    for (permission in listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS)) {
-      runShellCommand("pm grant ${context.packageName} $permission")
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val permissions = buildList {
+      add(Manifest.permission.READ_PHONE_STATE)
+      add(Manifest.permission.RECORD_AUDIO)
+      add(Manifest.permission.READ_CONTACTS)
+      if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
     }
-    if (android.os.Build.VERSION.SDK_INT >= 33) {
-      runShellCommand("pm grant ${context.packageName} ${Manifest.permission.POST_NOTIFICATIONS}")
+    if (Build.VERSION.SDK_INT >= 28) {
+      // Grant through UiAutomation. Running "pm grant" against the package
+      // under instrumentation can terminate the very process running the test.
+      permissions.forEach { permission ->
+        if (context.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+          instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission)
+        }
+      }
+    } else {
+      // API 26–27 compatibility workflows do not execute the Telecom test suite.
+      permissions.forEach { permission ->
+        runShellCommand("pm grant ${context.packageName} $permission")
+      }
     }
   }
   private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
