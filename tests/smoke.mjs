@@ -899,7 +899,10 @@ assert.match(guest,/RTCPeerConnection|server_call_signals/);
 assert.match(calls,/server-guest-preview\?token=/,"guest share links open a dynamic caller-branded preview before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
 assert.match(calls,/p_scope:"recipient_availability"/,"recipient availability checks are rate-limited per authenticated caller");
-assert.match(calls,/A phone number alone cannot reveal whether an unregistered recipient currently has mobile data or Wi-Fi/,"unknown guest data connectivity is never guessed from a phone number");
+assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
+  "only a browser heartbeat can classify a non-Server recipient as currently online");
+assert.match(calls,/guestPushRegistered/,
+  "a number with no live browser heartbeat can still be classified as background-reachable when a guest push receiver is enrolled");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/Server cannot inspect a stranger's phone settings/,"onboarding distinguishes Server reachability from a stranger's mobile-data toggle");
 assert.match(html,/verify a phone number and explicitly allow number-based calls below/,
