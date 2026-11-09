@@ -24,6 +24,24 @@ services:
       timeout: 3s
       retries: 5
 
+  caddy:
+    image: caddy:2.10.2-alpine
+    environment:
+      REALTIME_HOST: ${REALTIME_HOST:?Set a public DNS hostname in infra/realtime/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - server-realtime-caddy-data:/data
+      - server-realtime-caddy-config:/config
+    networks:
+      - server-realtime
+    depends_on:
+      - centrifugo
+    restart: unless-stopped
+
   centrifugo:
     image: centrifugo/centrifugo:v6.9.7
     command: ["centrifugo", "-c", "config.json"]
@@ -60,3 +78,5 @@ networks:
 
 volumes:
   server-realtime-redis:
+  server-realtime-caddy-data:
+  server-realtime-caddy-config:
