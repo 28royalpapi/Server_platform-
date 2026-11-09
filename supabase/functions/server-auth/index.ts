@@ -206,14 +206,6 @@ Deno.serve(async(req:Request)=>{
    if(updateError||!updated)return out({error:"NUMBER_CALL_CONSENT_SAVE_FAILED"},503);
    return out({ok:true,allow_number_based_server_calls:updated.allow_number_based_server_calls===true});
   }
-  if(action==="set_guest_invite_sms_consent"){
-   const allowed=b.allow_guest_invite_sms===true;
-   const {data:updated,error:updateError}=await db.from("server_profiles").update({
-    allow_guest_invite_sms:allowed,updated_at:new Date().toISOString()
-   }).eq("user_id",session.user_id).select("allow_guest_invite_sms").single();
-   if(updateError||!updated)return out({error:"GUEST_INVITE_SMS_CONSENT_SAVE_FAILED"},503);
-   return out({ok:true,allow_guest_invite_sms:updated.allow_guest_invite_sms===true});
-  }
   if(action==="refresh"){
    const validUntil=expiry();
    const {error}=await db.from("server_sessions").update({expires_at:validUntil,last_seen_at:new Date().toISOString()}).eq("id",session.id);
@@ -221,7 +213,7 @@ Deno.serve(async(req:Request)=>{
    return out({ok:true,access_token:session.token,token_type:"Bearer",expires_at:validUntil});
   }
   if(action==="me"){
-   const {data:profile,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,allow_guest_invite_sms,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
+   const {data:profile,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
    if(error||!profile)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
    return out({ok:true,user:profile});
