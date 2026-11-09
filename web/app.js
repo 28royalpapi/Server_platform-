@@ -34,6 +34,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const callStep = document.querySelector("#call-permission-step");
   callStep && callStep.classList.remove("hidden");
   const terms = document.querySelector("#native-terms");
+  const callerDisplayNameInput = document.querySelector("#server-display-name");
   const grantCalls = document.querySelector("#grant-call-permissions");
   const finishStep = document.querySelector("#finish-step");
   const fallbackSimStep = document.querySelector("#fallback-sim-step");
@@ -57,6 +58,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const gatewayPairingCode = document.querySelector("#sms-gateway-pairing-code");
   const gatewayPairingExpiry = document.querySelector("#sms-gateway-pairing-expiry");
   let pendingPhoneNumber = "";
+  let pendingCallerDisplayName = "";
   let phoneLinkVerified = false;
   let persistedNumberConsent = false;
   let destinationCountryContactsGranted = false;
@@ -170,6 +172,13 @@ if (isNativeSetup && nativeSetup && stepForm) {
   });
 
   grantCalls && grantCalls.addEventListener("click", () => {
+    const callerName = String(callerDisplayNameInput && callerDisplayNameInput.value || "").trim().replace(/\s+/g, " ");
+    if ([...callerName].length < 2 || [...callerName].length > 60 || /[<>\u0000-\u001f\u007f]/.test(callerName)) {
+      showStatus("Enter the name you want people to see when you call (2–60 characters).");
+      callerDisplayNameInput && callerDisplayNameInput.focus();
+      return;
+    }
+    pendingCallerDisplayName = callerName;
     if (!(terms && terms.checked)) {
       showStatus("Accept the Terms of Service and acknowledge the Privacy Notice before continuing.");
       return;
@@ -202,7 +211,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       "Creating your Server identity. Server calling uses the internet and does not require a selected SIM.",
       true
     );
-    window.ServerAndroid.completeSetup(Boolean(terms && terms.checked));
+    window.ServerAndroid.completeSetup(pendingCallerDisplayName, Boolean(terms && terms.checked));
   };
 
   window.onServerAutoCarrierFallbackPermissionResult = (enabled, reason) => {
@@ -260,7 +269,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       if (!saved || saved.ok !== true) throw new Error((saved && saved.error) || "Fallback SIM preference could not be saved.");
       fallbackSimStep && fallbackSimStep.classList.add("hidden");
       showStatus("Selected SIM and automatic fallback authorization saved. Creating your Server identity…", true);
-      window.ServerAndroid.completeSetup(Boolean(terms && terms.checked));
+      window.ServerAndroid.completeSetup(pendingCallerDisplayName, Boolean(terms && terms.checked));
     } catch (error) {
       showStatus(error.message || "Fallback SIM preference could not be saved.");
       saveFallbackSimButton.disabled = false;

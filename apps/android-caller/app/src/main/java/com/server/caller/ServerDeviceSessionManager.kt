@@ -74,6 +74,7 @@ internal object ServerDeviceSessionManager {
 
     val registration = JSONObject()
       .put("action", "register_device")
+      .put("display_name", preferences.getString("display_name", "").orEmpty())
       .put("installation_id", installationId)
       .put("device_secret", deviceSecret)
       .put("accepted_terms", true)

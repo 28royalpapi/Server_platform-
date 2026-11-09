@@ -178,14 +178,16 @@ Deno.serve(async (req: Request) => {
     return new Response("This Server call is no longer ringing.",{status:410,headers});
   }
   const {data: profile,error:profileError} = await db.from("server_profiles")
-    .select("server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",call.caller_user_id).maybeSingle();
+    .select("server_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",call.caller_user_id).maybeSingle();
   if (profileError) {
     console.error("GUEST_PREVIEW_CALLER_PROFILE_LOOKUP_FAILED");
     return new Response("Server call preview temporarily unavailable.",{status:503,headers});
   }
   const phoneMayBeShown = profile?.phone_verified_at && profile?.allow_number_based_server_calls === true &&
     typeof profile.phone_e164 === "string" && /^\+[1-9][0-9]{7,14}$/.test(profile.phone_e164);
-  const caller = phoneMayBeShown ? profile.phone_e164 : "PRIVATE CALLER";
+  const caller = typeof profile?.display_name === "string" && profile.display_name.trim()
+    ? profile.display_name.trim()
+    : phoneMayBeShown ? profile.phone_e164 : "SERVER CALLER";
 
   if (imageRequest) {
     if (req.method === "HEAD") return new Response(null,{status:200,headers:{

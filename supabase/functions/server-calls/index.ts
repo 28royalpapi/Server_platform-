@@ -332,9 +332,10 @@ Deno.serve(async(req:Request)=>{
  const sessionHash=await sha(auth);
  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at,last_seen_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
- const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",session.user_id).maybeSingle();
+ const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",session.user_id).maybeSingle();
  if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
+ if(action==="start"&&!profile.display_name)return out({error:"CALLER_NAME_REQUIRED",message:"Set your Server caller name before placing a call."},409);
  try{
   if(action==="realtime_token"){
    const requestedCallId=typeof b.call_id==="string"?b.call_id.trim():"";
@@ -370,7 +371,7 @@ Deno.serve(async(req:Request)=>{
    return out({ok:true,removed:true});
   }
   if(action==="me"){
-   const {data,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
+   const {data,error}=await db.from("server_profiles").select("user_id,server_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested,created_at").eq("user_id",uid).maybeSingle();
    if(error)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    return out({profile:data||{user_id:uid,phone_e164:profile.phone_e164}});
   }
@@ -589,12 +590,11 @@ Deno.serve(async(req:Request)=>{
    if(ce||!created?.call)return out({error:"CALL_CREATE_FAILED"},503);
    const call=created.call;
    if(route==="server"){
-    const callerLabel=profile.phone_verified_at&&profile.allow_number_based_server_calls===true
-     ?phone(profile.phone_e164)||"Private caller":"Private caller";
+    const callerLabel=profile.display_name;
     deferRealtime(publishRealtime(userRealtimeChannel(callee.user_id),{
      type:"incoming_call",
      call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,expires_at:call.expires_at},
-     caller:{label:callerLabel,server_id:profile.server_id}
+     caller:{label:callerLabel,display_name:profile.display_name,server_id:profile.server_id}
     },"incoming:"+call.id));
    }
    const iceConfig=await iceServersForCall(call.id,callTtlSeconds);
@@ -610,7 +610,7 @@ Deno.serve(async(req:Request)=>{
     // This endpoint returns caller-specific Open Graph metadata and redirects
    // the recipient to the secure browser call. Sharing is explicit; no SMS is queued.
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
-   const callerDisplay=callerPhone||"Private caller";
+   const callerDisplay=profile.display_name;
    const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
    const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
@@ -632,7 +632,7 @@ Deno.serve(async(req:Request)=>{
     invite_expires_at:expires,delivery_mode:deliveryMode,delivery_channel:deliveryMode,
     guest_invite_url:invitationUrl,invitation_text:invitationText,
     delivery_message:deliveryMessage,
-    caller_display_label:callerDisplay,
+    caller_display_label:callerDisplay,caller_display_name:callerDisplay,caller_phone_e164:callerPhone||"",
     recipient_availability:{
      status:guestAvailabilityStatus,connected:guestPush.recent_online>0,
      internet_status:guestAvailabilityStatus==="online"?"recent_guest_browser_connection":"unknown",
@@ -663,7 +663,7 @@ Deno.serve(async(req:Request)=>{
    if(incomingError)return out({error:"INCOMING_CALL_POLL_FAILED"},503);
    const ids=(incoming||[]).map((x:any)=>x.caller_user_id);
    const {data:profiles,error:profilesError}=ids.length?await db.from("server_profiles")
-     .select("user_id,phone_e164,phone_verified_at,allow_number_based_server_calls,server_id").in("user_id",ids):{data:[],error:null};
+     .select("user_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls,server_id").in("user_id",ids):{data:[],error:null};
    if(profilesError)return out({error:"CALLER_PROFILE_LOOKUP_FAILED"},503);
    const rows=new Map((profiles||[]).map((p:any)=>[p.user_id,p]));
    return out({calls:(incoming||[]).map((c:any)=>{
@@ -671,7 +671,7 @@ Deno.serve(async(req:Request)=>{
     // Never disclose a stored phone number to the callee unless the owner
     // verified it and explicitly opted into number-based Server calls.
     const sharedPhone=caller.phone_verified_at&&caller.allow_number_based_server_calls===true?phone(caller.phone_e164):null;
-    return {id:c.id,state:c.state,route:c.route,caller_phone_e164:sharedPhone||"",caller_server_id:caller.server_id||"",created_at:c.created_at,updated_at:c.updated_at,carrier_fallback_method:c.carrier_fallback_method||null,carrier_fallback_status:c.carrier_fallback_status||null,carrier_fallback_sim_slot:c.carrier_fallback_sim_slot??null,carrier_fallback_carrier:c.carrier_fallback_carrier||null,carrier_fallback_requested_at:c.carrier_fallback_requested_at||null,carrier_fallback_handed_off_at:c.carrier_fallback_handed_off_at||null,carrier_fallback_failed_at:c.carrier_fallback_failed_at||null,carrier_fallback_error_code:c.carrier_fallback_error_code||null};
+    return {id:c.id,state:c.state,route:c.route,caller_phone_e164:sharedPhone||"",caller_display_name:caller.display_name||"SERVER CALLER",caller_label:caller.display_name||"SERVER CALLER",caller_server_id:caller.server_id||"",created_at:c.created_at,updated_at:c.updated_at,carrier_fallback_method:c.carrier_fallback_method||null,carrier_fallback_status:c.carrier_fallback_status||null,carrier_fallback_sim_slot:c.carrier_fallback_sim_slot??null,carrier_fallback_carrier:c.carrier_fallback_carrier||null,carrier_fallback_requested_at:c.carrier_fallback_requested_at||null,carrier_fallback_handed_off_at:c.carrier_fallback_handed_off_at||null,carrier_fallback_failed_at:c.carrier_fallback_failed_at||null,carrier_fallback_error_code:c.carrier_fallback_error_code||null};
    })});
   }
   if(action==="record_carrier_fallback"){

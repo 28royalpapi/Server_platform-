@@ -181,14 +181,14 @@ if(req.method==="GET"||action==="inspect"){
  if(callError)return out({error:"CALL_LOOKUP_FAILED"},503);
  if(!call)return out({error:"CALL_NOT_FOUND"},404);
  const {data:caller,error:callerError}=await db.from("server_profiles")
-  .select("phone_e164,phone_verified_at,allow_number_based_server_calls")
+  .select("display_name,phone_e164,phone_verified_at,allow_number_based_server_calls")
   .eq("user_id",call.caller_user_id).maybeSingle();
  if(callerError)return out({error:"CALLER_PROFILE_LOOKUP_FAILED"},503);
  const mayShowPhone=caller?.phone_verified_at&&caller?.allow_number_based_server_calls===true&&
   typeof caller.phone_e164==="string"&&/^\+[1-9][0-9]{7,14}$/.test(caller.phone_e164);
- const callerLabel=mayShowPhone?caller.phone_e164:"Private caller";
+ const callerLabel=caller?.display_name||"SERVER CALLER";
  return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,
-  caller_server_id:callerLabel,caller_label:callerLabel,caller_phone:mayShowPhone?caller.phone_e164:null,
+  caller_server_id:callerLabel,caller_label:callerLabel,caller_display_name:callerLabel,caller_phone:mayShowPhone?caller.phone_e164:null,
   call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
 }
 if(action==="realtime_token"){

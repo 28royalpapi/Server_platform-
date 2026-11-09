@@ -232,7 +232,11 @@ class ServerSetupWebActivity : Activity() {
     runJs("window.$name && window.$name($result)")
   }
 
-  private fun registerDevice(acceptedTerms: Boolean): JSONObject {
+  private fun registerDevice(displayName: String, acceptedTerms: Boolean): JSONObject {
+    val normalizedDisplayName = displayName.trim().replace(Regex("\\s+"), " ")
+    if (normalizedDisplayName.length !in 2..60 || normalizedDisplayName.any { it.isISOControl() || it == '<' || it == '>' }) {
+      return JSONObject().put("ok", false).put("error", "Enter a caller name between 2 and 60 characters.")
+    }
     if (!acceptedTerms) return JSONObject().put("ok", false).put("error", "Accept the Terms and Privacy Notice first.")
     return try {
       val installationId = prefs.getString("installation_id", null)?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
@@ -243,6 +247,7 @@ class ServerSetupWebActivity : Activity() {
       val selectedSim = ServerFallbackSimManager.selectedOption(this)
       val body = JSONObject()
         .put("action", "register_device")
+        .put("display_name", normalizedDisplayName)
         .put("installation_id", installationId)
         .put("device_secret", deviceSecret)
         .put("accepted_terms", true)
@@ -278,7 +283,8 @@ class ServerSetupWebActivity : Activity() {
       val expires = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond }
         catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
       prefs.edit().putString("access_token", access).remove("refresh_token")
-        .putLong("access_expiry", expires).putString("server_id", serverId).remove("phone").apply()
+        .putLong("access_expiry", expires).putString("server_id", serverId)
+        .putString("display_name", normalizedDisplayName).remove("phone").apply()
       // Fetch/register the FCM endpoint immediately after the first Server
       // session exists. onNewToken may have fired before sign-in and correctly
       // deferred registration at that time.
@@ -347,9 +353,9 @@ class ServerSetupWebActivity : Activity() {
       }
     }
 
-    @JavascriptInterface fun completeSetup(acceptedTerms: Boolean) {
+    @JavascriptInterface fun completeSetup(displayName: String, acceptedTerms: Boolean) {
       Thread {
-        val result = registerDevice(acceptedTerms)
+        val result = registerDevice(displayName, acceptedTerms)
         runJs("window.onServerSetupResult && window.onServerSetupResult($result)")
       }.start()
     }

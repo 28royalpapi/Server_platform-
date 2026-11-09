@@ -960,8 +960,8 @@ assert.match(guestPreview,/pngChunk\("tEXt",callerMetadata\)/,"the PNG embeds in
 assert.match(guestPreview,/allow_number_based_server_calls/,"the OG card only displays a verified phone when the caller opted into number-based calling");
 assert.match(guest,/allow_number_based_server_calls/,"the full-screen guest page observes the caller's phone-sharing consent");
 assert.match(calls,/profile\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
-assert.match(guest,/:"Private caller"/,
-  "the no-install guest page uses a neutral private-caller label when the number is not shared");
+assert.match(guest,/caller\?\.display_name/,"the no-install guest page uses the caller's profile display name");
+assert.match(guest,/caller_display_name:callerLabel/,"the guest API returns the caller's display name explicitly");
 assert.match(androidIdentityResolver,/ContactsContract\.PhoneLookup\.CONTENT_FILTER_URI/,
   "Android resolves the verified caller number against the recipient's local Contacts database");
 assert.match(androidIncoming,/ServerCallerIdentityResolver\.resolve/,
@@ -1024,10 +1024,11 @@ assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
 assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
+assert.match(calls,/CALLER_NAME_REQUIRED/,"a caller display name is required before an outgoing call is created");
 assert.match(calls,/Open this previewable invitation to answer over the internet/,
   "non-Server invitation explains that the recipient can answer through the browser without an app");
-assert.match(guestPreview,/"PRIVATE CALLER"/,
-  "the Open Graph preview never exposes an opaque Server ID when caller-number sharing is disabled");
+assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview uses the caller's profile name even when the phone number is private");
+assert.match(guestPreview,/"SERVER CALLER"/,"legacy invitations without a stored name use a neutral label instead of PRIVATE CALLER");
 assert.match(guest,/caller_server_id:callerLabel/,
   "guest invitation verification returns a human-facing label rather than a Server ID");
 assert.match(guestWeb,/loadInvitation/);
@@ -1085,7 +1086,7 @@ assert.match(guestPreview,/GUEST_PREVIEW_CALLER_PROFILE_LOOKUP_FAILED/);
 
 assert.match(liveGuestTransitionContract,/"join"/);
 assert.match(liveGuestTransitionContract,/og:title/);
-assert.match(liveGuestTransitionContract,/Caller=PRIVATE CALLER/);
+assert.doesNotMatch(liveGuestTransitionContract,/Caller=PRIVATE CALLER/);
 assert.ok(liveGuestTransitionContract.includes("server-terms-1.0"));
 assert.doesNotMatch(liveGuestTransitionContract,/request_otp|verify_otp|server-send-sms/,
   "the live guest lifecycle test must never queue SMS or contact a real carrier number");
