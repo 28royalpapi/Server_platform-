@@ -89,21 +89,27 @@ TURN is needed when a mobile carrier, Wi-Fi router, VPN or firewall prevents a
 direct peer-to-peer ICE path. The repository includes Coturn as an optional
 Docker Compose profile; it is not started by the default signalling-only stack.
 
-1. Set `SERVER_TURN_EXTERNAL_IP` to the VM's public IPv4 address. On a cloud VM
-   using 1:1 NAT, use Coturn's `PUBLIC/PRIVATE` format with both addresses.
-2. Set `SERVER_TURN_SHARED_SECRET` to a separate random secret (at least 32
+1. The Coturn profile uses Docker host networking, as recommended by the
+   official image documentation for large relay-port ranges. It therefore runs
+   directly on the Linux VM network stack; ensure nothing else occupies UDP/TCP
+   3478 or UDP 49160–65535.
+2. Set `SERVER_TURN_EXTERNAL_IP` to the VM's public IPv4 address. On a cloud VM
+   using 1:1 NAT, use Coturn's `PUBLIC/PRIVATE` format (public IPv4 followed by
+   the VM's private interface IPv4). The cloud firewall must forward the same
+   relay port numbers without translating the port values.
+3. Set `SERVER_TURN_SHARED_SECRET` to a separate random secret (at least 32
    bytes). Do not reuse the Redis password, Centrifugo HMAC secret or API key.
-3. Open inbound UDP and TCP port 3478 and the configured UDP relay range
-   49160–65535 in both the cloud firewall/security list and the host firewall.
-   Keep Redis private. The initial relay range is broad to avoid a low allocation
-   ceiling; it is not proof of a 100k-call relay capacity.
-4. Start the TURN profile with
+4. Open inbound UDP and TCP port 3478 and UDP relay range 49160–65535 in both
+   the cloud firewall/security list and the host firewall. Keep Redis private.
+   The initial relay range is broad to avoid a low allocation ceiling; it is not
+   proof of a 100k-call relay capacity.
+5. Start the TURN profile with
    `docker compose --profile turn up -d coturn`.
-5. Set the following Supabase Edge Function secrets on the **Server Backend**
+6. Set the following Supabase Edge Function secrets on the **Server Backend**
    project and redeploy `server-calls`:
    - `SERVER_TURN_URLS=turn:REALTIME_HOST:3478?transport=udp,turn:REALTIME_HOST:3478?transport=tcp`
    - `SERVER_TURN_SHARED_SECRET=<same as SERVER_TURN_SHARED_SECRET in the VM .env>`
-6. Run a new live call contract and verify its ICE response reports
+7. Run a new live call contract and verify its ICE response reports
    `ice_server_mode=coturn-turn`. Then perform real two-phone calls over different
    networks and verify ICE selects a relay candidate. A returned TURN URL alone
    does not prove the relay is reachable.
