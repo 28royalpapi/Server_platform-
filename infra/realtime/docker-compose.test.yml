@@ -2,3 +2,9 @@ services:
   centrifugo:
     ports:
       - "127.0.0.1:8000:8000"
+
+  coturn:
+    environment:
+      # The CI relay clients run on a private Docker subnet. This exception is
+      # confined to this test overlay; production Coturn keeps private peers denied.
+      SERVER_TURN_TEST_ALLOW_PRIVATE_PEERS: "1"
