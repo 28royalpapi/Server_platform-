@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-# Run after installing the debug APK. A user-state string alone is not enough
-# on Android preview images: prove that app credential-encrypted storage works.
+# Run after installing the debug APK. Wait until Android marks the primary user
+# RUNNING_UNLOCKED; instrumentation then verifies the app's real private storage.
 APP_ID="${SERVER_ANDROID_CE_PROBE_PACKAGE:-com.server.caller.debug}"
 echo "ANDROID_USER_UNLOCK_START package=$APP_ID"
 adb start-server >/dev/null 2>&1 || true
