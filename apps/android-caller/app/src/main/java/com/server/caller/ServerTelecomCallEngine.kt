@@ -233,14 +233,22 @@ Engine fallback payload      // Availability is Server reachability, never a cla
             .putString("debug_last_guest_call_id", callId.orEmpty())
             .apply()
         }
-        if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
-          throw IllegalStateException(
-            started.optString("delivery_message").ifBlank {
-              "Allow Server notifications so you can share the caller-identifying guest preview."
-            }
-          )
+        val guestPush = started.optJSONObject("push_delivery")
+        val acceptedByPush = guestPush?.optInt("accepted_by_push_service", 0) ?: 0
+        if (acceptedByPush > 0) {
+          connection.updateServerStatus("Guest browser alert submitted · waiting for WebRTC answer")
+          Log.i(TAG, "Server submitted a caller-identified Web Push alert to the enrolled guest browser.")
+          recordStage("guest_browser_push_submitted")
+        } else {
+          if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
+            throw IllegalStateException(
+              started.optString("delivery_message").ifBlank {
+                "Allow Server notifications so you can share the caller-identifying guest preview."
+              }
+            )
+          }
+          recordStage("guest_invitation_preview_share_ready")
         }
-        recordStage("guest_invitation_preview_share_ready")
         // The recipient answers on the secure browser page. Keep the Telecom call
         // and WebRTC offer alive while the browser joins; do not launch an Activity
         // over Android's Phone app from this background ConnectionService.
