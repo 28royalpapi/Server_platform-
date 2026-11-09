@@ -285,10 +285,8 @@ assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
 assert.doesNotMatch(androidMain,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
   "the Android call activity must not enumerate SIMs or read protected SIM identifiers directly");
-assert.match(androidMain,/ServerFallbackSimManager\.automaticFallbackEnabled/,
-  "the Android call activity delegates the user's saved fallback consent to the isolated SIM selector");
-assert.match(androidMain,/recordCarrierFallbackHistory/,
-  "the Android call activity records the selected-SIM handoff outcome on the original Server call");
+assert.doesNotMatch(androidMain,/ServerFallbackSimManager|recordCarrierFallbackHistory|handoffToCarrierDialer/,
+  "the Android call activity never reads carrier-fallback consent or records/initiates a SIM handoff");
 assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
   "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
 assert.match(androidSetup,/ServerFallbackSimManager\.optionsJson/);
@@ -829,27 +827,13 @@ assert.doesNotMatch(androidMain,/currentRoute == "guest"[\s\S]{0,350}handoffToCa
   "the in-app guest route must not bypass the browser invitation with automatic carrier fallback");
 assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity|Call using selected SIM/,
   "the guest invitation notification offers only the browser invitation action");
-assert.match(androidCarrierActivity,/ServerTelecomRegistry\.fallbackToCarrier\(callId\)/,
-  "the notification SIM action ends the pending Server/guest call before opening the dialler");
-assert.match(androidCarrierActivity,/ServerCarrierDialer\.createIntent\(this, phone\)/,
-  "the notification SIM action opens the platform dialler with the selected calling account when available");
-assert.match(androidCarrierDialer,/EXTRA_PHONE_ACCOUNT_HANDLE/,
-  "the caller-selected SIM account is passed to Android Telecom for the carrier route");
-assert.match(androidCarrierDialer,/telecom\.placeCall\(/,
-  "automatic carrier fallback is submitted through Android Telecom without a second dialler tap");
-assert.match(androidCarrierDialer,/hasAutomaticFallbackConsent/,
-  "automatic carrier fallback is gated by explicit saved user consent");
-assert.match(androidCarrierDialer,/Intent\.ACTION_DIAL/,
-  "carrier fallback uses Android's user-confirmed dialler");
-assert.doesNotMatch(androidCarrierDialer,/Intent\.ACTION_CALL/,
-  "carrier fallback never silently places a chargeable cellular call");
-assert.match(androidTelecom,/fun fallbackToCarrier\(callId: String\)/,
-  "the system Telecom connection can be safely handed off to the carrier path");
-assert.match(androidManifest,/ServerCarrierDialActivity/,
-  "the explicit carrier handoff Activity is registered in the Android manifest");
+assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity|carrierPending|Call using selected SIM/,
+  "the guest invitation notification has no selected-SIM PendingIntent");
+assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity/,
+  "the guest notification cannot launch the legacy carrier handoff Activity");
 assert.doesNotMatch(androidMain,/button\("Call using selected SIM"\)|handoffToCarrierDialer/,
   "the main caller app cannot silently or manually convert the Server route to a SIM call");
-assert.match(html,/Server does not bill you for it/,"onboarding states the mobile operator handles cellular call charges and Server adds no calling fee");
+assert.match(html,/Every call is registered in Server/,"onboarding explains that every call is recorded in the Server call history");
 assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
 assert.match(androidEngine,/waiting for the recipient app to confirm its internet connection/,"a registered background push token is not treated as proof of internet reachability");
 assert.doesNotMatch(androidEngine,/carrierFallbackPhone|automaticCarrierFallback|placeAutomatically/,
@@ -1012,7 +996,7 @@ for (const method of [
   "destinationCountryFromSavedContactMetadataBeatsCallerRegion",
   "explicitInternationalNumbersAndCallerRegionFallbackRemainSupported",
   "launcherShowsHybridOnboardingWithFallbackSimChoice",
-  "guestCallInvitationNotificationOffersShareAndSelectedSimActions",
+  "guestCallInvitationNotificationOffersInternetShareOnly",
   "serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives",
   "preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice",
   "enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls",
