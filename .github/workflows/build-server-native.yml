@@ -63,11 +63,13 @@ jobs:
           TURN_SECRET="$(awk -F= '$1 == "SERVER_TURN_SHARED_SECRET" {print substr($0, index($0, "=") + 1)}' infra/realtime/.env)"
           test "${#TURN_SECRET}" -ge 32
           TURN_USERNAME="$(( $(date +%s) + 600 )):server-turn-smoke"
-          # Coturn 4.6.3's uclient does not support the newer -Y load-generator
-          # switch. Use its documented client-to-client mode: two clients create
-          # authenticated allocations and exchange one packet through the relay.
+          # Start the echo peer inside the isolated TURN container. The test
+          # overlay enables loopback peers only for this CI run.
+          docker exec -d realtime-coturn-1 sh -ec 'turnutils_peer -p 3480 >/tmp/turnutils-peer.log 2>&1'
+          sleep 1
+          test "$(docker exec realtime-coturn-1 printenv SERVER_TURN_TEST_ALLOW_LOOPBACK_PEERS)" = "1"
           timeout 20s docker exec realtime-coturn-1 turnutils_uclient \
-            -y -c -m 2 -X -n 1 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
+            -X -c -e 127.0.0.1 -r 3480 -n 1 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
       - name: Validate optional Coturn relay compose configuration
         run: |
           docker compose --profile turn --env-file infra/realtime/.env \
