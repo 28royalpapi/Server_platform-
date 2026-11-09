@@ -57,14 +57,10 @@ jobs:
           docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml up -d --wait
           docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml ps
       - name: Validate optional Coturn relay compose configuration
-        env:
-          TURN_REALM: turn.example.invalid
-          TURN_EXTERNAL_IP: 203.0.113.10
-          SERVER_TURN_SHARED_SECRET: server-ci-turn-secret-0123456789abcdef0123456789abcdef
         run: |
-          docker compose --env-file infra/realtime/.env \
+          docker compose --profile turn --env-file infra/realtime/.env \
             -f infra/realtime/docker-compose.yml \
-            -f infra/realtime/docker-compose.turn.yml config --quiet
+            -f infra/realtime/docker-compose.test.yml config --quiet
       - name: Verify authenticated WebSocket subscription and Redis publication fanout
         env:
           CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: server-ci-hmac-secret-0123456789abcdef0123456789abcdef
