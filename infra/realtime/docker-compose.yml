@@ -27,6 +27,9 @@ services:
   coturn:
     image: coturn/coturn:4.6.3
     profiles: ["turn"]
+    # Coturn's official Docker guidance recommends host networking for large
+    # relay-port ranges; Docker port publishing adds substantial overhead here.
+    network_mode: host
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -43,12 +46,6 @@ services:
       REALTIME_HOST: ${REALTIME_HOST:?Set REALTIME_HOST in infra/realtime/.env}
       SERVER_TURN_SHARED_SECRET: ${SERVER_TURN_SHARED_SECRET:?Set a unique SERVER_TURN_SHARED_SECRET}
       SERVER_TURN_EXTERNAL_IP: ${SERVER_TURN_EXTERNAL_IP:-}
-    ports:
-      - "3478:3478/udp"
-      - "3478:3478/tcp"
-      - "49160-65535:49160-65535/udp"
-    networks:
-      - server-realtime
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "turnutils_stunclient -p 3478 127.0.0.1 >/dev/null 2>&1"]
