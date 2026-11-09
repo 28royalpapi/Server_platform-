@@ -27,7 +27,6 @@ while [ "$attempt" -le 90 ]; do
     adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
     user_state="$(adb shell am get-started-user-state 0 2>/dev/null | tr -d '\r' || true)"
-    unlocked="$(adb shell cmd user is-user-unlocked 0 2>/dev/null | tr -d '\r' | tail -1 || true)"
     # Android's ActivityManager reports RUNNING_UNLOCKED only after the
     # user's credential-encrypted storage key has been unlocked. Do not use
     # "cmd user is-user-unlocked": that subcommand is absent on several stable
@@ -39,7 +38,7 @@ while [ "$attempt" -le 90 ]; do
       echo "ANDROID_USER_UNLOCK_PASS: Android reports the primary user RUNNING_UNLOCKED; app CE access is verified by instrumentation."
       exit 0
     fi
-    echo "ANDROID_USER_UNLOCK_WAIT attempt=$attempt state=$user_state user_unlocked=$unlocked"
+    echo "ANDROID_USER_UNLOCK_WAIT attempt=$attempt state=$user_state"
   else
     echo "ANDROID_ADB_WAIT attempt=$attempt state=${device_state:-missing}"
   fi
@@ -52,7 +51,6 @@ done
 echo "ERROR: Android app credential-encrypted storage remained unavailable." >&2
 adb devices -l >&2 || true
 adb shell am get-started-user-state 0 >&2 || true
-adb shell cmd user is-user-unlocked 0 >&2 || true
 adb shell dumpsys user | tail -100 >&2 || true
 adb shell dumpsys window | grep -Ei 'keyguard|mCurrentFocus|mFocusedApp' >&2 || true
 adb logcat -d -t 800 | grep -Ei 'user|keyguard|lock|system_server|credential|run-as' | tail -120 >&2 || true
