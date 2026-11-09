@@ -1074,8 +1074,10 @@ assert.match(androidMain,/missed_call_saved/);
 assert.match(androidEngine,/missed_call_saved/);
 assert.match(offlineArchitecture,/private inbox per Server identity/i);
 assert.match(offlineArchitecture,/contact-wide room/i);
-assert.ok(androidUnlock.includes('run-as "$APP_ID" sh -c'),
-  "the emulator unlock gate proves app-private credential-encrypted storage is accessible");
+assert.ok(androidUnlock.includes('am get-started-user-state 0') &&
+  androidUnlock.includes('RUNNING_UNLOCKED') &&
+  androidUnlock.includes('instrumentation then verifies the app'),
+  "the emulator unlock gate uses Android's supported unlocked-user state and leaves app-private storage verification to instrumentation");
 assert.ok(androidPackageManagerWait.includes("service check activity"),
   "emulator readiness waits for both activity and package services before installing apps");
 assert.ok(androidEmulatorSmoke.includes("adb install -r artifacts/server-caller-debug-for-reinstall.apk"),
