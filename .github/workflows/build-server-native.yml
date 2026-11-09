@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > infra/realtime/.env <<'EOF'
+          REDIS_PASSWORD=server-ci-redis-password-0123456789abcdef
           CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=server-ci-hmac-secret-0123456789abcdef0123456789abcdef
           CENTRIFUGO_HTTP_API_KEY=server-ci-api-key-0123456789abcdef0123456789abcdef
           EOF
