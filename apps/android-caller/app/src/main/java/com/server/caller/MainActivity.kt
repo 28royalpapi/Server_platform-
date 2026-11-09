@@ -253,7 +253,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
     callPanel.addView(TextView(this).apply {
-      text = "Server uses WebRTC only after a fresh recipient internet heartbeat. If the recipient is unreachable on Server, or is not a Server user, Server hands the call to your explicitly selected SIM when automatic fallback is enabled. Your operator handles the normal cellular call and charges; Server adds no call charge."
+      text = "Server uses WebRTC for an online Server user after a fresh heartbeat. If a Server user is offline, your selected SIM can be used when fallback is enabled. For a number without a Server account, Server cannot infer mobile-data status from the number alone; it offers a secure browser invitation first and keeps the selected SIM as a separate carrier-call option."
       textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0)
     })
   }
@@ -286,22 +286,25 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     val status = availability?.optString("status").orEmpty()
     val reachable = ServerRecipientReachability.isFresh(status)
     val wakeCandidate = status == "background_reachable"
+    val unknownGuest = ServerRecipientReachability.isUnknownGuest(status)
     val message = when {
       status.isBlank() -> fallbackMessage ?: "Checking Server reachability…"
       reachable -> "REACHABLE · SERVER / WEBRTC"
       wakeCandidate -> "NOT CONFIRMED · SERVER WAKE"
-      else -> "UNREACHABLE · SELECTED SIM"
+      unknownGuest -> "GUEST INVITATION · INTERNET STATUS UNKNOWN"
+      else -> "UNREACHABLE · SERVER RECEIVER"
     }
     val detail = when (status) {
       "online" -> "A fresh authenticated Server internet heartbeat is available; WebRTC can be attempted."
       "background_reachable" -> "A push registration exists, but a live internet heartbeat is not confirmed. Server will check again when you call; otherwise the selected SIM is used."
-      "offline" -> "No fresh Server heartbeat or registered wake endpoint is available. The selected SIM is the carrier route."
-      "unknown_guest" -> "This number has no Server receiver. The call uses your selected cellular SIM."
+      "offline" -> "This Server user has no fresh authenticated heartbeat. A selected-SIM fallback may be used when enabled."
+      "unknown_guest" -> "This number has no Server account. Its mobile-data/Wi-Fi status cannot be checked from the number alone. Share the secure browser invitation; when the recipient opens it and taps Answer, the call can connect over WebRTC. A normal selected-SIM call remains a separate option."
       else -> ""
     }
     val colour = when {
       status.isBlank() -> 0xFF9AABBC.toInt()
       reachable -> 0xFF8DE9B9.toInt()
+      unknownGuest -> 0xFF9AABBC.toInt()
       else -> 0xFFFFDFA3.toInt()
     }
     recipientAvailabilityText.text = if (detail.isBlank()) message else "$message\n$detail"
@@ -655,7 +658,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     AlertDialog.Builder(this)
       .setTitle("This recipient isn't on Server")
       .setMessage(
-        "This number has no reachable Server receiver. You can share a secure browser invitation, or place a normal cellular call through your selected SIM. " +
+        "This number is not linked to a Server account, so its internet status is unknown. Share the secure browser invitation; the recipient can open it and tap Answer to connect over WebRTC. You can also choose a normal cellular call through your selected SIM. " +
           "A cellular call makes the recipient's ordinary phone ring when their line is registered for voice service. If the phone is switched off or outside voice coverage, the carrier cannot ring it. Standard call charges may apply: your operator applies its normal charges and Server adds no calling charge."
       )
       .setPositiveButton("Share invitation") { _, _ ->
@@ -839,13 +842,9 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         ?.optString("destination_e164")?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
         ?: normalizedPhone
       carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
-      // No Server receiver exists for a guest route. Honour the user's saved
-      // automatic SIM choice before creating a browser invitation/WebRTC leg.
-      if (currentRoute == "guest" && carrierFallbackNumber != null &&
-          ServerFallbackSimManager.automaticFallbackEnabled(this@MainActivity)) {
-        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
-        return@launch
-      }
+      // "guest" means no Server account is linked to this number. It is not a
+      // device-reachability result. Continue to the invitation/WebRTC flow first;
+      // carrier calling remains a separate, explicit action in the UI/notification.
       val initialAvailability = started.optJSONObject("recipient_availability")
       val initialStatus = initialAvailability?.optString("status").orEmpty()
       val pushQueued = started.optJSONObject("push_delivery")?.optBoolean("queued", false) == true
