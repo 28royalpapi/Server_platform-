@@ -788,8 +788,8 @@ assert.match(guest,/SERVER_TURN_URLS/,"guest calls use the same optional TURN re
 assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches Android and browser STUN discovery");
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
-assert.match(calls,/sms_body:invitationText/,
-  "the backend retains a compatibility alias for older clients without queuing SMS");
+assert.doesNotMatch(calls,/sms_body|server_sms_jobs|automatic_sms_queued/,
+  "guest call invitation links are never represented as SMS payloads or queued for SMS delivery");
 assert.doesNotMatch(calls,/server_sms_jobs|automatic_sms_queued|sourceEventId/,
   "new guest calls no longer use the paired SIM gateway SMS queue");
 assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
