@@ -886,16 +886,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val deliveryMode = started.optString("delivery_mode", "")
       val invitationBody = started.optString("invitation_text",
         started.optString("sms_body", ""))
-      if (currentRoute == "guest" && deliveryMode == "automatic_gateway_sms") {
-        val smsDelivery = started.optJSONObject("sms_delivery")
-        val queued = smsDelivery?.optBoolean("queued", false) == true
-        if (queued) {
-          setStatus("Guest-call invitation queued to your paired SIM gateway. Your operator may charge for the SMS. The recipient can open the preview over Wi-Fi or mobile data and tap Answer; internet is confirmed when the browser connects.")
-        } else {
-          setStatus("The guest-call invitation was not queued. Share the preview link manually or choose the selected SIM yourself.")
-        }
-        if (pendingSystemDialerReturn) returnToSystemPhoneUi()
-      } else if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
+      if (currentRoute == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms") && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
         setStatus("The guest-call link is ready. The recipient can open it over Wi-Fi or mobile data and tap Answer. Until the browser connects, internet status is unknown; no SIM call has been placed.")
