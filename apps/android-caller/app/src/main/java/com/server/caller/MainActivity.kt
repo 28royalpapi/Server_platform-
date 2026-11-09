@@ -656,7 +656,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       .setTitle("This recipient isn't on Server")
       .setMessage(
         "This number has no reachable Server receiver. You can share a secure browser invitation, or place a normal cellular call through your selected SIM. " +
-          "A cellular call makes the recipient's ordinary phone ring when their line is registered for voice service. If the phone is switched off or outside voice coverage, the carrier cannot ring it. Your operator applies its normal call charges; Server adds no calling charge."
+          "A cellular call makes the recipient's ordinary phone ring when their line is registered for voice service. If the phone is switched off or outside voice coverage, the carrier cannot ring it. Standard call charges may apply: your operator applies its normal charges and Server adds no calling charge."
       )
       .setPositiveButton("Share invitation") { _, _ ->
         try {
