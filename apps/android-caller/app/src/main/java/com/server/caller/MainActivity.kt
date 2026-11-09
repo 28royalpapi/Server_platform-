@@ -691,6 +691,25 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
+  private suspend fun recordCarrierFallbackHistory(
+    id: String?,
+    stage: String,
+    errorCode: String? = null
+  ) {
+    if (id.isNullOrBlank()) return
+    val selected = ServerFallbackSimManager.selectedOption(this)
+    try {
+      api("record_carrier_fallback", JSONObject()
+        .put("call_id", id)
+        .put("stage", stage)
+        .put("selected_sim_slot", selected?.slotIndex ?: JSONObject.NULL)
+        .put("selected_sim_carrier", selected?.carrierName ?: JSONObject.NULL)
+        .put("error_code", errorCode ?: JSONObject.NULL))
+    } catch (error: Exception) {
+      Log.w("ServerFallback", "Could not persist fallback history: " + error.javaClass.simpleName)
+    }
+  }
+
   private fun handoffToCarrierDialer(rawNumber: String, pendingCallId: String?, allowAutomaticFallback: Boolean = true) {
     val number = rawNumber.trim()
     if (!number.matches(Regex("^\\+[1-9][0-9]{7,14}$"))) {
@@ -698,8 +717,18 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       return
     }
     lifecycleScope.launch {
+      val selected = ServerFallbackSimManager.selectedOption(this@MainActivity)
+      val automaticAllowed = allowAutomaticFallback &&
+        ServerFallbackSimManager.automaticFallbackEnabled(this@MainActivity) &&
+        selected != null
       if (!pendingCallId.isNullOrBlank()) {
-        // End the outstanding Server/guest attempt before opening the carrier path.
+        // Record the requested route on the original Server call before closing
+        // that leg. A later outcome must never imply the carrier answered.
+        recordCarrierFallbackHistory(
+          pendingCallId,
+          if (automaticAllowed) "requested" else "unavailable",
+          if (automaticAllowed) null else "AUTOMATIC_FALLBACK_NOT_AVAILABLE"
+        )
         try { api("end", JSONObject().put("call_id", pendingCallId)) } catch (_: Exception) {}
         ServerGuestInviteNotifications.cancel(this@MainActivity, pendingCallId)
       }
@@ -712,18 +741,37 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       callButton.visibility = View.VISIBLE
       hangupButton.visibility = View.GONE
       ServerTelecomRegistry.markEnded(pendingCallId)
-      val automaticResult = if (allowAutomaticFallback) {
+
+      val automaticResult = if (automaticAllowed) {
         ServerCarrierDialer.placeAutomatically(this@MainActivity, number)
       } else AutomaticCarrierFallbackResult.NOT_OPTED_IN
+
       if (automaticResult == AutomaticCarrierFallbackResult.PLACED) {
-        setStatus("Server cannot reach this recipient. Android is continuing the call through your selected SIM; your mobile operator applies its normal charges.")
-      } else {
+        recordCarrierFallbackHistory(pendingCallId, "handed_off")
+        setStatus("UNREACHABLE · Server handed this call to ${selected?.label}. Your operator now handles the normal cellular call and its charges.")
+        return@launch
+      }
+
+      val errorCode = automaticResult.name
+      if (!pendingCallId.isNullOrBlank() && automaticAllowed) {
+        recordCarrierFallbackHistory(pendingCallId, "failed", errorCode)
+      }
+
+      // Do not silently open the phone dialler and imply that automatic fallback
+      // succeeded. A manual retry remains available only when the user explicitly
+      // chooses the visible SIM action.
+      if (!allowAutomaticFallback) {
         val opened = ServerCarrierDialer.open(this@MainActivity, number)
-        if (opened) {
-          setStatus("Opened your normal phone dialler. Server preselected your preferred SIM when that line was still active. Review the number and press Call; your mobile operator applies its normal charges.")
-        } else {
-          setStatus("Android could not open the phone dialler. No carrier call was placed.", true)
-        }
+        setStatus(
+          if (opened) "Manual carrier dialler opened. Review the number and tap Call; your operator's usual charges apply."
+          else "Android could not open the phone dialler. No carrier call was placed.",
+          !opened
+        )
+      } else {
+        setStatus(
+          "UNREACHABLE · Automatic SIM fallback could not be placed ($errorCode). Check your selected SIM, CALL_PHONE permission and fallback consent.",
+          true
+        )
       }
     }
   }
@@ -798,6 +846,43 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
         return@launch
       }
+      val initialAvailability = started.optJSONObject("recipient_availability")
+      val initialStatus = initialAvailability?.optString("status").orEmpty()
+      val pushQueued = started.optJSONObject("push_delivery")?.optBoolean("queued", false) == true
+      if (currentRoute == "server" && initialStatus == "background_reachable" && pushQueued) {
+        setStatus("Checking Server reachability before choosing the call route…")
+        val targetPayload = if (isServerId) JSONObject().put("to_server_id", serverId)
+          else JSONObject().put("to_phone", normalizedPhone)
+        var confirmed = false
+        val deadline = System.currentTimeMillis() + 8_000L
+        while (System.currentTimeMillis() < deadline && !confirmed) {
+          delay(700L)
+          try {
+            val check = api("availability", targetPayload)
+            val status = check.optJSONObject("recipient_availability")?.optString("status").orEmpty()
+            confirmed = ServerRecipientReachability.isFresh(status)
+          } catch (_: Exception) {
+            // An API failure is not evidence of an online receiver.
+          }
+        }
+        if (!confirmed && carrierFallbackNumber != null &&
+            ServerFallbackSimManager.automaticFallbackEnabled(this@MainActivity)) {
+          renderRecipientAvailability(
+            JSONObject().put("status", "offline")
+          )
+          handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
+          return@launch
+        }
+        if (!confirmed) {
+          setStatus("UNREACHABLE · Server has no fresh receiver heartbeat. No selected-SIM fallback is enabled for this account.", true)
+          try { api("end", JSONObject().put("call_id", callId)) } catch (_: Exception) {}
+          callId = null
+          cleanPeer()
+          ServerTelecomRegistry.markEnded()
+          return@launch
+        }
+        renderRecipientAvailability(JSONObject().put("status", "online"))
+      }
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       callIceServerMode = started.optString("ice_server_mode", "stun-only")
       preparePeer(callIceServers)
@@ -840,9 +925,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         val fallback = apiError.carrierFallback
         carrierFallbackNumber = fallback?.optString("destination_e164")
           ?.takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-        ServerTelecomRegistry.markEnded()
+        val missedCallId = apiError.payload.optString("call_id")
+          .takeIf { it.matches(Regex("^[0-9a-fA-F-]{36}$")) }
+        if (missedCallId != null) {
+          callId = missedCallId
+          ServerTelecomRegistry.setCurrentCallId(missedCallId)
+        }
+        ServerTelecomRegistry.markEnded(missedCallId)
         cleanPeer()
-        callId = null
         activeStateSyncedFor = null
         val message = apiError.payload.optString("message",
           if (missedSaved) "Recipient is offline on Server. A missed-call entry was saved for delivery when they reconnect."
@@ -850,7 +940,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         setStatus(message, true)
         carrierFallbackButton.visibility = if (carrierFallbackNumber != null) View.VISIBLE else View.GONE
         if (carrierFallbackNumber != null) {
-          handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), null)
+          handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), missedCallId)
         } else if (pendingSystemDialerReturn) {
           ServerCallEngineStatusNotifications.showFailure(this@MainActivity, message, null)
           Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
@@ -865,7 +955,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       cleanPeer(); callId = null
       val userMessage = "UNREACHABLE · Server could not establish the internet route: " + (e.message ?: "Unknown error")
       if (carrierFallbackNumber != null) {
-        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId, allowAutomaticFallback = false)
+        handoffToCarrierDialer(carrierFallbackNumber.orEmpty(), callId)
       } else {
         setStatus(userMessage, true)
         if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
