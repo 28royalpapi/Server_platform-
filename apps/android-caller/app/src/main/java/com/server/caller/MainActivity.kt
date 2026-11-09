@@ -776,8 +776,7 @@ Guest dialog SIM action      .setNegativeButton("Cancel") { _, _ ->
       beginCallPolling()
       recordTelecomDebugStage("call_offer_submitted")
       val deliveryMode = started.optString("delivery_mode", "")
-      val invitationBody = started.optString("invitation_text",
-        started.optString("sms_body", ""))
+      val invitationBody = started.optString("invitation_text")
       if (currentRoute == "guest" && deliveryMode == "manual_share" && invitationBody.isNotBlank()) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
