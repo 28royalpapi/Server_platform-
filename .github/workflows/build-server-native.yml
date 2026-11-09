@@ -63,10 +63,11 @@ jobs:
           TURN_SECRET="$(awk -F= '$1 == "SERVER_TURN_SHARED_SECRET" {print substr($0, index($0, "=") + 1)}' infra/realtime/.env)"
           test "${#TURN_SECRET}" -ge 32
           TURN_USERNAME="$(( $(date +%s) + 600 )):server-turn-smoke"
-          # -Y alloc performs a real authenticated TURN ALLOCATE/REFRESH cycle
-          # without requiring an echo peer (-e) or two relay clients (-y).
+          # Coturn 4.6.3's uclient does not support the newer -Y load-generator
+          # switch. Use its documented client-to-client mode: two clients create
+          # authenticated allocations and exchange one packet through the relay.
           timeout 20s docker exec realtime-coturn-1 turnutils_uclient \
-            -Y alloc -X -n 1 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
+            -y -c -m 2 -X -n 1 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
       - name: Validate optional Coturn relay compose configuration
         run: |
           docker compose --profile turn --env-file infra/realtime/.env \
