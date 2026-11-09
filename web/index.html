@@ -18,7 +18,7 @@
     <section class="hero">
       <div class="eyebrow">DEVICE-FIRST SETUP</div>
       <h1>One identity.<br><span>Call over the internet.</span></h1>
-      <p>Every call starts in Server and receives a Server call record. If the recipient's registered Server receiver has a fresh internet connection, voice travels through WebRTC. If the recipient is not reachable on Server—or the number is not registered for Server—the connector automatically switches to the SIM you selected during onboarding. The cellular call then runs entirely on your mobile operator's network; your operator applies its normal charges and Server adds no calling charge.</p>
+      <p>Every call starts in Server and uses the internet. A Server member with a fresh connection is reached through the Server receiver. A non-member is reached through a secure, caller-identified browser invitation: once that number has enrolled a browser call receiver, Server can send a Web Push alert over Wi-Fi or mobile data, and the recipient answers through WebRTC without installing Server. For first contact, the invitation must be shared once so the recipient can enable browser call alerts. Server does not switch an unanswered internet call to a mobile operator.</p>
     </section>
     <section class="panel" aria-live="polite">
       <div id="status" class="status hidden" role="status"></div>
@@ -39,14 +39,14 @@
         <button class="primary full" id="open-server-app" type="button">I've installed Server — continue setup <span aria-hidden="true">→</span></button>
         <p id="fallback" class="fine-print hidden">The phone integration did not open. A browser cannot register an account with Android's system calling interface by itself; install the Server calling component and try again.</p>
         <div class="next-note"><strong>Important about your number</strong><span>Your Server ID is your internet-calling identity. Your existing mobile number and carrier service remain unchanged. You can optionally verify and link a number later, with your permission, so other Server users can find you that way.</span></div>
-        <div class="next-note"><strong>How recipient availability works</strong><span>Reachable means the recipient's Server app or connector has sent a recent authenticated heartbeat over the internet. If that heartbeat is stale, Server treats the receiver as not reachable for WebRTC and uses the caller's selected SIM. For a phone number that is not registered with Server, there is no Server receiver to measure, so it uses the selected SIM directly. Server cannot inspect a stranger's phone settings or prove that mobile data is switched off from a number alone; the label is “Unreachable on Server”, not a claim about the phone's data toggle.</span></div>
+        <div class="next-note"><strong>How recipient availability works</strong><span>For Server members, reachability requires a fresh authenticated internet heartbeat. For non-members, Server uses the phone number to look up a previously enrolled guest-browser receiver. If one exists, Server sends a caller-identified Web Push alert over mobile data or Wi-Fi; opening the notification and answering establishes the WebRTC call. A number alone does not reveal whether an unregistered phone has internet, so first contact requires sharing the secure invitation once and enabling browser call alerts. If no receiver is enrolled or reachable, Server reports the call as unreachable; it does not place a carrier call.</span></div>
         <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
         <p id="ios-install-note" class="fine-print">iPhone uses a separate native Server app and Apple's calling-app permissions. The Android APK above cannot be installed on iPhone; the iOS setup will be released separately.</p>
       </div>
       <div id="native-setup" class="hidden">
-        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>Every call is registered in Server. Reachable Server recipients are called over WebRTC. If the recipient is not reachable on Server, or the number is not a Server account, Server automatically places a normal carrier call through the SIM you select below.</p></div></div>
+        <div class="step-title"><span class="step-number">01</span><div><h2>Create your Server identity</h2><p>Every call is registered in Server. Server members and enrolled non-member browser receivers are reached over the internet. Non-members answer through a secure browser link and WebRTC; they do not need a Server account or app. If no receiver is reachable, Server reports the call as unreachable instead of switching to a carrier network.</p></div></div>
         <div id="call-permission-step" class="hidden">
-          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio, Phone-state access for Android calling-account status and your fallback SIM choices, and notifications for incoming calls. Server reads only the active SIM carrier label and slot you choose. It does not read SIM phone numbers, ICCIDs or IMSIs.</p></div></div>
+          <div class="step-title"><span class="step-number">02</span><div><h2>Allow Server calling</h2><p>Allow microphone access for call audio and notifications for incoming calls. Contacts access, if granted, is used only on this phone to match caller numbers against names already saved in your address book; contacts are never uploaded. Server does not need a selected SIM to place an internet call.</p></div></div>
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Allow permissions and continue <span aria-hidden="true">→</span></button>
@@ -64,15 +64,15 @@
           <div class="success-mark" aria-hidden="true">✓</div>
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
-          <p class="done-text">Your Server ID is ready. A recipient with a fresh Server internet connection is called over WebRTC. If they are unreachable on Server—or are not registered—Server switches to your selected SIM for a normal carrier call. Server records the attempt; the mobile operator handles the voice call and its charges. To receive this carrier fallback when someone calls your Server ID, you must also verify a phone number and explicitly allow number-based calls below.</p>
+          <p class="done-text">Your Server ID is ready. Server calls use WebRTC over the internet. When you call a non-member, Server sends a caller-identified browser push alert if that phone number has previously enrolled a guest receiver. On first contact, share the secure invitation once; the recipient can enable call alerts in their browser and answer without installing Server. If no internet receiver is available, Server records the attempt as unreachable—no mobile-operator fallback is placed.</p>
 
           <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
           <section id="phone-link-step" class="phone-link-step hidden">
             <h3>Link your mobile number</h3>
-            <p class="fine-print">Verify the mobile number where you want to receive carrier fallback. When you explicitly allow it below, Server can provide this verified number to a caller when your Server receiver is unreachable, so their previously selected SIM can place a normal carrier call to you. It also allows number-based Server calling and may share your number as caller ID. Without this consent, other Server users can still reach your Server ID over WebRTC while you are online, but Server cannot route your offline Server ID to your phone number. This does not redirect ordinary carrier calls. Verification needs the paired Server SMS gateway and may use carrier SMS charges.</p>
+            <p class="fine-print">Linking and verifying a phone number lets other Server users find your Server identity by number and, with your explicit consent, show that number as caller ID. It does not enable carrier-call fallback. Guest browser receivers are enrolled separately when a non-member opens a secure Server invitation and enables call alerts. Number verification uses the paired Server SMS gateway and may incur carrier SMS charges; it is not used to deliver guest call invitations.</p>
                       <div class="gateway-setup">
             <h4>Set up SMS verification</h4>
-            <p class="fine-print">Phone-number verification is optional for online WebRTC calling, but it is required if you want other Server users to reach your Server ID through their selected SIM when you are unreachable on Server. The code expires after 10 minutes.</p>
+            <p class="fine-print">Phone-number verification is optional. It lets other Server users resolve your Server identity by your verified number; it does not change the internet-only calling route. The code expires after 10 minutes.</p>
             <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate SMS gateway pairing code</button>
             <div id="sms-gateway-pairing-result" class="hidden">
               <label for="sms-gateway-pairing-code">One-time pairing code</label>
@@ -80,7 +80,7 @@
               <p id="sms-gateway-pairing-expiry" class="fine-print"></p>
             </div>
           </div>
-            <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow Server to share this verified number with another Server caller when I am unreachable, so their selected SIM can call my phone over the mobile network. Also allow number-based Server calling and show this number as my caller ID.</span></label>
+            <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow other Server users to find my Server identity using this verified phone number and show it as my caller ID.</span></label>
             <label for="link-phone-number">Mobile number</label>
             <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or +919876543210">
             <button class="primary full" id="request-phone-link-code" type="button">Send verification code</button>
@@ -156,7 +156,7 @@
           </div>
         </article>
       </div>
-      <p class="walkthrough-note"><strong>About these pictures:</strong> They are explanatory illustrations, not screenshots from every Android phone. Exact prompts and call-choice layouts vary by device. Server uses WebRTC only when the registered recipient has a fresh Server connection. Otherwise, or when the destination is not a Server account, Android switches to the selected SIM. The carrier call is handled and charged by the mobile operator, not Server.</p>
+      <p class="walkthrough-note"><strong>About these pictures:</strong> They are explanatory illustrations, not screenshots from every Android phone. Exact prompts and call-choice layouts vary by device. Server calls use WebRTC over mobile data or Wi-Fi. Non-members can answer from a secure browser invitation after enabling call alerts; no Server app or account is required on their phone. Server never converts a failed internet call into a carrier call.</p>
     </section>
     <footer><span>SERVER · NATIVE SETUP</span><span>Website onboarding · Native calling bridge</span></footer>
   </main>
