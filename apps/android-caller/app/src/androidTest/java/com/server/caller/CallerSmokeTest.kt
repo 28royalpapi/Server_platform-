@@ -651,13 +651,17 @@ class CallerSmokeTest {
   }
 
   private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    // Write through the instrumentation APK's own permission declaration.
-    // WRITE_CONTACTS is not included in the shipped Server application.
+    // WRITE_CONTACTS is merged only into the debug build used by instrumentation;
+    // the production release manifest never declares this permission.
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val testContext = instrumentation.context
     instrumentation.uiAutomation.grantRuntimePermission(
-      testContext.packageName,
+      context.packageName,
       Manifest.permission.WRITE_CONTACTS
+    )
+    assertEquals(
+      "The debug-only contact fixture permission must be granted before setup",
+      android.content.pm.PackageManager.PERMISSION_GRANTED,
+      context.checkSelfPermission(Manifest.permission.WRITE_CONTACTS)
     )
     try {
       val operations = arrayListOf<android.content.ContentProviderOperation>()
@@ -677,11 +681,11 @@ class CallerSmokeTest {
         .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
         .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
         .build())
-      testContext.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
+      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
     } finally {
       try {
         instrumentation.uiAutomation.revokeRuntimePermission(
-          testContext.packageName,
+          context.packageName,
           Manifest.permission.WRITE_CONTACTS
         )
       } catch (_: Exception) {}
