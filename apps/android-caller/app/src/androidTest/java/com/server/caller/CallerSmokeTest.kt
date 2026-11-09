@@ -651,11 +651,14 @@ class CallerSmokeTest {
   }
 
   private fun insertDemoContact(context: Context, displayName: String, phone: String) {
-    // Instrumentation adopts the shell identity only while inserting this
-    // isolated fixture. This API is available on supported Android 8+ test SDKs
-    // and avoids adding WRITE_CONTACTS to Server's production manifest.
-    val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-    automation.adoptShellPermissionIdentity()
+    // Write through the instrumentation APK's own permission declaration.
+    // WRITE_CONTACTS is not included in the shipped Server application.
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val testContext = instrumentation.context
+    instrumentation.uiAutomation.grantRuntimePermission(
+      testContext.packageName,
+      Manifest.permission.WRITE_CONTACTS
+    )
     try {
       val operations = arrayListOf<android.content.ContentProviderOperation>()
       val rawContact = operations.size
@@ -674,9 +677,14 @@ class CallerSmokeTest {
         .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone)
         .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
         .build())
-      context.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
+      testContext.contentResolver.applyBatch(ContactsContract.AUTHORITY, operations)
     } finally {
-      automation.dropShellPermissionIdentity()
+      try {
+        instrumentation.uiAutomation.revokeRuntimePermission(
+          testContext.packageName,
+          Manifest.permission.WRITE_CONTACTS
+        )
+      } catch (_: Exception) {}
     }
   }
 
