@@ -799,6 +799,11 @@ assert.match(gatewayGuestClaimMigration,/c\.caller_user_id=d\.owner_user_id/,"on
 
 assert.match(calls,/invitation_text:invitationText/,"the backend returns a secure shareable caller-identifying guest preview invitation");
 assert.match(androidMain,/normalizePhoneForServer/);
+assert.match(calls,/caller_display_name:caller\.display_name\|\|"SERVER CALLER"/,"the backend sends the caller's chosen display name to incoming devices");
+assert.match(androidMain,/call\.optString\("caller_display_name"\)/,"the open Android app uses the caller's chosen display name for incoming calls");
+assert.match(androidIncoming,/row\.optString\("caller_display_name"\)/,"the background Android listener uses the caller's chosen display name");
+assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve\(this, phone, fallbackCallerName\)/,"the Telecom callback preserves the caller's chosen name when no local contact match exists");
+assert.match(androidIdentityResolver,/chooseDisplayName\(localContactName, serverDisplayName, sharedPhone\)/,"caller identity resolution prefers local contacts, then Server display name, then a permitted number");
 assert.doesNotMatch(androidMain,/SIM selection is optional: choose a preferred line only if you want carrier fallback|carrier fallback uses your own mobile line/i,"Android setup must not invite SIM selection for Server calling");
 assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
 assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations retain a system share-sheet fallback when the paired gateway is unavailable");
