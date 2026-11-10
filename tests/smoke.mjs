@@ -945,7 +945,7 @@ assert.match(guestWeb,/api\("push_presence"/,
   "the guest page reports fresh browser reachability while it is visible");
 assert.match(guestBrowserHtml,/id="enable-guest-alerts"/,
   "non-Server recipients can enable call alerts on the browser invitation page");
-assert.match(guestBrowserHtml,/rel="manifest" href="\\/manifest\\.webmanifest"/,
+assert.ok(guestBrowserHtml.includes('rel="manifest" href="/manifest.webmanifest'),
   "the guest invitation declares a web app manifest for iOS Home Screen push");
 assert.match(guestBrowserHtml,/apple-mobile-web-app-capable/,
   "iOS can launch the guest receiver as a Home Screen web app");
@@ -958,15 +958,14 @@ assert.equal("start_url" in guestManifest,false,
 assert.match(guestPwaIcon,/viewBox="0 0 512 512"/,
   "the guest PWA includes a scalable square home-screen icon");
 assert.match(guestWeb,/isIOSDevice/);
-assert.match(guestWeb,/navigator\\.standalone/);
+assert.ok(guestWeb.includes("navigator.standalone"));
 assert.match(guestWeb,/Add Server to Home Screen for call alerts/,
   "iPhone guests are guided through Home Screen enrolment before background push is offered");
 assert.match(guestWeb,/This invitation stays attached/,
   "the first-contact invitation token is retained until the iOS PWA can enrol the recipient");
-assert.match(guestWeb,/if\\(!isIOSDevice\\|\\|isIOSHomeScreen\\)history\\.replaceState/,
-  "the guest page hides its one-time token only after launching inside the installed iOS web app");
-assert.match(guestServiceWorker,/manifest\\.webmanifest/);
-assert.match(guestServiceWorker,/server-app-icon\\.svg/);
+assert.ok(guestWeb.includes('if(!isIOSDevice||isIOSHomeScreen)history.replaceState'));
+assert.ok(guestServiceWorker.includes("/manifest.webmanifest"));
+assert.ok(guestServiceWorker.includes("/images/server-app-icon.svg"));
 assert.match(guestServiceWorker,/addEventListener\("push"/,
   "the service worker can display incoming guest-call notifications while the page is closed");
 assert.match(guestServiceWorker,/addEventListener\("notificationclick"/,
