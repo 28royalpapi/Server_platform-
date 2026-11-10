@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
 import android.telecom.ConnectionService
@@ -64,11 +65,30 @@ object ServerTelecomRegistry {
     return isEnabled(app)
   }
 
-  fun isEnabled(context: Context): Boolean {
+  /**
+   * The enabled state is intentionally tri-state. Android protects the pre-API-35
+   * account-list APIs with READ_PHONE_STATE/READ_PHONE_NUMBERS, which Server does
+   * not request because it does not inspect SIMs or carrier numbers. API 35+
+   * exposes this app's own registered accounts without those permissions.
+   */
+  fun enabledState(context: Context): Boolean? {
+    if (Build.VERSION.SDK_INT < 35) return null
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    return try { telecom.callCapablePhoneAccounts.contains(handle(context)) }
-    catch (_: SecurityException) { false }
+    return try {
+      telecom.registeredPhoneAccounts
+        .firstOrNull { it.accountHandle == handle(context) }
+        ?.isEnabled ?: false
+    } catch (_: SecurityException) {
+      null
+    } catch (_: Exception) {
+      null
+    }
   }
+
+  fun isEnabled(context: Context): Boolean = enabledState(context) == true
+
+  /** Unknown on older Android means attempt Telecom and handle a rejected account safely. */
+  fun canAttemptTelecom(context: Context): Boolean = enabledState(context) != false
 
   fun openApp(context: Context, extras: Bundle) {
     val intent = Intent(context, MainActivity::class.java).apply {
@@ -157,8 +177,17 @@ object ServerTelecomRegistry {
   fun answerFromNotification(context: Context, callId: String) {
     ServerCallNotifications.cancel(context, callId)
     val connection = incomingConnections[callId]
-    if (connection != null) connection.answerFromNotification()
-    else reportIncoming(context, callId, "Server caller")
+    if (connection != null) {
+      connection.answerFromNotification()
+    } else {
+      // If the account is disabled (or Android cannot expose its state without
+      // phone-state permission), answer in Server itself instead of re-reporting
+      // an incoming call that Telecom may reject.
+      openApp(context, Bundle().apply {
+        putString("server_action", "answer")
+        putString("server_call_id", callId)
+      })
+    }
   }
 
   fun declineFromNotification(context: Context, callId: String) {
