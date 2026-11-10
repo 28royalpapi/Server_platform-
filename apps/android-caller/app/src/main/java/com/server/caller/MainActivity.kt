@@ -862,14 +862,19 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
             val sharedPhone = call.optString("caller_phone_e164").takeIf {
               Regex("^\\+[1-9][0-9]{1,14}$").matches(it)
             }
-            // Never show the opaque Server ID as an incoming caller identity.
-            val caller = sharedPhone ?: "Server caller"
+            val callerDisplayName = call.optString("caller_display_name")
+              .ifBlank { call.optString("caller_label") }.trim().take(80)
+            // A locally saved contact name wins; otherwise show the caller's
+            // chosen Server name. Never reveal an unshared phone number or Server ID.
+            val caller = sharedPhone?.let {
+              ServerCallerIdentityResolver.resolve(this@MainActivity, it, callerDisplayName)
+            } ?: ServerCallerIdentityResolver.chooseDisplayName(null, callerDisplayName, null)
             if (call.optString("state") == "missed") {
               if (!ServerCallNotifications.showMissed(this@MainActivity, id, caller)) shownIncoming.remove(id)
               continue
             }
             if (ServerTelecomRegistry.isEnabled(this)) {
-              try { ServerTelecomRegistry.reportIncoming(this, id, caller) }
+              try { ServerTelecomRegistry.reportIncoming(this, id, callerDisplayName, sharedPhone) }
               catch (_: Exception) { runOnUiThread { showIncomingDialog(id, caller) } }
             } else runOnUiThread { showIncomingDialog(id, caller) }
           }
