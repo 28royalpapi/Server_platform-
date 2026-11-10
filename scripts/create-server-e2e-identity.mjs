@@ -9,6 +9,7 @@ const response = await fetch(projectUrl.replace(/\/$/, "") + "/functions/v1/serv
     action: "register_device",
     installation_id: randomUUID(),
     device_secret: randomBytes(32).toString("hex"),
+    display_name: "Server E2E " + randomUUID().slice(0, 8),
     accepted_terms: true,
     terms_version: "server-terms-1.0",
     privacy_version: "server-privacy-1.0"
