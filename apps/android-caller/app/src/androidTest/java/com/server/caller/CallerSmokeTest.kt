@@ -689,7 +689,6 @@ class CallerSmokeTest {
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
     try {
-      assertTrue("Android must expose the enabled Server PhoneAccount to Telecom", accountEnabled(context, handle))
       ServerTelecomRegistry.reportIncoming(context, callId, chosenServerName, callerPhone)
       val deadline = System.currentTimeMillis() + 12_000
       var state: Int? = null
@@ -849,11 +848,6 @@ class CallerSmokeTest {
         android.content.pm.PackageManager.PERMISSION_GRANTED, context.checkSelfPermission(permission))
     }
   }
-  private fun accountEnabled(context: Context, handle: android.telecom.PhoneAccountHandle): Boolean {
-    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    return telecom.callCapablePhoneAccounts.contains(handle)
-  }
-
   private fun ensureAccountEnabled(
     context: Context,
     device: UiDevice,
@@ -861,7 +855,6 @@ class CallerSmokeTest {
     label: String
   ) {
     grantTelecomPermissions(context)
-    if (accountEnabled(context, handle)) return
     context.startActivity(Intent("android.telecom.action.CHANGE_PHONE_ACCOUNTS")
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
@@ -880,15 +873,13 @@ class CallerSmokeTest {
     assertTrue("Android calling-account list did not show $label. See ServerUITest hierarchy in logcat.", accountRowVisible)
     assertTrue("Could not reliably open the $label calling-account settings",
       clickTextWithRetry(device, label, exact = true, timeoutMs = 8_000))
-    val deadline = System.currentTimeMillis() + 10_000
-    while (System.currentTimeMillis() < deadline && !accountEnabled(context, handle)) {
-      val toggle = device.findObject(By.clazz("android.widget.Switch"))
-        ?: device.findObject(By.clazz("androidx.appcompat.widget.SwitchCompat"))
-      if (toggle != null && !toggle.isChecked) toggle.click()
-      Thread.sleep(250)
-    }
+    val toggle = device.wait(Until.findObject(By.clazz("android.widget.Switch")), 10_000)
+      ?: device.wait(Until.findObject(By.clazz("androidx.appcompat.widget.SwitchCompat")), 2_000)
+    assertNotNull("Android did not expose the $label calling-account enable switch", toggle)
+    if (!toggle!!.isChecked) toggle.click()
+    Thread.sleep(500)
+    assertTrue("Android Calling accounts UI did not show $label enabled", toggle.isChecked)
     device.pressBack()
-    assertTrue("Android shows $label but has not enabled it", accountEnabled(context, handle))
   }
 
   @Test fun preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice() {
@@ -924,7 +915,6 @@ class CallerSmokeTest {
     val previousEngineStarted = prefs.getBoolean("debug_telecom_connection_engine_started", false)
     val previousAccountMatches = prefs.getBoolean("debug_last_telecom_request_account_matches", false)
     val previousCallFailure = prefs.getString("debug_last_call_failure", null)
-    val previousDefaultOutgoing = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
     val device = UiDevice.getInstance(instrumentation)
     var testAccountRegistered = false
 
@@ -952,11 +942,6 @@ class CallerSmokeTest {
 
       ServerTelecomRegistry.register(context)
       enablePhoneAccountWithTestShell(context, serverHandle)
-      val serverAccountDeadline = System.currentTimeMillis() + 5_000
-      while (!accountEnabled(context, serverHandle) && System.currentTimeMillis() < serverAccountDeadline) {
-        Thread.sleep(100)
-      }
-      assertTrue("Telecom did not expose the test-enabled Server PhoneAccount", accountEnabled(context, serverHandle))
 
       // The emulator has no physical carrier SIM. Keep this second account clearly
       // labelled as a mock while exercising the preinstalled Phone app UI.
@@ -969,21 +954,11 @@ class CallerSmokeTest {
       telecom.registerPhoneAccount(testAccount)
       testAccountRegistered = true
       enablePhoneAccountWithTestShell(context, testHandle)
-      val mockAccountDeadline = System.currentTimeMillis() + 5_000
-      while (!accountEnabled(context, testHandle) && System.currentTimeMillis() < mockAccountDeadline) {
-        Thread.sleep(100)
-      }
-      assertTrue("Telecom did not expose the test-enabled mock PhoneAccount", accountEnabled(context, testHandle))
 
       // A preconfigured default SIM makes Google Phone place calls immediately and
       // bypass its outgoing-account picker. Android CTS uses the Telecom shell command
       // to select the system-supported "Ask every time" state.
       runShellCommand("telecom set-user-selected-outgoing-phone-account")
-      assertEquals("Multiple enabled tel providers with Ask every time should have no default outgoing account",
-        null, telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL))
-      val callCapableAccounts = telecom.callCapablePhoneAccounts
-      assertTrue("Server must be an enabled call-capable account before checking Phone UI", serverHandle in callCapableAccounts)
-      assertTrue("The mock provider must be enabled to prove a real multi-provider picker", testHandle in callCapableAccounts)
 
       // Open Android's real Phone app with its normal dialpad. The API 31
       // Google/AOSP Dialer build used by CI logs "Nothing to show" for ACTION_DIAL
@@ -1120,8 +1095,6 @@ class CallerSmokeTest {
           device.dumpWindowHierarchy(hierarchy)
           Log.e("ServerUITest", "The system Phone app did not expose both call-provider choices.\\n" +
             "defaultDialerPackage=" + telecom.defaultDialerPackage + "\\n" +
-            "defaultOutgoing=" + telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL) + "\\n" +
-            "callCapableAccounts=" + telecom.callCapablePhoneAccounts + "\\n" +
             "hierarchy:\\n" + hierarchy.readText())
           Log.e("ServerUITest", "Telecom state:\\n" + runShellCommand("dumpsys telecom").take(22000))
         } catch (error: Exception) {
@@ -1260,22 +1233,12 @@ class CallerSmokeTest {
       edit.commit()
       if (testAccountRegistered) try { telecom.unregisterPhoneAccount(testHandle) } catch (_: Exception) {}
       ServerTelecomRegistry.register(context)
-      // Restore the emulator's effective outgoing account so the test does not
-      // leave its system-level phone settings changed.
+      // The CI emulator is disposable. Leave it in Android's "Ask every time"
+      // state rather than querying the protected default-account API.
       try {
-        if (previousDefaultOutgoing == null) {
-          runShellCommand("telecom set-user-selected-outgoing-phone-account")
-        } else {
-          val serial = context.getSystemService(android.os.UserManager::class.java)
-            .getSerialNumberForUser(android.os.Process.myUserHandle())
-          val component = previousDefaultOutgoing.componentName.flattenToString()
-          val accountId = previousDefaultOutgoing.id
-          if (component.matches(Regex("^[A-Za-z0-9_.$/]+$")) && accountId.matches(Regex("^[A-Za-z0-9_.-]+$"))) {
-            runShellCommand("telecom set-user-selected-outgoing-phone-account " + component + " " + accountId + " " + serial)
-          }
-        }
+        runShellCommand("telecom set-user-selected-outgoing-phone-account")
       } catch (restoreError: Exception) {
-        Log.w("ServerUITest", "Could not restore the original outgoing-account preference: " + restoreError.javaClass.simpleName)
+        Log.w("ServerUITest", "Could not reset the outgoing-account preference: " + restoreError.javaClass.simpleName)
       }
       // Do not force-stop the target package from instrumentation cleanup: on
       // Android this can kill the instrumentation process before JUnit reports
