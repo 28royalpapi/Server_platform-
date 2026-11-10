@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 // Disposable test identity + reserved fictional NANP destination.
@@ -11,7 +11,7 @@ const publishableKey = process.env.SERVER_SUPABASE_PUBLISHABLE_KEY ||
   configText.match(/publishableKey:\s*"([^"]+)"/)?.[1] || "";
 assert.ok(projectUrl && publishableKey.startsWith("sb_publishable_"), "Server public Supabase config is required.");
 
-const destination = "+12025550147"; // Reserved fictional number; no recipient or carrier is contacted.
+const destination = "+120255501" + String(randomInt(100)).padStart(2, "0"); // One of the reserved fictional 555-0100..0199 numbers.
 const baseHeaders = { apikey: publishableKey };
 const createdCallIds = new Set();
 let accessToken = "";
