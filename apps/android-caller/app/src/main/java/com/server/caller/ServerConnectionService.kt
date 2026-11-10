@@ -168,10 +168,23 @@ object ServerTelecomRegistry {
     else ServerIncomingCallService.endCall(context, callId)
   }
 
-  fun reportIncoming(context: Context, callId: String, callerIdentity: String) {
+  fun reportIncoming(
+    context: Context,
+    callId: String,
+    callerDisplayName: String,
+    sharedCallerPhone: String? = null
+  ) {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    val callerPhone = callerIdentity.trim().takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }
-    val localName = callerPhone?.let { ServerCallerIdentityResolver.resolve(context, it) } ?: "Server caller"
+    val phonePattern = Regex("^\\\\+[1-9][0-9]{7,14}$")
+    // Keep older internal callers compatible when they pass only a shared E.164 number.
+    val callerPhone = sharedCallerPhone?.trim()?.takeIf { phonePattern.matches(it) }
+      ?: if (sharedCallerPhone == null) callerDisplayName.trim().takeIf { phonePattern.matches(it) } else null
+    val fallbackName = if (sharedCallerPhone == null && callerPhone != null) null else callerDisplayName
+    val localName = if (callerPhone != null) {
+      ServerCallerIdentityResolver.resolve(context, callerPhone, fallbackName)
+    } else {
+      ServerCallerIdentityResolver.chooseDisplayName(null, fallbackName, null)
+    }
     val extras = Bundle().apply {
       putString("server_call_id", callId)
       putString("server_caller_id", localName.take(80))
@@ -245,8 +258,12 @@ class ServerConnectionService : ConnectionService() {
     val requestPhone = request.address?.schemeSpecificPart.orEmpty()
     val phone = (extras.getString("server_remote_phone") ?: requestPhone)
       .takeIf { it.matches(Regex("^\\+[1-9][0-9]{7,14}$")) }.orEmpty()
-    val callerIdentity = phone.takeIf { it.isNotBlank() }
-      ?.let { ServerCallerIdentityResolver.resolve(this, it) } ?: "Server caller"
+    val callerFallback = extras.getString("server_caller_id").orEmpty()
+    val callerIdentity = if (phone.isNotBlank()) {
+      ServerCallerIdentityResolver.resolve(this, phone, callerFallback)
+    } else {
+      ServerCallerIdentityResolver.chooseDisplayName(null, callerFallback, null)
+    }
     val callId = extras.getString("server_call_id").orEmpty()
     val address = phone.takeIf { it.isNotBlank() }?.let { Uri.parse("tel:$it") }
     return ServerTelecomConnection(this).apply {
