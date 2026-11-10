@@ -45,13 +45,19 @@ class ServerSetupWebActivity : Activity() {
     // The system Calling accounts screen is a mandatory user-consent boundary for a
     // system-managed ConnectionService. Once the user enables Server and returns,
     // continue directly to the ordinary dialer; never try to bypass the system toggle.
-    val enabled = try { ServerTelecomRegistry.isEnabled(this) } catch (_: Exception) { false }
-    if (enabled) {
+    val enabledState = try { ServerTelecomRegistry.enabledState(this) } catch (_: Exception) { null }
+    if (enabledState == true || enabledState == null) {
+      // On Android 8–14 the OS deliberately hides this account state from apps
+      // without READ_PHONE_STATE. Do not request that permission just to inspect
+      // the user's calling-account toggle; proceed to the dialer and let Telecom
+      // expose Server as a choice if the user enabled it.
       ServerIncomingCallService.start(this)
       prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()
       web.post {
         if (isFinishing || isDestroyed) return@post
-        web.evaluateJavascript("window.onServerCallingAccountStatus && window.onServerCallingAccountStatus(true)", null)
+        val enabled = enabledState == true
+        val known = enabledState != null
+        web.evaluateJavascript("window.onServerCallingAccountStatus && window.onServerCallingAccountStatus($enabled, $known)", null)
         web.postDelayed({
           if (!isFinishing && !isDestroyed) {
             startActivity(Intent(Intent.ACTION_DIAL))
@@ -62,7 +68,7 @@ class ServerSetupWebActivity : Activity() {
     } else {
       web.post {
         if (!isFinishing && !isDestroyed) {
-          web.evaluateJavascript("window.onServerCallingAccountStatus && window.onServerCallingAccountStatus(false)", null)
+          web.evaluateJavascript("window.onServerCallingAccountStatus && window.onServerCallingAccountStatus(false, true)", null)
         }
       }
     }
@@ -409,7 +415,7 @@ class ServerSetupWebActivity : Activity() {
             runJs("window.onServerSettingsError && window.onServerSettingsError()")
             return@runOnUiThread
           }
-          if (ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity)) {
+          if (ServerTelecomRegistry.enabledState(this@ServerSetupWebActivity) == true) {
             ServerIncomingCallService.start(this@ServerSetupWebActivity)
             prefs.edit().putBoolean("server_open_dialer_after_account_enable", false).apply()
             startActivity(Intent(Intent.ACTION_DIAL))
@@ -426,11 +432,11 @@ class ServerSetupWebActivity : Activity() {
     }
 
     @JavascriptInterface fun isCallingAccountEnabled(): Boolean =
-      try { ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity) } catch (_: Exception) { false }
+      try { ServerTelecomRegistry.enabledState(this@ServerSetupWebActivity) == true } catch (_: Exception) { false }
 
     @JavascriptInterface fun openPhoneDialer() {
       runOnUiThread {
-        if (ServerTelecomRegistry.isEnabled(this@ServerSetupWebActivity)) ServerIncomingCallService.start(this@ServerSetupWebActivity)
+        ServerIncomingCallService.start(this@ServerSetupWebActivity)
         startActivity(Intent(Intent.ACTION_DIAL))
         finish()
       }
