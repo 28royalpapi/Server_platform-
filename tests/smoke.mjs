@@ -29,6 +29,8 @@ const android17InstallScript=read("scripts/android17-16kb-acceptance.sh");
 const liveGuestTransitionContract=read("scripts/live-guest-transition-contract.mjs");
 const offlineInbox=read("web/offline-inbox.js");
 const guestServiceWorker=read("web/server-guest-sw.js");
+const guestManifest=JSON.parse(read("web/manifest.webmanifest"));
+const guestPwaIcon=read("web/images/server-app-icon.svg");
 const guestWebPushMigration=read("supabase/migrations/20261109165000_server_guest_browser_web_push.sql");
 const guestWebPushSender=read("supabase/functions/_shared/guest_web_push.ts");
 const offlineArchitecture=read("docs/offline-delivery.md");
@@ -943,6 +945,28 @@ assert.match(guestWeb,/api\("push_presence"/,
   "the guest page reports fresh browser reachability while it is visible");
 assert.match(guestBrowserHtml,/id="enable-guest-alerts"/,
   "non-Server recipients can enable call alerts on the browser invitation page");
+assert.match(guestBrowserHtml,/rel="manifest" href="\\/manifest\\.webmanifest"/,
+  "the guest invitation declares a web app manifest for iOS Home Screen push");
+assert.match(guestBrowserHtml,/apple-mobile-web-app-capable/,
+  "iOS can launch the guest receiver as a Home Screen web app");
+assert.equal(guestManifest.display,"standalone",
+  "the iOS guest receiver is configured for standalone web-app launch");
+assert.equal(guestManifest.scope,"/",
+  "the guest PWA scope includes its incoming-call deep links");
+assert.equal("start_url" in guestManifest,false,
+  "iOS installation defaults to the invitation page URL so its recipient-bound token survives enrolment");
+assert.match(guestPwaIcon,/viewBox="0 0 512 512"/,
+  "the guest PWA includes a scalable square home-screen icon");
+assert.match(guestWeb,/isIOSDevice/);
+assert.match(guestWeb,/navigator\\.standalone/);
+assert.match(guestWeb,/Add Server to Home Screen for call alerts/,
+  "iPhone guests are guided through Home Screen enrolment before background push is offered");
+assert.match(guestWeb,/This invitation stays attached/,
+  "the first-contact invitation token is retained until the iOS PWA can enrol the recipient");
+assert.match(guestWeb,/if\\(!isIOSDevice\\|\\|isIOSHomeScreen\\)history\\.replaceState/,
+  "the guest page hides its one-time token only after launching inside the installed iOS web app");
+assert.match(guestServiceWorker,/manifest\\.webmanifest/);
+assert.match(guestServiceWorker,/server-app-icon\\.svg/);
 assert.match(guestServiceWorker,/addEventListener\("push"/,
   "the service worker can display incoming guest-call notifications while the page is closed");
 assert.match(guestServiceWorker,/addEventListener\("notificationclick"/,
