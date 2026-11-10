@@ -906,11 +906,11 @@ assert.match(calls,/guestPushRegistered/,
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
 assert.match(html,/Phone-number verification is optional/,
+  "onboarding makes phone-number verification optional and separate from guest browser call-alert enrollment");
 assert.match(html,/Server never switches automatically to a cellular SIM/,"onboarding must not promise an automatic carrier fallback");
 assert.match(html,/Server does not request SIM-reading or phone-state permission/,"onboarding permissions must match the current Android manifest");
 assert.doesNotMatch(html,/Phone-state and notification permissions|automatically hands the call to the SIM|selected cellular SIM is used automatically/i,"stale SIM-fallback and phone-state instructions must not return");
 assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
-  "onboarding makes phone-number verification optional and separate from guest browser call-alert enrollment");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
   "Android instrumentation covers fresh heartbeat and background wake classification");
 
