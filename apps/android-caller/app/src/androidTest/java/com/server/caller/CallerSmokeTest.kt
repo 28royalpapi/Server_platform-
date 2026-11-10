@@ -685,6 +685,7 @@ class CallerSmokeTest {
     val handle = ServerTelecomRegistry.handle(context)
     val callId = "telecom-incoming-" + UUID.randomUUID().toString()
     val callerPhone = "+2348030000002"
+    val chosenServerName = "Caller Chosen Name"
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
     try {
