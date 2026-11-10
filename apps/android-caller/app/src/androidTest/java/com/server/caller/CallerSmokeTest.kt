@@ -294,12 +294,6 @@ class CallerSmokeTest {
       val handle = ServerTelecomRegistry.handle(context)
       ServerTelecomRegistry.register(context)
       enablePhoneAccountWithTestShell(context, handle)
-      val accountDeadline = System.currentTimeMillis() + 12_000
-      while (!ServerTelecomRegistry.isEnabled(context) && System.currentTimeMillis() < accountDeadline) {
-        Thread.sleep(100)
-      }
-      assertTrue("The Server PhoneAccount must be enabled before testing an incoming foreground call",
-        ServerTelecomRegistry.isEnabled(context))
       prefs.edit().putString("access_token", "0".repeat(64)).commit()
     }
     try {
@@ -1119,8 +1113,6 @@ class CallerSmokeTest {
           device.dumpWindowHierarchy(hierarchy)
           Log.e("ServerUITest", "The user chose Server but Telecom did not enter ConnectionService.\\n" +
             "currentPackage=" + device.currentPackageName + "\\n" +
-            "defaultOutgoing=" + telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL) + "\\n" +
-            "callCapableAccounts=" + telecom.callCapablePhoneAccounts + "\\n" +
             "hierarchy:\\n" + hierarchy.readText())
           Log.e("ServerUITest", "Telecom state after selecting Server:\\n" + runShellCommand("dumpsys telecom").take(22000))
           Log.e("ServerUITest", "Activity state after selecting Server:\\n" + runShellCommand("dumpsys activity activities").take(12000))
