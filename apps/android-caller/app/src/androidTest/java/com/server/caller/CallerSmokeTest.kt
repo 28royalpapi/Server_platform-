@@ -530,7 +530,7 @@ class CallerSmokeTest {
     return false
   }
 
-  @Test fun launcherShowsHybridOnboardingWithFallbackSimChoice() {
+  @Test fun launcherShowsInternetOnlyOnboardingWithoutSimFallback() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     assertEquals("Server must not request access to SIM phone numbers",
