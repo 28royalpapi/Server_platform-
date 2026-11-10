@@ -233,7 +233,6 @@ class ServerSetupWebActivity : Activity() {
         ?: ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
       prefs.edit().putString("installation_id", installationId).putString("device_secret", deviceSecret).apply()
 
-      val selectedSim = ServerFallbackSimManager.selectedOption(this)
       val body = JSONObject()
         .put("action", "register_device")
         .put("display_name", normalizedDisplayName)
@@ -242,8 +241,6 @@ class ServerSetupWebActivity : Activity() {
         .put("accepted_terms", true)
         .put("terms_version", "server-terms-1.0")
         .put("privacy_version", "server-privacy-1.0")
-        .put("selected_sim_slot", selectedSim?.slotIndex ?: JSONObject.NULL)
-        .put("selected_sim_carrier", selectedSim?.carrierName ?: JSONObject.NULL)
       val url = BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-auth"
       val conn = (URL(url).openConnection() as HttpURLConnection).apply {
         requestMethod = "POST"; connectTimeout = 15000; readTimeout = 20000; doOutput = true
