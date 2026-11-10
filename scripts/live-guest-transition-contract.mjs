@@ -11,7 +11,7 @@ const publishableKey = process.env.SERVER_SUPABASE_PUBLISHABLE_KEY ||
   configText.match(/publishableKey:\s*"([^"]+)"/)?.[1] || "";
 assert.ok(projectUrl && publishableKey.startsWith("sb_publishable_"), "Server public Supabase config is required.");
 
-const destination = "+120255501" + String(randomInt(100)).padStart(2, "0"); // One of the reserved fictional 555-0100..0199 numbers.
+let destination = "";
 const baseHeaders = { apikey: publishableKey };
 const createdCallIds = new Set();
 let accessToken = "";
@@ -53,6 +53,25 @@ function guestTokenFrom(urlValue) {
 
 async function guest(token, action, extra = {}) {
   return request("server-guest", { token, action, ...extra }, { token: "" });
+}
+
+async function chooseFreshGuestNumber() {
+  const startIndex = randomInt(100);
+  let lastStatus = "no candidate checked";
+  for (let offset = 0; offset < 25; offset++) {
+    const candidate = "+120255501" + String((startIndex + offset) % 100).padStart(2, "0");
+    const availability = await request("server-calls", {
+      action: "availability", to_phone: candidate
+    });
+    const status = availability.recipient_availability?.status;
+    if (availability.ok === true && status === "unknown_guest" &&
+        availability.recipient_availability?.internet_status === "unknown") {
+      destination = candidate;
+      return destination;
+    }
+    lastStatus = status || availability.error || "missing recipient status";
+  }
+  throw new Error("No unused fictional guest number was found for this run: " + lastStatus);
 }
 
 async function startGuestCall() {
@@ -104,6 +123,11 @@ try {
   assert.match(registered.user?.server_id || "", /^SVR-[0-9A-F]{10}$/);
   accessToken = registered.access_token;
   pass("disposable authenticated Server identity", "device-first registration; no OTP or SMS");
+
+  // Select an unused fictional number before any call creation. This prevents
+  // a prior Web Push subscription from receiving a test invitation.
+  await chooseFreshGuestNumber();
+  pass("fresh fictional guest destination selected", destination);
 
   // First call: check the deployed OG document/image and guest signalling lifecycle.
   const first = await startGuestCall();
