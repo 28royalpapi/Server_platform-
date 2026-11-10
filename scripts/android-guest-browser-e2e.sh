@@ -22,7 +22,8 @@ fi
 SERVER_TEST_TOKEN="$(node -e 'const v=require(process.argv[1]);process.stdout.write(v.access_token||"")' "$IDENTITY_FILE")"
 SERVER_TEST_EXPIRY="$(node -e 'const v=require(process.argv[1]);process.stdout.write(String(v.access_expiry||""))' "$IDENTITY_FILE")"
 SERVER_TEST_ID="$(node -e 'const v=require(process.argv[1]);process.stdout.write(v.server_id||"")' "$IDENTITY_FILE")"
-if [[ ! "$SERVER_TEST_TOKEN" =~ ^[0-9a-f]{64}$ || ! "$SERVER_TEST_EXPIRY" =~ ^[0-9]+$ || -z "$SERVER_TEST_ID" ]]; then
+SERVER_TEST_PHONE="$(node -e 'const v=require(process.argv[1]);process.stdout.write(v.test_phone||"")' "$IDENTITY_FILE")"
+if [[ ! "$SERVER_TEST_TOKEN" =~ ^[0-9a-f]{64}$ || ! "$SERVER_TEST_EXPIRY" =~ ^[0-9]+$ || -z "$SERVER_TEST_ID" || ! "$SERVER_TEST_PHONE" =~ ^\+120255501[0-9]{2}$ ]]; then
   echo "ERROR: disposable Server E2E identity is incomplete or malformed." >&2
   exit 1
 fi
@@ -67,6 +68,7 @@ adb shell am instrument -w -r \
   -e server_test_token "$SERVER_TEST_TOKEN" \
   -e server_test_expiry "$SERVER_TEST_EXPIRY" \
   -e server_test_server_id "$SERVER_TEST_ID" \
+  -e server_test_phone "$SERVER_TEST_PHONE" \
   com.server.caller.debug.test/androidx.test.runner.AndroidJUnitRunner \
   > "$LOG_FILE" 2>&1 &
 INSTRUMENTATION_PID=$!
