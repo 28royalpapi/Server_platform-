@@ -48,7 +48,7 @@ class ServerSetupWebActivity : Activity() {
     val enabledState = try { ServerTelecomRegistry.enabledState(this) } catch (_: Exception) { null }
     if (enabledState == true || enabledState == null) {
       // On Android 8–14 the OS deliberately hides this account state from apps
-      // without READ_PHONE_STATE. Do not request that permission just to inspect
+      // without the protected phone-state permission. Do not request that permission just to inspect
       // the user's calling-account toggle; proceed to the dialer and let Telecom
       // expose Server as a choice if the user enabled it.
       ServerIncomingCallService.start(this)
