@@ -359,11 +359,12 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
     callPanel.visibility = View.VISIBLE
     targetInput.setText("")
     ServerPushRegistration.syncFcmToken(this)
-    if (ServerTelecomRegistry.isEnabled(this)) {
-      ServerIncomingCallService.start(this)
-    } else if (incomingJob?.isActive != true) {
-      incomingJob = lifecycleScope.launch { incomingLoop() }
-    }
+    // Keep the signed-in incoming listener alive without querying protected
+    // SIM/phone-state APIs. Telecom itself confirms whether the account is enabled
+    // when an incoming call is reported; rejected calls use Server's CallStyle alert.
+    incomingJob?.cancel()
+    incomingJob = null
+    ServerIncomingCallService.start(this)
     val id = currentServerId.ifBlank { "Server ID loading" }
     setStatus("Your Server ID is $id. This is your internet-calling identity; your existing mobile subscriptions remain unchanged.")
     lifecycleScope.launch {
@@ -378,7 +379,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         }
       } catch (_: Exception) {}
       try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
-      if (ServerTelecomRegistry.isEnabled(this@MainActivity)) ServerIncomingCallService.start(this@MainActivity)
+      ServerIncomingCallService.start(this@MainActivity)
       // Re-sync after the authenticated /me request in case it refreshed the
       // Server session while the first token-registration attempt was running.
       ServerPushRegistration.syncFcmToken(this@MainActivity)
@@ -407,13 +408,9 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
     // The user may have just returned from Android's Calling accounts settings.
     // Re-read the OS-owned PhoneAccount state and start the persistent incoming
     // listener only after Server has actually been enabled there.
-    if (ServerTelecomRegistry.isEnabled(this)) {
-      incomingJob?.cancel()
-      incomingJob = null
-      ServerIncomingCallService.start(this)
-    } else if (incomingJob?.isActive != true) {
-      incomingJob = lifecycleScope.launch { incomingLoop() }
-    }
+    incomingJob?.cancel()
+    incomingJob = null
+    ServerIncomingCallService.start(this)
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -428,11 +425,9 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
     }
     handleTelecomIntent(intent)
     handleAppLink(intent)
-    if (ServerTelecomRegistry.isEnabled(this)) {
-      incomingJob?.cancel()
-      incomingJob = null
-      ServerIncomingCallService.start(this)
-    }
+    incomingJob?.cancel()
+    incomingJob = null
+    ServerIncomingCallService.start(this)
     yieldToSystemPhoneUi(intent)
   }
 
@@ -873,9 +868,22 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
               if (!ServerCallNotifications.showMissed(this@MainActivity, id, caller)) shownIncoming.remove(id)
               continue
             }
-            if (ServerTelecomRegistry.isEnabled(this)) {
-              try { ServerTelecomRegistry.reportIncoming(this, id, callerDisplayName, sharedPhone) }
-              catch (_: Exception) { runOnUiThread { showIncomingDialog(id, caller) } }
+            if (ServerTelecomRegistry.canAttemptTelecom(this)) {
+              try {
+                ServerTelecomRegistry.reportIncoming(this, id, callerDisplayName, sharedPhone)
+                lifecycleScope.launch {
+                  delay(1800)
+                  if (ServerTelecomRegistry.incomingConnectionState(id) == null) {
+                    ServerCallNotifications.show(this@MainActivity, id, caller)
+                  }
+                }
+              } catch (_: Exception) {
+                if (ServerCallNotifications.canPostNotifications(this@MainActivity)) {
+                  ServerCallNotifications.show(this@MainActivity, id, caller)
+                } else runOnUiThread { showIncomingDialog(id, caller) }
+              }
+            } else if (ServerCallNotifications.canPostNotifications(this)) {
+              ServerCallNotifications.show(this, id, caller)
             } else runOnUiThread { showIncomingDialog(id, caller) }
           }
         }
