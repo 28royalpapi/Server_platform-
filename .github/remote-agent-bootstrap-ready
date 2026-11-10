@@ -1,0 +1,1 @@
+This marker triggers a one-time Copilot authentication/readiness smoke test on the bootstrap branch. It does not queue product work.
