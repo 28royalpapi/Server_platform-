@@ -457,7 +457,7 @@ jobs:
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#explicitInternationalNumbersAndCallerRegionFallbackRemainSupported
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsHybridOnboardingWithFallbackSimChoice
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsInternetOnlyOnboardingWithoutSimFallback
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersShareAndSelectedSimActions
@@ -529,7 +529,7 @@ jobs:
             set -eu
             sh scripts/wait-for-android-package-manager.sh
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsHybridOnboardingWithFallbackSimChoice
+            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsInternetOnlyOnboardingWithoutSimFallback
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata
