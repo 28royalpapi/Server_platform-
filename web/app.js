@@ -303,11 +303,13 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.openCallingSettings();
   });
 
-  window.onServerCallingAccountStatus = (enabled) => {
+  window.onServerCallingAccountStatus = (enabled, stateKnown = true) => {
     if (enabled) {
       showStatus("Server is enabled. Opening your normal phone dialer…", true);
+    } else if (!stateKnown) {
+      showStatus("Android does not expose this setting without phone-state access, which Server deliberately does not request. The normal dialer is opening; choose Server if it appears. If it does not, return to Calling accounts and enable Server.");
     } else {
-      showStatus("In Android Calling accounts, enable Server and return here. Your normal phone dialer will open automatically.");
+      showStatus("Server is not enabled yet. Enable it under Android Calling accounts, then return here.");
     }
   };
 
@@ -320,10 +322,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   });
   document.querySelector("#open-phone-dialer") && document.querySelector("#open-phone-dialer").addEventListener("click", () => {
     if (!window.ServerAndroid) { showStatus("Open Server from the Android calling integration first."); return; }
-    if (!window.ServerAndroid.isCallingAccountEnabled()) {
-      showStatus("Server is not enabled yet. Open phone settings, enable Server under calling accounts, then return here.");
-      return;
-    }
+    showStatus("Opening your normal phone dialer. Choose Server for internet calls; your SIM options remain available.");
     window.ServerAndroid.openPhoneDialer();
   });
 
