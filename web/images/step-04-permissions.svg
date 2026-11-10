@@ -13,13 +13,12 @@
 <text x="174" y="330" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Microphone</text><text x="174" y="361" fill="#637381" font-size="15" font-family="Arial">For voice during internet calls</text>
 <rect x="420" y="386" width="78" height="42" rx="21" fill="#d9efe2"/><text x="459" y="414" fill="#176c43" text-anchor="middle" font-size="15" font-family="Arial" font-weight="bold">ALLOW</text>
 <rect x="76" y="468" width="448" height="138" rx="18" fill="#fff" stroke="#d2dce4" stroke-width="2"/>
-<circle cx="124" cy="516" r="25" fill="#e3f2e9"/><path d="M111 518h26m-23-9h20m-17 18h14" stroke="#278453" stroke-width="4" stroke-linecap="round"/>
-<text x="174" y="510" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Phone state</text><text x="174" y="540" fill="#637381" font-size="15" font-family="Arial">To check Server calling-account status</text>
-<text x="174" y="571" fill="#637381" font-size="14" font-family="Arial">Not to read SIM numbers</text>
+<circle cx="124" cy="516" r="25" fill="#e3f2e9"/><path d="M112 526v-16q0-12 12-12t12 12v16m-28 0h32m-22-6h12" fill="none" stroke="#278453" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="174" y="510" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Notifications</text><text x="174" y="540" fill="#637381" font-size="15" font-family="Arial">For incoming and missed call alerts</text>
 <rect x="76" y="624" width="448" height="138" rx="18" fill="#fff" stroke="#d2dce4" stroke-width="2"/>
-<circle cx="124" cy="674" r="25" fill="#e3f2e9"/><path d="M110 681v-18m0 0l14-10 14 10v18h-28" fill="none" stroke="#278453" stroke-width="4"/>
-<text x="174" y="670" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Notifications</text><text x="174" y="701" fill="#637381" font-size="15" font-family="Arial">To show incoming and missed calls</text>
-<rect x="76" y="798" width="448" height="76" rx="14" fill="#dceee4"/><text x="300" y="830" fill="#145d3b" font-size="17" text-anchor="middle" font-weight="bold" font-family="Arial">Review each Android prompt</text><text x="300" y="855" fill="#326e50" font-size="14" text-anchor="middle" font-family="Arial">and grant the requested access.</text>
+<circle cx="124" cy="674" r="25" fill="#e3f2e9"/><rect x="110" y="659" width="28" height="31" rx="4" fill="none" stroke="#278453" stroke-width="4"/><circle cx="119" cy="669" r="3" fill="#278453"/><path d="M126 668h7m-14 8h14m-14 6h14" stroke="#278453" stroke-width="3" stroke-linecap="round"/>
+<text x="174" y="670" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Contacts (optional)</text><text x="174" y="701" fill="#637381" font-size="15" font-family="Arial">Match numbers to names saved on this phone</text>
+<rect x="76" y="798" width="448" height="76" rx="14" fill="#dceee4"/><text x="300" y="830" fill="#145d3b" font-size="17" text-anchor="middle" font-weight="bold" font-family="Arial">Only grant access you choose</text><text x="300" y="855" fill="#326e50" font-size="14" text-anchor="middle" font-family="Arial">No SIM-reading or phone-state permission.</text>
 
 <rect x="244" y="938" width="112" height="7" rx="4" fill="#dce8e1"/>
 </svg>
