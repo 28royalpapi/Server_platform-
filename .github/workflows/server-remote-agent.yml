@@ -1,0 +1,301 @@
+name: Server Remote Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Optional one-task instruction for the remote agent'
+        required: false
+        type: string
+        default: ''
+  schedule:
+    - cron: '17 */8 * * *'
+  issue_comment:
+    types: [created]
+  push:
+    branches:
+      - main
+      - server-remote-agent-bootstrap
+    paths:
+      - 'SERVER_AGENT_BACKLOG.md'
+      - '.github/remote-agent-bootstrap-ready'
+
+concurrency:
+  group: server-remote-agent
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  agent:
+    name: Run one Server engineering task
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.number == 7 &&
+       github.event.comment.user.login == github.repository_owner &&
+       startsWith(github.event.comment.body, '/agent '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      copilot-requests: write
+    outputs:
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
+      has_patch: ${{ steps.capture.outputs.has_patch }}
+      status: ${{ steps.capture.outputs.status }}
+    env:
+      TASK_INPUT: ${{ github.event.inputs.task || (github.event_name == 'issue_comment' && github.event.issue.number == 7 && startsWith(github.event.comment.body, '/agent ') && github.event.comment.body || '') }}
+      BOOTSTRAP_SMOKE: ${{ github.event_name == 'push' && github.ref_name == 'server-remote-agent-bootstrap' && 'true' || 'false' }}
+    steps:
+      - name: Checkout current Server development branch
+        uses: actions/checkout@v4
+        with:
+          ref: android-finish
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare durable task and prompt
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .server-agent-output
+          echo "base_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          TASK_INPUT="${TASK_INPUT#/agent }"
+          HAS_TASK=false
+          if [[ "$BOOTSTRAP_SMOKE" == "true" ]]; then
+            HAS_TASK=true
+            cat > .server-agent-output/prompt.md <<'PROMPT'
+          BOOTSTRAP AUTHENTICATION CHECK ONLY.
+          Read README.md, .github/SERVER_REMOTE_AGENT_POLICY.md, and SERVER_AGENT_BACKLOG.md.
+          Confirm that the remote worker can read the repository and produce a report.
+          Do not edit product source, tests, workflow files, the policy, or the backlog.
+          Do not create commits, branches, pushes, or pull requests.
+          Write .server-agent-output/report.md with STATUS: READY if the Copilot request completed successfully; otherwise explain the exact failure.
+          PROMPT
+          elif [[ -n "$TASK_INPUT" ]]; then
+            HAS_TASK=true
+            cat > .server-agent-output/prompt.md <<'PROMPT'
+          You are the Server Remote Engineering Agent. Follow .github/SERVER_REMOTE_AGENT_POLICY.md exactly.
+          Work on the single owner-supplied task below. Read the repository README and backlog first.
+          Inspect existing code and tests, implement only what is safe, run meaningful checks, update the backlog only when verified, and write .server-agent-output/report.md.
+          Do not commit, push, merge, deploy, or change production systems. The workflow publishes a draft PR separately.
+          PROMPT
+            printf '\nOWNER-SUPPLIED TASK:\n%s\n' "$TASK_INPUT" >> .server-agent-output/prompt.md
+            printf '\nCURRENT BACKLOG:\n' >> .server-agent-output/prompt.md
+            cat SERVER_AGENT_BACKLOG.md >> .server-agent-output/prompt.md
+          elif grep -Eq '^[[:space:]]*-[[:space:]]*\[ \]' SERVER_AGENT_BACKLOG.md; then
+            HAS_TASK=true
+            cat > .server-agent-output/prompt.md <<'PROMPT'
+          You are the Server Remote Engineering Agent. Follow .github/SERVER_REMOTE_AGENT_POLICY.md exactly.
+          Read the README and backlog. Choose the first eligible unchecked item (`- [ ]`) and work on exactly that one task.
+          Skip completed (`- [x]`) and blocked (`- [~]`) items. If no eligible task remains, report STATUS: IDLE.
+          Inspect before editing, fix root causes, run meaningful checks, update the task status only when evidence supports it, and write .server-agent-output/report.md.
+          Do not commit, push, merge, deploy, or change production systems. The workflow publishes a draft PR separately.
+          PROMPT
+            printf '\nCURRENT BACKLOG:\n' >> .server-agent-output/prompt.md
+            cat SERVER_AGENT_BACKLOG.md >> .server-agent-output/prompt.md
+          fi
+          echo "has_task=$HAS_TASK" >> "$GITHUB_OUTPUT"
+          if [[ "$HAS_TASK" == "false" ]]; then
+            cat > .server-agent-output/report.md <<'REPORT'
+          STATUS: IDLE
+
+          No owner-supplied task or unchecked backlog item is queued. No model request was made and no AI credits were consumed.
+          REPORT
+          fi
+
+      - name: Install GitHub Copilot CLI
+        id: install
+        if: steps.prepare.outputs.has_task == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @github/copilot
+          copilot --version
+
+      - name: Execute task with Copilot Free allowance
+        id: run
+        if: steps.prepare.outputs.has_task == 'true' && steps.install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=15s 28m copilot \
+            --disable-client-telemetry \
+            --available-tools='bash,edit,view,grep,glob' \
+            --allow-tool='shell,write' \
+            --deny-tool='shell(git commit)' \
+            --deny-tool='shell(git push)' \
+            --deny-tool='shell(gh pr)' \
+            --deny-tool='shell(gh issue)' \
+            --deny-tool='shell(supabase)' \
+            --deny-tool='shell(vercel)' \
+            --deny-tool='shell(firebase)' \
+            -p "$(cat .server-agent-output/prompt.md)" \
+            > .server-agent-output/copilot.log 2>&1
+          STATUS=$?
+          set -e
+          echo "exit_code=$STATUS" >> "$GITHUB_OUTPUT"
+          cat .server-agent-output/copilot.log
+
+      - name: Capture report and isolate proposed patch
+        id: capture
+        if: always()
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.prepare.outputs.base_sha }}
+          HAS_TASK: ${{ steps.prepare.outputs.has_task }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          AGENT_EXIT_CODE: ${{ steps.run.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          mkdir -p .server-agent-output
+          if [[ ! -s .server-agent-output/report.md ]]; then
+            if [[ "$HAS_TASK" == "true" && "$INSTALL_OUTCOME" != "success" ]]; then
+              printf 'STATUS: BLOCKED\n\nCopilot CLI could not be installed. No product changes were made.\n' > .server-agent-output/report.md
+            elif [[ "$HAS_TASK" == "true" && "${AGENT_EXIT_CODE:-}" != "0" ]]; then
+              printf 'STATUS: BLOCKED\n\nCopilot CLI did not complete successfully (exit code: %s). See copilot.log.\n' "${AGENT_EXIT_CODE:-unknown}" > .server-agent-output/report.md
+            elif [[ "$HAS_TASK" == "true" ]]; then
+              printf 'STATUS: COMPLETED_NO_CHANGES\n\nCopilot completed without writing a report or proposing changes. Review copilot.log.\n' > .server-agent-output/report.md
+            fi
+          fi
+          : > .server-agent-output/agent.patch
+          HAS_PATCH=false
+          if [[ -n "${BASE_SHA:-}" && "$HAS_TASK" == "true" ]]; then
+            git add -N --all
+            git diff --binary --no-ext-diff "$BASE_SHA" -- . ':(exclude).server-agent-output/**' > .server-agent-output/agent.patch
+            if grep -Eq '^diff --git a/\.github/workflows/|^diff --git a/\.github/SERVER_REMOTE_AGENT_POLICY\.md|^diff --git a/\.github/remote-agent-bootstrap-ready' .server-agent-output/agent.patch; then
+              printf '\n\nThe proposed patch touched protected remote-agent configuration. The publisher withheld the entire patch for owner review.\n' >> .server-agent-output/report.md
+              : > .server-agent-output/agent.patch
+            elif [[ -s .server-agent-output/agent.patch ]]; then
+              HAS_PATCH=true
+            fi
+          fi
+          if [[ "$HAS_TASK" == "false" ]]; then
+            STATUS=IDLE
+          elif [[ "$INSTALL_OUTCOME" != "success" || "${AGENT_EXIT_CODE:-}" != "0" ]]; then
+            STATUS=BLOCKED
+          elif [[ "$HAS_PATCH" == "true" ]]; then
+            STATUS=COMPLETED_WITH_CHANGES
+          else
+            STATUS=COMPLETED_NO_CHANGES
+          fi
+          echo "has_patch=$HAS_PATCH" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Server Remote Agent: $STATUS"
+            echo
+            cat .server-agent-output/report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report and patch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-remote-agent-run-${{ github.run_id }}
+          path: .server-agent-output/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish draft PR and journal report
+    needs: agent
+    if: always() && needs.agent.outputs.base_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Download agent report and patch
+        uses: actions/download-artifact@v4
+        with:
+          name: server-remote-agent-run-${{ github.run_id }}
+          path: .server-agent-output
+
+      - name: Checkout exact source revision
+        if: needs.agent.outputs.has_patch == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.agent.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Create isolated branch and draft pull request
+        id: pr
+        if: needs.agent.outputs.has_patch == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          PATCH=.server-agent-output/agent.patch
+          REPORT=.server-agent-output/report.md
+          test -s "$PATCH"
+          if grep -Eq '^diff --git a/\.github/workflows/|^diff --git a/\.github/SERVER_REMOTE_AGENT_POLICY\.md|^diff --git a/\.github/remote-agent-bootstrap-ready' "$PATCH"; then
+            echo 'Protected remote-agent configuration appeared in the patch; refusing to publish.' >&2
+            exit 1
+          fi
+          git apply --check "$PATCH"
+          BRANCH="agent/server-run-${RUN_ID}"
+          git switch -c "$BRANCH"
+          git apply "$PATCH"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Patch contained no publishable changes.' >&2
+            exit 1
+          fi
+          git commit -m "Server agent: automated task run ${RUN_NUMBER}"
+          git push --set-upstream origin "$BRANCH"
+          {
+            echo '## Server Remote Agent Report'
+            echo
+            cat "$REPORT"
+            echo
+            echo '---'
+            echo "Automated run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+            echo
+            echo '**Draft only. No automatic merge or production deployment was performed.**'
+          } > .server-agent-output/pr-body.md
+          URL=$(gh pr create --repo "$GITHUB_REPOSITORY" --draft --base android-finish --head "$BRANCH" --title "Server agent: task run ${RUN_NUMBER}" --body-file .server-agent-output/pr-body.md)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "## Draft pull request" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Append run report to the work journal
+        if: needs.agent.outputs.status != 'IDLE'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          STATUS: ${{ needs.agent.outputs.status }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Run ${GITHUB_RUN_ID} — ${STATUS}"
+            echo
+            echo "[View GitHub Actions run](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID})"
+            if [[ -n "$PR_URL" ]]; then
+              echo
+              echo "[Draft pull request]($PR_URL)"
+            else
+              echo
+              echo 'No draft pull request was created in this run.'
+            fi
+            echo
+            cat .server-agent-output/report.md
+          } > .server-agent-output/journal-comment.md
+          gh issue comment 7 --repo "$GITHUB_REPOSITORY" --body-file .server-agent-output/journal-comment.md
