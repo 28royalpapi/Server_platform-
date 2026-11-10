@@ -1003,12 +1003,12 @@ assert.match(androidIncoming,/reportIncoming\(this, callId, callerDisplayName, c
 assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve/,
   "Android supplies the recipient-local contact name to its native incoming-call surfaces");
 assert.match(androidTelecom,/setCallerDisplayName\(callerIdentity, TelecomManager\.PRESENTATION_ALLOWED\)/,
-  "an unsaved caller is presented using the actual E.164 number instead of a private label or Server ID");
+  "Android presents the locally saved contact name or caller's chosen Server display name on native incoming-call surfaces");
 assert.match(html,/show it as my caller ID/,
   "phone-number consent explains that a verified number is also used as outgoing caller ID");
 assert.match(androidTests,/Habib TNC/,
   "Android Telecom instrumentation covers a recipient-saved contact name");
-assert.match(androidTests,/An unsaved caller must display the real phone number/,
+assert.match(androidTests,/An unsaved caller must display the caller's chosen Server name/,
   "Android Telecom instrumentation covers an unsaved number fallback");
 assert.match(iosModel,/reportIncoming\(id: id, callerName: caller\)/,
   "iOS passes the actual Server caller display identity to CallKit");
