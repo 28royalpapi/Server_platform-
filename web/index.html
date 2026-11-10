@@ -24,7 +24,7 @@
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
         <section id="android-install" class="install-card">
-          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This small Android companion connects Server to Android's system calling interface. With your permission, it reads active SIM carrier names and slot positions so you can choose a fallback line. It never reads SIM phone numbers or serial identifiers.</p></div></div>
+          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This small Android companion connects Server to Android's system calling interface. It does not read SIMs, carrier names, phone numbers or subscriber identifiers. Server calls use mobile data or Wi-Fi; no SIM selection or carrier fallback is required.</p></div></div>
           <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-arm64.apk">Download 64-bit ARM connector (recommended) <span aria-hidden="true">↓</span></a>
           <p class="fine-print">Use this ARM64 build on most current Android phones. For an older phone that only supports 32-bit Android, use the ARMv7 option below. These are phone builds; emulator-only x86 packages are not offered here.</p>
           <a class="secondary full install-link-secondary" id="download-android-connector-armv7" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-armv7.apk">Download 32-bit ARM connector (ARMv7)</a>
@@ -53,15 +53,6 @@
           <label class="check-row" for="native-terms"><input id="native-terms" type="checkbox"><span>I accept the Terms of Service and acknowledge the Privacy Notice.</span></label>
           <div class="legal-links"><a href="terms.html" target="_blank" rel="noopener">Terms of Service <span>↗</span></a><a href="privacy.html" target="_blank" rel="noopener">Privacy Notice <span>↗</span></a></div>
           <button class="primary full" id="grant-call-permissions" type="button" disabled>Allow permissions and continue <span aria-hidden="true">→</span></button>
-        </div>
-        <div id="fallback-sim-step" class="hidden">
-          <div class="step-title"><span class="step-number">03</span><div><h2>Choose a preferred carrier alternative</h2><p>Select the SIM you want Server to offer when an internet call cannot be completed. A recipient's missing Server account or stale app heartbeat does not prove that mobile data and Wi-Fi are both unavailable.</p></div></div>
-          <div id="fallback-sim-options" class="sim-options" role="group" aria-label="Preferred fallback SIM"></div>
-          <p id="fallback-sim-note" class="fine-print" role="status" aria-live="polite">Choose one active SIM. Server will not assume the recipient has no internet merely because their Server app has not responded.</p>
-          <label class="check-row" for="automatic-carrier-fallback"><input id="automatic-carrier-fallback" type="checkbox"><span>I authorize automatic carrier fallback only after Server has an authoritative result that the recipient has no internet. Until such a result is available, uncertain cases require my confirmation.</span></label>
-          <p class="fine-print">Your mobile operator applies its normal charges for any cellular call; Server does not bill you for it. Server must not use an old Server heartbeat or non-membership as proof that the recipient has no internet.</p>
-          <button class="primary full" id="save-fallback-sim" type="button">Save fallback choice and create my Server ID <span aria-hidden="true">→</span></button>
-          <p class="fine-print">SIM labels and slots are used only to identify your selected line. Server never reads or uploads your SIM phone number or serial identifiers.</p>
         </div>
         <div id="finish-step" class="hidden">
           <div class="success-mark" aria-hidden="true">✓</div>
