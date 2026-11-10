@@ -87,7 +87,7 @@
             <button class="secondary full" id="skip-phone-link" type="button">Skip number verification</button>
           </section>
 
-          <p id="calling-account-note" class="done-text">Next, enable Server under Android Calling accounts. Server remains the internet-calling route. When the recipient cannot be reached through Server, the connector automatically hands the call to the SIM you selected; the phone's normal cellular call screen then takes over.</p>
+          <p id="calling-account-note" class="done-text">Next, enable Server under Android Calling accounts. Calls placed through Server use mobile data or Wi-Fi. If the recipient cannot be reached through Server, the attempt is marked unreachable; Server never switches automatically to a cellular SIM. You can still place a separate ordinary cellular call from your phone's Phone app.</p>
           <button class="secondary full" id="enable-calling-account" type="button">Enable Server in phone settings</button>
           <button class="primary full" id="open-phone-dialer" type="button">Open my normal phone dialer <span aria-hidden="true">→</span></button>
           <p class="fine-print">Server is an Android internet-calling account, not a second cellular SIM. Android dialers differ, so the exact placement of Server in the system's call choices depends on the phone and dialer version.</p>
@@ -126,11 +126,11 @@
           </div>
         </article>
         <article class="walkthrough-card">
-          <img src="images/step-04-permissions.svg" alt="Illustration of the Android microphone, phone-state and notification permission steps." loading="lazy" decoding="async">
+          <img src="images/step-04-permissions.svg" alt="Illustration of the Android microphone and notification permission steps, with optional contacts access explained." loading="lazy" decoding="async">
           <div class="walkthrough-copy">
             <span>STEP 04</span>
             <h3>Allow required permissions</h3>
-            <p>Accept the terms, then grant microphone, Phone-state and notification permissions when Android asks. Phone-state access is used to check calling-account settings, not read SIM numbers.</p>
+            <p>Accept the terms, then allow microphone access for call audio and notifications for incoming-call alerts. Contacts access is optional and is used only on this phone to match numbers against names already saved in your address book; contacts are never uploaded. Server does not request SIM-reading or phone-state permission.</p>
           </div>
         </article>
         <article class="walkthrough-card">
@@ -138,7 +138,7 @@
           <div class="walkthrough-copy">
             <span>STEP 05</span>
             <h3>Enable Server in Calling accounts</h3>
-            <p>Turn on Server in Android Calling accounts. Choose Server for internet calls; the selected cellular SIM is used automatically only when the recipient cannot be reached through Server.</p>
+            <p>Turn on Server in Android Calling accounts. Choose Server in the Phone app when you want an internet call. If Server cannot reach the recipient, it reports the attempt as unreachable; it does not hand the call to a SIM.</p>
           </div>
         </article>
         <article class="walkthrough-card">
