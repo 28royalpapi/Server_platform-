@@ -803,7 +803,6 @@ class CallerSmokeTest {
   private fun grantTelecomPermissions(context: Context) {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val permissions = buildList {
-      add(Manifest.permission.READ_PHONE_STATE)
       add(Manifest.permission.RECORD_AUDIO)
       add(Manifest.permission.READ_CONTACTS)
       if (Build.VERSION.SDK_INT >= 29) add(Manifest.permission.WRITE_CONTACTS)
