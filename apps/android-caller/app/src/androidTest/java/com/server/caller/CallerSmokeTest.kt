@@ -536,6 +536,12 @@ class CallerSmokeTest {
     assertEquals("Server must not request access to SIM phone numbers",
       android.content.pm.PackageManager.PERMISSION_DENIED,
       context.checkSelfPermission("android.permission.READ_PHONE_NUMBERS"))
+    assertEquals("Server internet calling does not inspect SIM or subscription state",
+      android.content.pm.PackageManager.PERMISSION_DENIED,
+      context.checkSelfPermission("android.permission.READ_PHONE_STATE"))
+    assertEquals("Server never starts carrier calls or requests carrier dial permission",
+      android.content.pm.PackageManager.PERMISSION_DENIED,
+      context.checkSelfPermission("android.permission.CALL_PHONE"))
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
     assertNotNull("Server does not expose a launcher entry", launchIntent)
     assertEquals("The launcher must open the Server website onboarding bridge",
@@ -552,15 +558,15 @@ class CallerSmokeTest {
       while (System.currentTimeMillis() < uiDeadline) {
         nativeUiState = evaluateSetupWebView(
           scenario,
-          "(function(){var visible=function(e){if(!e)return false;var r=e.getBoundingClientRect(),s=window.getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&r.bottom>0&&r.top<window.innerHeight;};var brand=document.querySelector('.brand-name');var native=document.querySelector('#native-setup');var heading=native&&native.querySelector('.step-title h2');var text=native?(native.textContent||''):'';return [document.readyState,brand?(brand.textContent||'').trim().toLowerCase():'missing-brand',visible(brand),visible(native),visible(heading),text.indexOf('Every call is registered in Server')>=0 && text.indexOf('Select the exact SIM Server must use for cellular fallback')>=0].join('|');})()"
+          "(function(){var visible=function(e){if(!e)return false;var r=e.getBoundingClientRect(),s=window.getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&r.bottom>0&&r.top<window.innerHeight;};var brand=document.querySelector('.brand-name');var native=document.querySelector('#native-setup');var heading=native&&native.querySelector('.step-title h2');var text=native?(native.textContent||''):'';return [document.readyState,brand?(brand.textContent||'').trim().toLowerCase():'missing-brand',visible(brand),visible(native),visible(heading),text.indexOf('Every call is registered in Server')>=0 && text.indexOf('Server does not need a selected SIM')>=0].join('|');})()"
         )
         if (nativeUiState == "complete|server|true|true|true|true") break
         Thread.sleep(250)
       }
       assertEquals("Server's bundled onboarding must render its brand, hybrid explanation and fallback-SIM step in WebView. DOM state: " + nativeUiState,
         "complete|server|true|true|true|true", nativeUiState)
-      assertEquals("The fallback SIM choice must exist in the actual onboarding DOM", "true",
-        evaluateSetupWebView(scenario, "(function(){var step=document.querySelector('#fallback-sim-step');var consent=document.querySelector('#automatic-carrier-fallback');return !!step && !!document.querySelector('#fallback-sim-options') && !!document.querySelector('#save-fallback-sim') && !!consent && consent.type==='checkbox' && !consent.checked && (step.textContent||'').includes('normal charges');})()"))
+      assertEquals("Internet-only onboarding must not present SIM selection or carrier fallback controls", "true",
+        evaluateSetupWebView(scenario, "(function(){return !document.querySelector('#fallback-sim-step') && !document.querySelector('#automatic-carrier-fallback') && !document.querySelector('#fallback-sim-options');})()"))
       assertTrue("The old SIM permission button must not appear",
         !device.hasObject(By.textContains("Allow SIM access")))
 
