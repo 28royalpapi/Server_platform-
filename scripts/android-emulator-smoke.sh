@@ -79,7 +79,7 @@ TEST_STATUS=0
 rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
 $TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
 if [[ "$TEST_STATUS" -eq 0 ]]; then
-  python3 scripts/assert-android-test-count.py --expected-tests 21 || TEST_STATUS=$?
+  python3 scripts/assert-android-test-count.py --expected-tests 22 || TEST_STATUS=$?
 fi
 
 # Stop and preserve the video before handling test failure, so a red run still
