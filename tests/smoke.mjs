@@ -1150,7 +1150,7 @@ assert.match(offlineInbox,/getRxStorageDexie/);
 assert.match(offlineInbox,/rxdb@17\.6\.0/);
 assert.match(guestWeb,/syncGuestInvite/);
 assert.match(guestWeb,/server\.guest\.inbox\.v1/);
-assert.match(guestServiceWorker,/server-guest-shell-v1/);
+assert.match(guestServiceWorker,/server-guest-shell-v2/);
 assert.match(guestWeb,/state==="missed"/);
 assert.match(androidMain,/call\.optString\("state"\) == "missed"/);
 assert.match(androidMain,/missed_call_saved/);
