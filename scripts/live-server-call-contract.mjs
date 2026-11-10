@@ -46,6 +46,7 @@ async function createIdentity(existing = null) {
   const result = await request("server-auth", {
     action: "register_device",
     ...credentials,
+    display_name: "Server Contract " + randomUUID().slice(0, 8),
     accepted_terms: true,
     terms_version: "server-terms-1.0",
     privacy_version: "server-privacy-1.0"
