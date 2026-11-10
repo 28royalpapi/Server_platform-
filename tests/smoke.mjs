@@ -803,7 +803,7 @@ assert.match(calls,/caller_display_name:caller\.display_name\|\|"SERVER CALLER"/
 assert.match(androidMain,/call\.optString\("caller_display_name"\)/,"the open Android app uses the caller's chosen display name for incoming calls");
 assert.match(androidIncoming,/row\.optString\("caller_display_name"\)/,"the background Android listener uses the caller's chosen display name");
 assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve\(this, phone, callerFallback\)/,"the Telecom callback preserves the caller's chosen name when no local contact match exists");
-assert.match(androidIdentityResolver,/chooseDisplayName\(\s*localContactName,\s*serverDisplayName,\s*sharedPhone\s*\)/,"caller identity resolution prefers local contacts, then Server display name, then a permitted number");
+assert.match(androidIdentityResolver,/chooseDisplayName\(\s*localContactName:\s*String\?,\s*serverDisplayName:\s*String\?,\s*sharedPhone:\s*String\?\s*\)/,"caller identity resolution prefers local contacts, then Server display name, then a permitted number");
 assert.match(androidTests,/incomingCallerIdentityPrefersSavedContactThenCallerChosenServerName/,"Android tests saved-contact priority and caller display-name fallback");
 assert.doesNotMatch(androidMain,/SIM selection is optional: choose a preferred line only if you want carrier fallback|carrier fallback uses your own mobile line/i,"Android setup must not invite SIM selection for Server calling");
 assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
