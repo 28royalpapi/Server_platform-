@@ -460,7 +460,7 @@ jobs:
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsInternetOnlyOnboardingWithoutSimFallback
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersShareAndSelectedSimActions
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersInternetShareOnly
             python3 scripts/assert-android-test-count.py
             rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
             timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
