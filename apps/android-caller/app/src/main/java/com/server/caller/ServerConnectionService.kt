@@ -175,7 +175,7 @@ object ServerTelecomRegistry {
     sharedCallerPhone: String? = null
   ) {
     val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-    val phonePattern = Regex("^\\\\+[1-9][0-9]{7,14}$")
+    val phonePattern = Regex("^\\+[1-9][0-9]{7,14}$")
     // Keep older internal callers compatible when they pass only a shared E.164 number.
     val callerPhone = sharedCallerPhone?.trim()?.takeIf { phonePattern.matches(it) }
       ?: if (sharedCallerPhone == null) callerDisplayName.trim().takeIf { phonePattern.matches(it) } else null
