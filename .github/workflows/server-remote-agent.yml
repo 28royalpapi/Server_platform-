@@ -9,7 +9,7 @@ on:
         type: string
         default: ''
   schedule:
-    - cron: '17 */8 * * *'
+    - cron: '17 */2 * * *'
   issue_comment:
     types: [created]
   push:
