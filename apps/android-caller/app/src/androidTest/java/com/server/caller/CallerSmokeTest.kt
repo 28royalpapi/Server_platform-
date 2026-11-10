@@ -882,7 +882,11 @@ class CallerSmokeTest {
     val e2eArguments = InstrumentationRegistry.getArguments()
     val e2eToken = e2eArguments.getString("server_test_token")?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
     val guestE2e = e2eToken != null
-    val dialledNumber = if (guestE2e) "+12025550147" else "+2348012345678"
+    val dialledNumber = if (guestE2e) {
+      e2eArguments.getString("server_test_phone")
+        ?.takeIf { it.matches(Regex("^\\+120255501[0-9]{2}$")) }
+        ?: error("The guest E2E run must supply a fresh reserved fictional phone number.")
+    } else "+2348012345678"
     val expectedDialledDigits = dialledNumber.filter { it.isDigit() }
     val e2eExpiry = e2eArguments.getString("server_test_expiry")?.toLongOrNull()
       ?: System.currentTimeMillis() / 1000 + 3600
