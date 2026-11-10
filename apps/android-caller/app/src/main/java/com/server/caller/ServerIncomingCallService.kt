@@ -271,7 +271,11 @@ class ServerIncomingCallService : Service() {
       if (callId.isBlank()) continue
       val callerPhone = row.optString("caller_phone_e164")
         .takeIf { it.matches(Regex("^\\\\+[1-9][0-9]{7,14}$")) }
-      val caller = callerPhone?.let { ServerCallerIdentityResolver.resolve(this, it) } ?: "Server caller"
+      val callerDisplayName = row.optString("caller_display_name")
+        .ifBlank { row.optString("caller_label") }.trim().take(80)
+      val caller = callerPhone?.let {
+        ServerCallerIdentityResolver.resolve(this, it, callerDisplayName)
+      } ?: ServerCallerIdentityResolver.chooseDisplayName(null, callerDisplayName, null)
       if (row.optString("state") == "missed") {
         if (reportedMissedCallIds.add(callId)) {
           try {
@@ -289,7 +293,7 @@ class ServerIncomingCallService : Service() {
       if (nextCallChannel == null) nextCallChannel = callId
       if (!reportedCallIds.add(callId)) continue
       try {
-        ServerTelecomRegistry.reportIncoming(this, callId, callerPhone ?: "Server caller")
+        ServerTelecomRegistry.reportIncoming(this, callId, callerDisplayName, callerPhone)
       } catch (error: Exception) {
         reportedCallIds.remove(callId)
         Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
