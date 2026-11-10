@@ -296,8 +296,8 @@ assert.doesNotMatch(androidMain,/ServerFallbackSimManager|recordCarrierFallbackH
   "the Android call activity never reads carrier-fallback consent or records/initiates a SIM handoff");
 assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
   "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
-assert.match(androidSetup,/ServerFallbackSimManager\.optionsJson/);
-assert.match(androidSetup,/ServerFallbackSimManager\.saveSelection/);
+assert.doesNotMatch(androidSetup,/ServerFallbackSimManager|READ_PHONE_STATE|CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
+  "the Android setup bridge does not enumerate SIMs or request carrier-call permissions");
 assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/);
 assert.match(androidFallbackSim,/resolveActiveSubscriptionId/);
 assert.doesNotMatch(androidFallbackSim,/getPhoneAccount\(handle\)/,
@@ -311,8 +311,8 @@ assert.match(androidSetup,/registerDevice\(displayName: String, acceptedTerms: B
   "Server ID registration saves the caller-chosen name through the website's native permission bridge");
 assert.match(androidSetup,/put\("display_name", normalizedDisplayName\)/,
   "Android passes the caller display name to the authenticated Server profile endpoint");
-assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,
-  "Android phone-state access is requested only for its Telecom system-account API");
+assert.doesNotMatch(androidSetup,/Manifest\.permission\.READ_PHONE_STATE|Manifest\.permission\.CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
+  "Android onboarding requests no SIM-state or carrier-call permissions");
 assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
   "Server must not request permission to read SIM phone numbers");
 assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
@@ -481,7 +481,7 @@ assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidat
    "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
 assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,
    "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
-assert.match(androidTests,/launcherShowsHybridOnboardingWithFallbackSimChoice/);
+assert.match(androidTests,/launcherShowsInternetOnlyOnboardingWithoutSimFallback/);
 assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every stable Android 8–16 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
 assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 21"), "every stable Android 8–16 API must execute all 21 acceptance tests without skipped or failed tests");
 assert.ok(android17Preview.includes("scripts/android17-16kb-acceptance.sh") && android17Preview.includes("assert-android-test-count.py --expected-tests 21"), "Android 17 remains separately tested with the full 21-test 16 KB acceptance suite");
@@ -576,12 +576,8 @@ assert.match(calls,/APNS_TEAM_ID/);
 assert.match(calls,/apns-push-type/);
 assert.match(pushMigration,/create table if not exists public.server_push_devices/);
 assert.match(pushMigration,/add column if not exists expires_at/);
-assert.match(androidManifest,/android\.permission\.CALL_PHONE/,
-  "automatic carrier fallback declares the Android permission but requests it only after explicit opt-in");
-assert.match(androidSetup,/REQUEST_AUTO_CARRIER_FALLBACK/,
-  "Android requests carrier-call permission separately after the user enables automatic fallback");
-assert.match(androidFallbackSim,/automaticFallbackEnabled\(context\)/,
-  "automatic carrier calls require saved consent, CALL_PHONE and a still-active selected SIM");
+assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
+  "Server does not include Android carrier-call permission in its internet-only connector");
 
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
@@ -601,7 +597,7 @@ assert.match(androidManifest,/android:name="android.intent.action.MAIN"/);
 assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList|selectSim/,
   "Android setup must not inspect or select a SIM subscription");
 assert.match(androidSetup,/requestCallPermissions/);
-assert.match(androidSetup,/READ_PHONE_STATE/);
+assert.doesNotMatch(androidSetup,/READ_PHONE_STATE|CALL_PHONE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\)/,
   "Telecom ringback is requested only for a real Server recipient, never for a manual guest share");
@@ -1068,7 +1064,7 @@ for (const method of [
   "internationalNumberingMetadataCoversEverySupportedRegion",
   "destinationCountryFromSavedContactMetadataBeatsCallerRegion",
   "explicitInternationalNumbersAndCallerRegionFallbackRemainSupported",
-  "launcherShowsHybridOnboardingWithFallbackSimChoice",
+  "launcherShowsInternetOnlyOnboardingWithoutSimFallback",
   "guestCallInvitationNotificationOffersInternetShareOnly",
   "serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives",
   "preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice",
