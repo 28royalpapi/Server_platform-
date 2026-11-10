@@ -95,7 +95,7 @@ class ServerIncomingCallService : Service() {
 
     // The service is safely foregrounded now; it can stop cleanly when the user
     // has disabled Server or when the local Server session is no longer valid.
-    if (!ServerTelecomRegistry.isEnabled(this) || prefs.getString("access_token", null).isNullOrBlank()) {
+    if (prefs.getString("access_token", null).isNullOrBlank()) {
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
       return START_NOT_STICKY
@@ -141,10 +141,6 @@ class ServerIncomingCallService : Service() {
   private suspend fun pollIncomingCalls() {
     while (currentCoroutineContext().isActive) {
       try {
-        if (!ServerTelecomRegistry.isEnabled(this)) {
-          stopSelf()
-          break
-        }
         val token = freshAccessToken()
         if (token == null) { stopSelf(); break }
         if (realtimeClient == null && System.currentTimeMillis() >= realtimeRetryAtMs) connectRealtime(token)
@@ -294,9 +290,19 @@ class ServerIncomingCallService : Service() {
       if (!reportedCallIds.add(callId)) continue
       try {
         ServerTelecomRegistry.reportIncoming(this, callId, callerDisplayName, callerPhone)
+        // Managed Telecom rejects incoming calls when the user has not enabled
+        // Server's PhoneAccount. On older Android we cannot query that state
+        // without READ_PHONE_STATE, so let Telecom decide and fall back to a
+        // normal Server CallStyle notification if no Connection is created.
+        scope.launch {
+          delay(1800)
+          if (ServerTelecomRegistry.incomingConnectionState(callId) == null) {
+            ServerCallNotifications.show(this@ServerIncomingCallService, callId, caller)
+          }
+        }
       } catch (error: Exception) {
-        reportedCallIds.remove(callId)
-        Log.w(TAG, "Could not report an incoming Server call: " + error.javaClass.simpleName)
+        Log.w(TAG, "Telecom did not accept an incoming Server call; using notification fallback: " + error.javaClass.simpleName)
+        ServerCallNotifications.show(this, callId, caller)
       }
     }
     ServerTelecomRegistry.reconcileIncoming(liveCallIds)
@@ -376,7 +382,7 @@ class ServerIncomingCallService : Service() {
     }
     return builder.setSmallIcon(android.R.drawable.sym_action_call)
       .setContentTitle("Server calling is available")
-      .setContentText("Incoming Server internet calls can ring in your normal Phone app.")
+      .setContentText("Listening for incoming Server internet calls.")
       .setCategory(Notification.CATEGORY_SERVICE)
       .setOngoing(true)
       .setContentIntent(pendingIntent)
