@@ -2,7 +2,9 @@ const cfg=window.SERVER_CONFIG||{};
 const url=new URL(location.href);
 const fragmentToken=url.hash.startsWith("#token=")?decodeURIComponent(url.hash.slice(7)):"";
 const inviteToken=url.searchParams.get("token")||fragmentToken||"";
-history.replaceState(null,"",location.pathname);
+const isIOSDevice=/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+const isIOSHomeScreen=isIOSDevice&&(navigator.standalone===true||(typeof window.matchMedia==="function"&&window.matchMedia("(display-mode: standalone)").matches));
+if(!isIOSDevice||isIOSHomeScreen)history.replaceState(null,"",location.pathname);
 const statusEl=document.querySelector("#guest-status"),joinButton=document.querySelector("#join-call"),leaveButton=document.querySelector("#leave-call"),declineButton=document.querySelector("#decline-call"),audioEl=document.querySelector("#remote-audio"),descriptionEl=document.querySelector("#guest-description");
 let pc=null,localStream=null,lastSeq=0,polling=false,leaving=false,pendingIce=[],callId="",iceConnected=false,remoteAudioReceived=false,activeReported=false,realtimeClient=null,realtimeConnected=false;
 let inviteFingerprint="",lastInviteDoc=null,lastMediaStatsAt=0,mediaStatsCheckPending=false;
@@ -35,6 +37,13 @@ function startGuestPushPresence(){
 }
 async function syncExistingGuestPush(){
  if(!alertsButton)return;
+ if(isIOSDevice&&!isIOSHomeScreen){
+  alertsButton.disabled=true;
+  alertsButton.textContent="Add Server to Home Screen for call alerts";
+  alertsButton.classList.remove("hidden");
+  alertStatus("On iPhone or iPad, background call alerts require Server to be added to the Home Screen and opened as a web app. In Safari, tap Share → Add to Home Screen, leave “Open as Web App” enabled, then open the Server icon and enable call alerts. This invitation stays attached so the Home Screen app can enrol the correct number. You can still answer this call in the browser now.",true);
+  return;
+ }
  if(!("Notification" in window)||!("PushManager" in window)||!("serviceWorker" in navigator)||location.protocol!=="https:"){
   alertsButton.classList.add("hidden");
   alertStatus("This browser cannot receive background Server call alerts. Open the link in a supported browser.",true);
