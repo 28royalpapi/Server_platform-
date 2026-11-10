@@ -799,6 +799,7 @@ assert.match(gatewayGuestClaimMigration,/c\.caller_user_id=d\.owner_user_id/,"on
 
 assert.match(calls,/invitation_text:invitationText/,"the backend returns a secure shareable caller-identifying guest preview invitation");
 assert.match(androidMain,/normalizePhoneForServer/);
+assert.doesNotMatch(androidMain,/SIM selection is optional: choose a preferred line only if you want carrier fallback|carrier fallback uses your own mobile line/i,"Android setup must not invite SIM selection for Server calling");
 assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
 assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations retain a system share-sheet fallback when the paired gateway is unavailable");
 assert.doesNotMatch(androidMain,/Call using selected SIM|Standard call charges may apply|handoffToCarrierDialer/,
