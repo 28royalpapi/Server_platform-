@@ -429,10 +429,18 @@ assert.ok(nativeWorkflow.includes("script: bash scripts/android-guest-browser-e2
   "guest E2E runs a checked-in Bash script as one command instead of passing multi-line Bash through sh");
 assert.match(e2eIdentityScript,/action: "availability"/,
   "the real Server E2E identity exercises the deployed authenticated availability preflight");
-assert.match(e2eIdentityScript,/status !== "unknown_guest"/,
-  "a first-time non-Server recipient is reported as unknown, not falsely as mobile data off");
-assert.match(e2eIdentityScript,/requires_user_confirmation !== true/,
-  "availability preflight exposes caller-confirmed SIM fallback without placing a carrier call");
+assert.match(e2eIdentityScript,/status === "unknown_guest"/,
+  "the E2E fixture selects a first-time guest number whose internet reachability is honestly unknown");
+assert.match(e2eIdentityScript,/randomInt\(100\)/,
+  "the E2E fixture rotates through fictional recipient numbers to avoid stale browser subscriptions");
+assert.match(e2eIdentityScript,/test_phone: testPhone/,
+  "the selected fictional recipient number is passed to the Android browser-call test");
+assert.doesNotMatch(e2eIdentityScript,/carrier_fallback/,
+  "guest-call availability does not expose a carrier/SIM fallback to non-Server recipients");
+assert.match(guestBrowserE2eShell,/server_test_phone/,
+  "the Bash E2E harness passes the freshly selected guest recipient number into Android");
+assert.match(androidTests,/server_test_phone/,
+  "Android Telecom acceptance uses the same fresh fictional recipient checked by the backend");
 assert.match(guestBrowserE2eShell,/adb shell am instrument -w -r/,
   "the Bash E2E harness launches the real Android Telecom instrumentation test");
 assert.match(guestBrowserE2eShell,/node scripts\/android-guest-browser-e2e\.mjs/,
