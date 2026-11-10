@@ -603,6 +603,34 @@ class CallerSmokeTest {
     }
   }
 
+  @Test fun incomingCallerIdentityPrefersSavedContactThenCallerChosenServerName() {
+    assertEquals(
+      "A locally saved contact name should override the caller's Server display name.",
+      "Saved Contact",
+      ServerCallerIdentityResolver.chooseDisplayName("Saved Contact", "Caller Chosen Name", "+2348030000001")
+    )
+    assertEquals(
+      "When there is no saved contact, show the caller's chosen Server display name instead of the shared number.",
+      "Caller Chosen Name",
+      ServerCallerIdentityResolver.chooseDisplayName(null, "Caller Chosen Name", "+2348030000001")
+    )
+    assertEquals(
+      "When the caller has not shared a number, their chosen Server display name remains visible.",
+      "Caller Chosen Name",
+      ServerCallerIdentityResolver.chooseDisplayName(null, "Caller Chosen Name", null)
+    )
+    assertEquals(
+      "Keep the number as a final fallback only when no Server display name is available.",
+      "+2348030000001",
+      ServerCallerIdentityResolver.chooseDisplayName(null, null, "+2348030000001")
+    )
+    assertEquals(
+      "An unknown caller without any permitted identity data receives a generic label.",
+      "Server caller",
+      ServerCallerIdentityResolver.chooseDisplayName(null, null, null)
+    )
+  }
+
   @Test fun enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -615,10 +643,11 @@ class CallerSmokeTest {
     // The caller-name test fixture is created after the one-time runtime
     // permission grant in grantTelecomPermissions(), avoiding extra UiAutomator
     // shell grant/revoke calls while Telecom is handling the incoming callback.
+    val chosenServerName = "Caller Chosen Name"
     val expectedCallerName = if (Build.VERSION.SDK_INT >= 29) {
       insertDemoContact(context, "Habib TNC", callerPhone)
       "Habib TNC"
-    } else callerPhone
+    } else chosenServerName
 
     ServerTelecomRegistry.register(context)
     enablePhoneAccountWithTestShell(context, handle)
@@ -626,7 +655,7 @@ class CallerSmokeTest {
       // Exercise Android Telecom's actual incoming-call callback. This is not a
       // direct unit construction of ServerTelecomConnection: Telecom must invoke
       // ServerConnectionService.onCreateIncomingConnection for the assertion.
-      ServerTelecomRegistry.reportIncoming(context, callId, callerPhone)
+      ServerTelecomRegistry.reportIncoming(context, callId, chosenServerName, callerPhone)
       val deadline = System.currentTimeMillis() + 12_000
       var state: Int? = null
       while (System.currentTimeMillis() < deadline && state == null) {
@@ -636,7 +665,7 @@ class CallerSmokeTest {
       assertEquals("Android Telecom did not call ServerConnectionService and start a ringing incoming connection",
         Connection.STATE_RINGING, state)
 
-      assertEquals("Telecom must show the locally saved caller name, or the real number when no fixture can be written",
+      assertEquals("Telecom must show the locally saved contact name, or the caller's chosen Server display name when no contact match exists",
         expectedCallerName, ServerTelecomRegistry.incomingCallerDisplayName(callId))
       // The default dialer may render a Telecom call as full-screen, heads-up
       // or notification UI depending on Android/OEM. Do not require one exact
@@ -660,7 +689,7 @@ class CallerSmokeTest {
     enablePhoneAccountWithTestShell(context, handle)
     try {
       assertTrue("Android must expose the enabled Server PhoneAccount to Telecom", accountEnabled(context, handle))
-      ServerTelecomRegistry.reportIncoming(context, callId, callerPhone)
+      ServerTelecomRegistry.reportIncoming(context, callId, chosenServerName, callerPhone)
       val deadline = System.currentTimeMillis() + 12_000
       var state: Int? = null
       while (System.currentTimeMillis() < deadline && state == null) {
@@ -669,8 +698,8 @@ class CallerSmokeTest {
       }
       assertEquals("Android Telecom did not create a ringing Server incoming Connection",
         Connection.STATE_RINGING, state)
-      assertEquals("An unsaved caller must display the real phone number instead of a private label or Server ID",
-        callerPhone, ServerTelecomRegistry.incomingCallerDisplayName(callId))
+      assertEquals("An unsaved caller must display the caller's chosen Server name instead of an opaque number or generic label",
+        chosenServerName, ServerTelecomRegistry.incomingCallerDisplayName(callId))
     } finally {
       ServerTelecomRegistry.markEnded(callId)
       UiDevice.getInstance(instrumentation).pressHome()
