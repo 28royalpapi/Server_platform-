@@ -26,8 +26,8 @@ import java.util.UUID
 
 /**
  * Hosts the Server onboarding website and its narrowly-scoped Android calling bridge.
- * With READ_PHONE_STATE consent, Server lists active SIM carrier labels and slots so
- * the user can choose a carrier fallback. It never reads SIM phone numbers or serials.
+ * The connector uses Android Telecom, microphone and notifications only; it does not
+ * enumerate SIMs or request carrier-call permissions.
  */
 class ServerSetupWebActivity : Activity() {
   private lateinit var web: WebView
@@ -148,25 +148,14 @@ class ServerSetupWebActivity : Activity() {
       val micGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
       val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
         checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-      val phoneStateGranted = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
       val contactsGranted = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, $phoneStateGranted, $contactsGranted)")
-    } else if (requestCode == REQUEST_AUTO_CARRIER_FALLBACK) {
-      val granted = checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-      val saved = ServerFallbackSimManager.setAutomaticFallback(this, granted)
-      val enabled = granted && saved.optBoolean("ok") && saved.optBoolean("automatic_fallback_enabled")
-      val reason = if (enabled) "" else saved.optString("error").ifBlank { "CALL_PHONE_PERMISSION_DENIED" }
-      notifyAutoCarrierFallback(enabled, reason)
+      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, false, $contactsGranted)")
     }
   }
 
   private fun runJs(script: String) {
     if (!::web.isInitialized) return
     runOnUiThread { web.evaluateJavascript(script, null) }
-  }
-
-  private fun notifyAutoCarrierFallback(enabled: Boolean, error: String = "") {
-    runJs("window.onServerAutoCarrierFallbackPermissionResult && window.onServerAutoCarrierFallbackPermissionResult(" + enabled + "," + JSONObject.quote(error) + ")")
   }
 
   /**
@@ -305,7 +294,6 @@ class ServerSetupWebActivity : Activity() {
       runOnUiThread {
         val needed = arrayListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.RECORD_AUDIO)
-        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
         if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_CONTACTS)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
           needed.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -313,45 +301,17 @@ class ServerSetupWebActivity : Activity() {
         if (needed.isEmpty()) {
           val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
           val notifications = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-          val phoneState = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
           val contacts = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications, $phoneState, $contacts)")
+          runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($mic, $notifications, false, $contacts)")
         } else requestPermissions(needed.toTypedArray(), REQUEST_CALL)
       }
     }
-
-    @JavascriptInterface fun getFallbackSimOptions(): String =
-      ServerFallbackSimManager.optionsJson(this@ServerSetupWebActivity).toString()
 
     @JavascriptInterface fun normalizePhoneNumber(raw: String): String =
       ServerPhoneNumberNormalizer.toE164(
         raw,
         ServerPhoneNumberNormalizer.deviceRegion(this@ServerSetupWebActivity)
       ).orEmpty()
-
-    @JavascriptInterface fun setFallbackSimSelection(optionKey: String): String =
-      ServerFallbackSimManager.saveSelection(this@ServerSetupWebActivity, optionKey).toString()
-
-    @JavascriptInterface fun setAutomaticCarrierFallback(enabled: Boolean) {
-      runOnUiThread {
-        if (!enabled) {
-          val saved = ServerFallbackSimManager.setAutomaticFallback(this@ServerSetupWebActivity, false)
-          notifyAutoCarrierFallback(false, saved.optString("error"))
-          return@runOnUiThread
-        }
-        if (ServerFallbackSimManager.selectedOption(this@ServerSetupWebActivity) == null) {
-          notifyAutoCarrierFallback(false, "SELECTED_SIM_REQUIRED")
-          return@runOnUiThread
-        }
-        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
-          requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), REQUEST_AUTO_CARRIER_FALLBACK)
-          return@runOnUiThread
-        }
-        val saved = ServerFallbackSimManager.setAutomaticFallback(this@ServerSetupWebActivity, true)
-        val enabledNow = saved.optBoolean("ok") && saved.optBoolean("automatic_fallback_enabled")
-        notifyAutoCarrierFallback(enabledNow, saved.optString("error"))
-      }
-    }
 
     @JavascriptInterface fun completeSetup(displayName: String, acceptedTerms: Boolean) {
       Thread {
@@ -492,6 +452,5 @@ class ServerSetupWebActivity : Activity() {
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
     private const val REQUEST_CALL = 5102
-    private const val REQUEST_AUTO_CARRIER_FALLBACK = 5103
   }
 }
