@@ -700,7 +700,7 @@ assert.match(textbeeAdapter,/TEXTBEE_API_KEY/);
 assert.match(textbeeAdapter,/TEXTBEE_DEVICE_ID/);
 assert.match(textbeeAdapter,/response\.status\s*>=\s*500/,
   "TextBee server errors are treated as uncertain to prevent duplicate invitations");
-assert.match(textbeeAdapter,/data?.success === false/,
+assert.ok(textbeeAdapter.includes("data?.success === false"),
   "TextBee HTTP 200 responses with an explicit rejected batch are not treated as sends");
 assert.match(textbeeAdapter,/successCount < 1 && !batchId/,
   "unrecognized TextBee 200 responses are not reported as accepted");
