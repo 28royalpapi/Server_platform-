@@ -957,7 +957,7 @@ assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
  assert.match(calls,/invitationText=callerDisplay\+" is calling: "/,"the SMS invitation begins with the caller's chosen name and a concise answer prompt");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
-assert.match(calls,/server-guest-preview\?token=/,"guest share links open a dynamic caller-branded preview before the full-screen call page");
+assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
 assert.match(calls,/p_scope:"recipient_availability"/,"recipient availability checks are rate-limited per authenticated caller");
 assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
