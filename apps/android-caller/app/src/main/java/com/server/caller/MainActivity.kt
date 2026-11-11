@@ -779,14 +779,16 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         val accepted = guestPush?.optInt("accepted_by_push_service", 0) ?: 0
         val guestStatus = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
         val message = when {
+          deliveryMode == "sim_sms_queued" ->
+            "The caller-identified invitation is queued on your linked Android SIM gateway. Your mobile operator may charge for SMS. Waiting for the gateway's send and delivery receipts."
           accepted > 0 && guestStatus == "online" ->
             "Guest browser is online. Server submitted the caller-identified alert; waiting for the recipient to answer over WebRTC."
           accepted > 0 ->
             "Server submitted the caller-identified alert to an enrolled guest browser. Delivery is not confirmed; waiting for the recipient to open and answer."
           else ->
-            "The guest browser has not enrolled for alerts yet. Share the secure invitation once; the recipient can enable call alerts on that browser for future calls."
+            "No enrolled browser alert receiver or active SIM gateway is available. Share the secure invitation once, or enable your Server SIM Gateway."
         }
-        setStatus(message, accepted == 0)
+        setStatus(message, accepted == 0 && deliveryMode != "sim_sms_queued")
         if (pendingSystemDialerReturn) returnToSystemPhoneUi()
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
