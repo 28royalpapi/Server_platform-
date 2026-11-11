@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { sendGuestBrowserPush } from "../_shared/guest_web_push.ts";
+import { sendTextBeeSms } from "../_shared/textbee_sms.ts";
 const encoder = new TextEncoder();
 
 function base64Url(bytes: Uint8Array): string {
@@ -612,7 +613,7 @@ Deno.serve(async(req:Request)=>{
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
    const callerDisplay=profile.display_name;
    const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
-   const invitationText="SERVER CALL: "+callerDisplay+" is calling you through Server. Open this previewable invitation to answer over the internet: "+invitationUrl+" (call expires in 20 minutes).";
+   const invitationText=callerDisplay+" is calling you on Server. Tap to answer: "+invitationUrl;
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
    const guestPush=await sendGuestBrowserPush(db,to,{
     call_id:call.id,caller_label:callerDisplay,
@@ -624,59 +625,75 @@ Deno.serve(async(req:Request)=>{
    const guestAvailabilityStatus=guestPush.recent_online>0?"online":
     guestPush.registered>0?"background_reachable":"unknown_guest";
 
-   // First-contact fallback: use the caller's own paired Android SIM gateway.
-   // The carrier routes the SMS across networks; Server does not need a
-   // separate SMS contract with each destination-country operator.
-   // Never send a second alert when an enrolled browser push was accepted.
+   // First-contact transport order: enrolled browser push, hosted TextBee pilot,
+   // then the caller-owned Server SIM gateway. Never send a second SMS after
+   // TextBee reports an ambiguous timeout/5xx result.
    let simSmsQueued=false;
    let simSmsGatewayOnline=false;
+   let textBeeAccepted=false;
+   let textBeeBatchId:string|null=null;
+   let textBeeOutcome:"disabled"|"accepted"|"rejected"|"uncertain"="disabled";
    if(!hasPushAccepted){
-    const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
-    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
-     .select("id").eq("owner_user_id",uid).eq("enabled",true)
-     .gte("last_seen_at",gatewayFreshAfter)
-     .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
-    if(gatewayError){
-     console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
-    }else if(gateway){
-     simSmsGatewayOnline=true;
-     const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
-      p_scope:"guest_invite_sms_pair",
-      p_key_hash:await sha("guest-invite-sms-pair:"+uid+":"+to),
-      p_window_seconds:3600,p_max_hits:3
-     });
-     const {data:senderAllowed,error:senderLimitError}=await db.rpc("server_rate_limit_allow",{
-      p_scope:"guest_invite_sms_sender",
-      p_key_hash:await sha("guest-invite-sms-sender:"+uid),
-      p_window_seconds:3600,p_max_hits:20
-     });
-     if(!pairLimitError&&!senderLimitError&&pairAllowed===true&&senderAllowed===true){
-      const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
-       category:"guest_invite",
-       recipient_e164:to,
-       body:invitationText,
-       call_id:call.id,
-       guest_invite_id:created.invite_id,
-       source_event_id:"server-guest-invite:"+call.id,
-       status:"queued"
-      }).select("id").maybeSingle();
-      if(!queueError&&queuedJob){
-       simSmsQueued=true;
-      }else{
-       console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
+    const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
+     p_scope:"guest_invite_sms_pair",
+     p_key_hash:await sha("guest-invite-sms-pair:"+uid+":"+to),
+     p_window_seconds:3600,p_max_hits:3
+    });
+    const {data:senderAllowed,error:senderLimitError}=await db.rpc("server_rate_limit_allow",{
+     p_scope:"guest_invite_sms_sender",
+     p_key_hash:await sha("guest-invite-sms-sender:"+uid),
+     p_window_seconds:3600,p_max_hits:20
+    });
+    if(!pairLimitError&&!senderLimitError&&pairAllowed===true&&senderAllowed===true){
+     const textBee=await sendTextBeeSms({recipient:to,message:invitationText});
+     textBeeOutcome=textBee.outcome;
+     if(textBee.outcome==="accepted"){
+      textBeeAccepted=true;
+      textBeeBatchId=textBee.smsBatchId;
+     }else if(textBee.outcome!=="uncertain"){
+      // TextBee is disabled or explicitly rejected the request. The independent
+      // caller-owned SIM gateway remains available as a no-aggregator fallback.
+      const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
+      const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
+       .select("id").eq("owner_user_id",uid).eq("enabled",true)
+       .gte("last_seen_at",gatewayFreshAfter)
+       .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+      if(gatewayError){
+       console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
+      }else if(gateway){
+       simSmsGatewayOnline=true;
+       const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
+        category:"guest_invite",
+        recipient_e164:to,
+        body:invitationText,
+        call_id:call.id,
+        guest_invite_id:created.invite_id,
+        source_event_id:"server-guest-invite:"+call.id,
+        status:"queued"
+       }).select("id").maybeSingle();
+       if(!queueError&&queuedJob){
+        simSmsQueued=true;
+       }else{
+        console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
+       }
       }
-     }else{
-      console.warn("GUEST_SIM_SMS_RATE_LIMITED_OR_UNAVAILABLE");
      }
+    }else{
+     console.warn("GUEST_SIM_SMS_RATE_LIMITED_OR_UNAVAILABLE");
     }
    }
 
-   const deliveryMode=hasPushAccepted?"web_push":simSmsQueued?"sim_sms_queued":"manual_share";
+   const deliveryMode=hasPushAccepted?"web_push":textBeeAccepted?"textbee_sms_accepted":
+    simSmsQueued?"sim_sms_queued":textBeeOutcome==="uncertain"?"textbee_send_unknown":"manual_share";
    const deliveryMessage=hasPushAccepted
     ?"Server submitted a caller-identified browser call alert to "+guestPush.accepted+" registered device(s). Push-service acceptance is not proof that the notification has appeared; the guest browser confirms when it opens."
-    :simSmsQueued
-     ?"Server queued the caller-identified invitation on your linked Android SIM gateway. The gateway will send it through its SIM; your mobile plan may charge for this SMS. Queueing is not proof of delivery."
-     :"No enrolled browser receiver or active SIM gateway was available. Share this caller-identifying invitation once, or enable the Server SIM Gateway to send future invitations through your own mobile plan.";
+    :textBeeAccepted
+     ?"TextBee accepted the caller-identified SMS invitation for sending. Check the TextBee message status for carrier delivery; API acceptance is not proof that the recipient received it."
+     :simSmsQueued
+      ?"TextBee did not accept the request. Server queued the caller-identified invitation on your linked Android SIM gateway; your mobile plan may charge for this SMS. Queueing is not proof of delivery."
+      :textBeeOutcome==="uncertain"
+       ?"The TextBee request timed out or returned an uncertain server error. Server did not send a second SMS to avoid duplicate invitations. Check TextBee message history before retrying."
+       :"No enrolled browser receiver or available SMS gateway accepted the invitation. Share this caller-identifying invitation manually or configure TextBee.";
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
     invite_expires_at:expires,delivery_mode:deliveryMode,delivery_channel:deliveryMode,
@@ -692,6 +709,10 @@ Deno.serve(async(req:Request)=>{
       :guestPush.registered>0
        ?"A browser push receiver is registered; waiting for the recipient to open and confirm this call."
        :"The recipient has not enrolled a guest browser receiver yet."
+    },
+    textbee_delivery:{
+     channel:"textbee",outcome:textBeeOutcome,accepted:textBeeAccepted,
+     sms_batch_id:textBeeBatchId,device_delivery_confirmed:false
     },
     sim_sms_delivery:{
      channel:"caller_sim_sms",queued:simSmsQueued,gateway_online:simSmsGatewayOnline,
