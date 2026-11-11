@@ -1,7 +1,7 @@
 # Server Reach: first-contact transport decision
 
 **Decision date:** 11 November 2026  
-**Status:** Research-backed architecture decision; no carrier credentials or production transport enabled.
+**Status:** TextBee REST adapter is implemented on `android-finish`, but remains inactive until a TextBee API key and Android gateway are configured in the Server Backend Supabase project. No SMS has been sent and no production secret has been set.
 
 ## Product requirement
 
@@ -20,13 +20,23 @@ Do not describe these two paths as one transport.
 - The live call is time-limited; the guest invite token has a separate expiry.
 - The caller's display name is used in the guest page and dynamic Open Graph preview.
 - If the recipient previously opened the guest page and explicitly enabled browser notifications, Web Push can wake that browser without a Server app or account.
-- If no browser subscription exists, the current path returns a caller-identified invitation for explicit sharing. It does not send an SMS.
-- `server-send-sms` currently handles Supabase Auth OTP webhooks. The paired Android SIM gateway sends queued SMS jobs through its SIM. It does not currently send guest-call invites.
+- If no browser subscription exists, the first-contact path can now call the hosted TextBee REST API when `TEXTBEE_API_KEY` is configured. If that adapter is disabled or explicitly rejects a request, the paired caller-owned Server SIM gateway remains a fallback. If TextBee returns an ambiguous timeout or server error, Server will not send a second SMS automatically.
+- `server-send-sms` continues to handle Supabase Auth OTP webhooks. The guest invitation adapter is separate and runs only in `server-calls` on the server.
 - The SIM gateway uses Android `SmsManager`; its own screen warns that SMS may incur normal carrier charges. This avoids an SMS aggregator, not the operator's SMS charge.
 
 These existing paths must remain independently observable. A push provider accepting a notification is not proof that the handset displayed it.
 
-## Caller-owned Android SIM gateway (implemented on `android-finish`)
+The repository already includes an optional Android SIM Gateway companion app. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the Server SMS queue, sends messages using Android `SmsManager`, and reports carrier send/delivery callbacks. No Server-owned SMS number or Twilio account is required for this route.
+
+The guest-call start handler now uses the following order:
+
+1. If Web Push was accepted for an already enrolled guest browser, use Web Push and do not create a duplicate SMS alert.
+2. Otherwise, look for an enabled gateway owned by the caller that checked in within the last 90 seconds.
+3. Apply per-caller/per-recipient and per-caller SMS rate limits.
+4. Queue a `guest_invite` job containing the short-lived caller-identified invitation URL. The existing database claim function only allows a gateway owned by that call's caller to claim this job.
+5. The companion app sends using the SIM in that Android device and reports `sent` / `delivered` / `failed`. A queue response is not a carrier delivery receipt. The database rechecks caller ownership, ringing/connecting state, call expiry, invite expiry, and join/revocation state before claim; stale unleased guest-invite jobs are discarded.
+
+The SMS travels through the gateway phone's own operator and that operator's interconnect to the recipient network. Server therefore needs no direct contract with every destination-country operator. The sender's tariff, included SMS bundle, international-SMS pricing, roaming status, and carrier anti-abuse rules still apply. The message is a text containing the secure URL; an Open Graph preview is not guaranteed by SMS clients.
 
 The repository already includes an optional Android SIM Gateway companion app. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the Server SMS queue, sends messages using Android `SmsManager`, and reports carrier send/delivery callbacks. No Server-owned SMS number or Twilio account is required for this route.
 
@@ -49,6 +59,12 @@ This is an Android-only optional route. Google Play restricts `SEND_SMS` and spe
 **Useful for repeat calls after enrolment.** The browser creates a push subscription after the person opens the guest page and grants permission. The resulting endpoint is addressable by the push service. A phone number on its own is not a Web Push endpoint.
 
 On iOS, background Web Push requires the supported Home Screen web-app flow and user permission. It is not universal background reachability from an ordinary, never-opened Safari tab.
+
+### Other Android SIM gateway options
+
+**httpSMS is a genuine alternative, not a magic free carrier route.** Its Android app can send through a phone SIM and it documents a hosted HTTP API plus a Docker self-host path. It is also AGPL-3.0. Its self-host stack requires Firebase, SMTP, Cloudflare Turnstile, a database and an API server. We should benchmark its Android reliability, delivery reports, SIM selection, E2E-encryption model and install experience against TextBee before replacing the current adapter. The Server transport boundary is deliberately provider-specific so this can be swapped without changing call or WebRTC logic.
+
+Neither TextBee nor httpSMS can create free carrier SMS. A self-hosted backend may remove provider subscription caps, but the SIM still needs an active SMS plan and the backend still needs infrastructure.
 
 ### Operator or aggregator A2P SMS
 
@@ -81,9 +97,9 @@ This path can make the recipient's normal cellular Phone UI ring without Server 
 
 1. Keep the existing **Server-to-Server WebRTC** route for Server users.
 2. Keep **guest WebRTC + Web Push** as the zero-carrier-message-cost route after the recipient has enrolled once.
-3. Treat **automatic first-contact invitation delivery** as an operator/aggregator integration. The preferred commercial ask is an operator-sponsored or startup-pilot transactional invitation channel, with SMS and RCS separately evaluated. No free entitlement is assumed.
+3. Use the **TextBee hosted API** for the first real-device pilot after the user configures its API key and Android gateway. Keep the existing first-party SIM gateway as the no-aggregator fallback. Measure acceptance, carrier `sent` / `delivered` reports, preview display, link opens and answered calls separately. Before scale, compare TextBee self-hosting and httpSMS self-hosting; both projects are AGPL-3.0 and require server/carrier operating costs.
 4. Treat **no-link native ringing** as a separate hybrid voice product path: WebRTC caller → Server media bridge → approved SIP/voice provider → recipient's normal phone. This is the most faithful implementation of the no-link ringing experience, but it has per-minute and infrastructure costs and is not recipient-side browser WebRTC.
-5. Do not implement a fake "number → internet push" transport, an unsolicited RCS sender, a flash-call trick, or a default paid SMS fallback. A carrier adapter must remain disabled until its commercial access, consent model, price limits, and delivery callbacks are proven.
+5. Do not describe SMS as a native incoming call. TextBee sends an ordinary SMS containing a link. Native Phone-app ringing without a link remains a separate SIP/PSTN voice-bridge problem.
 
 ## Required partner proof before production
 
@@ -103,3 +119,8 @@ For either route, test with real Android and iOS devices. A successful API respo
 - Signals two-way media stream: https://docs.pressone.africa/programmable-voice/oneml/stream
 - Asterisk WebRTC client configuration: https://docs.asterisk.org/Configuration/WebRTC/Configuring-Asterisk-for-WebRTC-Clients/
 - Jasmin gateway requirements: https://docs.jasminsms.com/en/latest/installation/
+- TextBee send API: https://textbee.dev/docs/sending-sms
+- TextBee self-hosting: https://textbee.dev/docs/self-hosting
+- httpSMS repository: https://github.com/NdoleStudio/httpsms
+- httpSMS setup: https://docs.httpsms.com/
+- Supabase Edge Function secrets: https://supabase.com/docs/guides/functions/secrets
