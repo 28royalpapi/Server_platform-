@@ -34,6 +34,7 @@ const guestManifest=JSON.parse(read("web/manifest.webmanifest"));
 const guestPwaIcon=read("web/images/server-app-icon.svg");
 const guestWebPushMigration=read("supabase/migrations/20261109165000_server_guest_browser_web_push.sql");
 const guestWebPushSender=read("supabase/functions/_shared/guest_web_push.ts");
+const textbeeAdapter=read("supabase/functions/_shared/textbee_sms.ts");
 const offlineArchitecture=read("docs/offline-delivery.md");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
@@ -683,8 +684,22 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
-assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued":"manual_share"/,
-  "guest calls prefer enrolled browser push, then the caller's own SIM gateway, then explicit manual sharing");
+assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":textBeeAccepted\?"textbee_sms_accepted"/,
+  "guest calls prefer enrolled browser push, then configured TextBee, then the caller-owned SIM gateway");
+assert.match(calls,/sendTextBeeSms\(\{recipient:to,message:invitationText\}\)/,
+  "first-contact guest SMS uses the server-side TextBee adapter");
+assert.match(calls,/textBeeOutcome==="uncertain"\?"textbee_send_unknown"/,
+  "an ambiguous TextBee result is surfaced rather than sending a duplicate SMS");
+assert.match(calls,/textbee_delivery:/,
+  "the call response reports TextBee acceptance separately from handset delivery");
+assert.match(textbeeAdapter,/https:\/\/api\.textbee\.dev\/api\/v1/,
+  "TextBee uses its documented hosted REST API by default");
+assert.match(textbeeAdapter,/\/gateway\/send-sms/);
+assert.match(textbeeAdapter,/x-api-key/);
+assert.match(textbeeAdapter,/TEXTBEE_API_KEY/);
+assert.match(textbeeAdapter,/TEXTBEE_DEVICE_ID/);
+assert.match(textbeeAdapter,/response\.status>=500/,
+  "TextBee server errors are treated as uncertain to prevent duplicate invitations");
 assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
   "SIM invitations can only use an active gateway paired to the calling Server account");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
