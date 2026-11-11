@@ -609,11 +609,12 @@ Deno.serve(async(req:Request)=>{
     const token=guestToken as string;
     const expires=guestInviteExpiresAt as string;
     // This endpoint returns caller-specific Open Graph metadata and redirects
-   // the recipient to the secure browser call. Sharing is explicit; no SMS is queued.
+   // the recipient to the secure browser call. The link is sent by the selected
+   // first-contact transport below when an eligible route is configured.
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
    const callerDisplay=profile.display_name;
    const invitationUrl="https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token="+encodeURIComponent(token);
-   const invitationText=callerDisplay+" is calling you on Server. Tap to answer: "+invitationUrl;
+   const invitationText=callerDisplay+" is calling: "+invitationUrl;
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
    const guestPush=await sendGuestBrowserPush(db,to,{
     call_id:call.id,caller_label:callerDisplay,
