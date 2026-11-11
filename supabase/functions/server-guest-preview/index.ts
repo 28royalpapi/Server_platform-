@@ -211,7 +211,7 @@ Deno.serve(async (req: Request) => {
 <meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#101b2a">
 <title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}">
-<meta property="og:type" content="website"><meta property="og:site_name" content="SERVER">
+<meta property="og:type" content="website"><meta property="og:site_name" content="SERVER"><meta property="og:url" content="${escapeHtml(req.url)}">
 <meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:image" content="${escapeHtml(imageUrl)}"><meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}">
 <meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
