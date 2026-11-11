@@ -36,7 +36,7 @@ The guest-call start handler now uses the following order:
 2. Otherwise, look for an enabled gateway owned by the caller that checked in within the last 90 seconds.
 3. Apply per-caller/per-recipient and per-caller SMS rate limits.
 4. Queue a `guest_invite` job containing the short-lived caller-identified invitation URL. The existing database claim function only allows a gateway owned by that call's caller to claim this job.
-5. The companion app sends using the SIM in that Android device and reports `sent` / `delivered` / `failed`. A queue response is not a carrier delivery receipt.
+5. The companion app sends using the SIM in that Android device and reports `sent` / `delivered` / `failed`. A queue response is not a carrier delivery receipt. The database rechecks caller ownership, ringing/connecting state, call expiry, invite expiry, and join/revocation state before claim; stale unleased guest-invite jobs are discarded.
 
 The SMS travels through the gateway phone's own operator and that operator's interconnect to the recipient network. Server therefore needs no direct contract with every destination-country operator. The sender's tariff, included SMS bundle, international-SMS pricing, roaming status, and carrier anti-abuse rules still apply. The message is a text containing the secure URL; an Open Graph preview is not guaranteed by SMS clients.
 
