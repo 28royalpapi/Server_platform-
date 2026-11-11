@@ -682,12 +682,17 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
-assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":"manual_share"/,
-  "guest calls use browser push for enrolled receivers and a one-time share link for first-contact activation");
-assert.doesNotMatch(calls,/server_sms_jobs|automatic_sms_queued/,
-  "guest call invitations are never placed into the SMS delivery queue");
-assert.doesNotMatch(calls,/from\("server_sms_jobs"\)\.insert/,
-  "new guest calls never enqueue per-call SMS invitations");
+assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued":"manual_share"/,
+  "guest calls prefer enrolled browser push, then the caller's own SIM gateway, then explicit manual sharing");
+assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
+  "SIM invitations can only use an active gateway paired to the calling Server account");
+assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
+assert.match(calls,/category:"guest_invite"/);
+assert.match(calls,/guest_invite_sms_pair/);
+assert.match(calls,/guest_invite_sms_sender/);
+assert.match(calls,/guest_invite_id:created\.invite_id/);
+assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
+  "Android reports when the first-contact SMS invitation is queued through the caller's own SIM gateway");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
   "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
