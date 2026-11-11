@@ -1,3 +1,9 @@
 {
-  "outputDirectory": "web"
+  "outputDirectory": "web",
+  "rewrites": [
+    {
+      "source": "/c/:token",
+      "destination": "https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-guest-preview?token=:token"
+    }
+  ]
 }
