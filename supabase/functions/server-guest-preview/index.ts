@@ -205,13 +205,15 @@ Deno.serve(async (req: Request) => {
   const title = caller + " is calling you through Server";
   const description = caller + " is trying to reach you via Server. Open this preview and tap Answer to connect by internet voice.";
   const guestUrl = "https://server-onboarding-ochre.vercel.app/guest.html#token=" + encodeURIComponent(token);
+  const canonicalUrl = "https://server-onboarding-ochre.vercel.app/c/" + encodeURIComponent(token);
   const imageUrl = projectUrl.replace(/\/$/,"") + "/functions/v1/server-guest-preview?image=1&invite_id=" + encodeURIComponent(invite.id);
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#101b2a">
 <title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}">
-<meta property="og:type" content="website"><meta property="og:site_name" content="SERVER"><meta property="og:url" content="${escapeHtml(req.url)}">
+<link rel="canonical" href="${escapeHtml(canonicalUrl)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="SERVER"><meta property="og:url" content="${escapeHtml(canonicalUrl)}">
 <meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:image" content="${escapeHtml(imageUrl)}"><meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}">
 <meta property="og:image:type" content="image/png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
