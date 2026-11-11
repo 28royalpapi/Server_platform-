@@ -32,7 +32,6 @@ adb get-state >/dev/null
 adb install -r "$APP_APK"
 adb install -r "$TEST_APK"
 adb shell pm grant com.server.caller.debug android.permission.RECORD_AUDIO
-adb shell pm grant com.server.caller.debug android.permission.READ_PHONE_STATE
 adb shell pm grant com.server.caller.debug android.permission.READ_CONTACTS
 adb shell pm grant com.server.caller.debug android.permission.POST_NOTIFICATIONS
 mkdir -p "$ARTIFACT_DIR"
