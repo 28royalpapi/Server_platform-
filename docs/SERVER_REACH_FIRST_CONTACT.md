@@ -5,52 +5,51 @@
 
 ## Product requirement
 
-A Server caller enters an ordinary E.164 phone number and starts a call. The recipient may have no Server account and no Server native app. The recipient should receive a trustworthy, caller-identified alert, answer, and speak to the Server caller.
+A Server caller enters an ordinary E.164 phone number and starts a call. The recipient may have no Server account and no Server native app. The first-contact route sends a caller-identified SMS invitation; tapping its link opens the guest browser and connects the recipient to the caller by WebRTC.
 
-There are two distinct desired experiences:
+This is distinct from **native phone ringing with no link**. That experience requires a carrier voice call and a media bridge between the caller's WebRTC session and a PSTN/SIP leg. SMS cannot make the recipient's normal Phone app ring.
 
-1. **Automatic browser invitation:** a network channel delivers a short-lived invitation to the recipient's phone. The caller's chosen name appears in the invitation/preview. Tapping Answer opens the guest browser and connects by WebRTC.
-2. **Native phone ringing with no link:** the recipient's normal Phone app rings. This requires a carrier voice call. If the Server caller is on WebRTC, a media bridge must connect the WebRTC leg to the carrier voice leg. The recipient's leg is cellular carrier voice, not browser WebRTC.
+## Existing caller identity and Open Graph preview
 
-Do not describe these two paths as one transport.
+The repository already has a dynamic `server-guest-preview` endpoint. It validates the invite and call state, obtains the caller's Server profile display name, generates a 1200 × 630 caller-specific PNG, and supplies `og:title`, `og:description`, `og:image`, image dimensions, alt text and Twitter card metadata. The title is phrased as “{caller name} is calling you through Server”; the image includes the caller's name and an incoming-call label. The preview page then opens the secure guest call page with an Answer action.
 
-## What the repository already does
+The preview uses the caller's **Server profile display name**. It cannot read the recipient's private Android Contacts database from an SMS preview or ordinary browser. If the recipient has saved the gateway/caller number, Android may show a saved contact name in its own interface, but that is separate from Open Graph metadata and is not guaranteed.
 
-- The guest-call backend creates a fresh 256-bit invitation token for each guest call, stores only its hash, and commits the invite with the call.
-- The live call is time-limited; the guest invite token has a separate expiry.
-- The caller's display name is used in the guest page and dynamic Open Graph preview.
-- If the recipient previously opened the guest page and explicitly enabled browser notifications, Web Push can wake that browser without a Server app or account.
-- If no browser subscription exists, the first-contact path can now call the hosted TextBee REST API when `TEXTBEE_API_KEY` is configured. If that adapter is disabled or explicitly rejects a request, the paired caller-owned Server SIM gateway remains a fallback. If TextBee returns an ambiguous timeout or server error, Server will not send a second SMS automatically.
-- `server-send-sms` continues to handle Supabase Auth OTP webhooks. The guest invitation adapter is separate and runs only in `server-calls` on the server.
-- The SIM gateway uses Android `SmsManager`; its own screen warns that SMS may incur normal carrier charges. This avoids an SMS aggregator, not the operator's SMS charge.
+Rich preview rendering is controlled by the receiving SMS app, link-preview settings, network access and link scanners. Some apps display the image and title; others show only the SMS text and URL. Server supplies valid OG metadata but cannot force every messaging app to render the card.
 
-These existing paths must remain independently observable. A push provider accepting a notification is not proof that the handset displayed it.
+## Hosted TextBee pilot adapter — implemented, inactive until configured
 
-The repository already includes an optional Android SIM Gateway companion app. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the Server SMS queue, sends messages using Android `SmsManager`, and reports carrier send/delivery callbacks. No Server-owned SMS number or Twilio account is required for this route.
+Server now has a server-side adapter for TextBee's documented `POST /api/v1/gateway/send-sms` API. The caller-first SMS wording is concise:
 
-The guest-call start handler now uses the following order:
+`{caller name} is calling you on Server. Tap to answer: {invitation URL}`
 
-1. If Web Push was accepted for an already enrolled guest browser, use Web Push and do not create a duplicate SMS alert.
-2. Otherwise, look for an enabled gateway owned by the caller that checked in within the last 90 seconds.
-3. Apply per-caller/per-recipient and per-caller SMS rate limits.
-4. Queue a `guest_invite` job containing the short-lived caller-identified invitation URL. The existing database claim function only allows a gateway owned by that call's caller to claim this job.
-5. The companion app sends using the SIM in that Android device and reports `sent` / `delivered` / `failed`. A queue response is not a carrier delivery receipt. The database rechecks caller ownership, ringing/connecting state, call expiry, invite expiry, and join/revocation state before claim; stale unleased guest-invite jobs are discarded.
+The guest-call transport order is:
 
-The SMS travels through the gateway phone's own operator and that operator's interconnect to the recipient network. Server therefore needs no direct contract with every destination-country operator. The sender's tariff, included SMS bundle, international-SMS pricing, roaming status, and carrier anti-abuse rules still apply. The message is a text containing the secure URL; an Open Graph preview is not guaranteed by SMS clients.
+1. If Web Push was accepted for an already-enrolled guest browser, use Web Push and do not send an SMS.
+2. Otherwise, apply the existing per-caller/per-recipient and per-caller rate limits, then try TextBee if `TEXTBEE_API_KEY` is configured.
+3. If TextBee is disabled or returns a definitive client rejection, use the caller-owned Server SIM Gateway if it is online.
+4. If TextBee times out or returns a 5xx response, report an uncertain result and do **not** send a second SMS automatically. This prevents duplicate invitations when the first request may have reached TextBee.
+5. Report TextBee API acceptance separately from carrier `sent` / `delivered` confirmation. A successful API response is not proof that the handset received the message.
 
-The repository already includes an optional Android SIM Gateway companion app. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the Server SMS queue, sends messages using Android `SmsManager`, and reports carrier send/delivery callbacks. No Server-owned SMS number or Twilio account is required for this route.
+Server-side configuration:
 
-The guest-call start handler now uses the following order:
+- `TEXTBEE_API_KEY` — required; stored only as a Supabase Edge Function secret.
+- `TEXTBEE_BASE_URL` — optional; defaults to `https://api.textbee.dev/api/v1`.
+- `TEXTBEE_DEVICE_ID` — optional; pins the request to one TextBee gateway device.
 
-1. If Web Push was accepted for an already enrolled guest browser, use Web Push and do not create a duplicate SMS alert.
-2. Otherwise, look for an enabled gateway owned by the caller that checked in within the last 90 seconds.
-3. Apply per-caller/per-recipient and per-caller SMS rate limits.
-4. Queue a `guest_invite` job containing the short-lived caller-identified invitation URL. The existing database claim function only allows a gateway owned by that call's caller to claim this job.
-5. The companion app sends using the SIM in that Android device and reports `sent` / `delivered` / `failed`. A queue response is not a carrier delivery receipt. The database rechecks caller ownership, ringing/connecting state, call expiry, invite expiry, and join/revocation state before claim; stale unleased guest-invite jobs are discarded.
+Set these secrets only in the **Server Backend** Supabase project (`hzuovekqsjtpvmbuybxs`), not in Git, website JavaScript, or the Android APK. The TextBee API key must not be pasted into chat or put in a source file.
 
-The SMS travels through the gateway phone's own operator and that operator's interconnect to the recipient network. Server therefore needs no direct contract with every destination-country operator. The sender's tariff, included SMS bundle, international-SMS pricing, roaming status, and carrier anti-abuse rules still apply. The message is a text containing the secure URL; an Open Graph preview is not guaranteed by SMS clients.
+The hosted Free plan is limited to one active Android device, 50 messages per day and 300 per month. The Android gateway phone must be online and powered, and it sends through its own SIM. The recipient sees that SIM's number as the SMS sender; the caller's Server name appears in the message body and OG preview. The SIM's carrier plan/bundle and international-SMS tariff still apply.
 
-This is an Android-only optional route. Google Play restricts `SEND_SMS` and specifically lists content-sharing/invitation messaging as an invalid use for non-default SMS/Phone apps. The existing companion must not be silently merged into the normal Play-distributed caller app without a compliant permission/distribution plan. iOS does not expose a silent third-party SMS send API: Apple's Message UI displays a compose sheet for the user to approve. For iOS users without an Android SIM gateway, use the user-approved compose route or a separately contracted messaging service.
+**Hosted-service privacy:** TextBee receives the recipient's phone number and the complete SMS body, including the unique invitation URL. Treat that link as shared with the SMS processor. The preview rejects an invite when the call is no longer ringing/connecting, and the guest call expires after 20 minutes, but the URL itself contains a bearer token. Do not put private call notes or other sensitive content in the SMS. Use the first-party SIM Gateway or self-hosting when stricter data control is required.
+
+## First-party caller-owned Android SIM Gateway — implemented fallback
+
+Server also has its own optional Android SIM Gateway companion. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the SMS queue, sends with Android `SmsManager`, and reports carrier send/delivery callbacks. It is used if TextBee is not configured or definitively rejects the request. It does not require a third-party SMS aggregator, but still uses the linked phone's carrier plan.
+
+The database restricts a `guest_invite` job to a gateway owned by that call's caller. Before a job is claimed, the database rechecks caller ownership, ringing/connecting state, call expiry, invitation expiry, revocation and prior join state; stale invitations are discarded.
+
+This is an Android-only optional route. Google Play restricts `SEND_SMS` for non-default SMS/Phone apps, especially for invitation/content-sharing use. Do not silently bundle the gateway into the normal Play-distributed caller app without an approved distribution/permissions path. iOS does not expose a background third-party SIM SMS API; use a user-approved message composer or a separately provisioned messaging service.
 
 ## First-contact transport findings
 
