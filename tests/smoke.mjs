@@ -950,7 +950,7 @@ assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
- assert.match(calls,/invitationText=callerDisplay\+" is calling you on Server\. Tap to answer: "/,"the SMS invitation begins with the caller's chosen name and a concise answer prompt");
+ assert.match(calls,/invitationText=callerDisplay\+" is calling: "/,"the SMS invitation begins with the caller's chosen name and a concise answer prompt");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-guest-preview\?token=/,"guest share links open a dynamic caller-branded preview before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
@@ -1106,7 +1106,7 @@ assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
 assert.match(calls,/CALLER_NAME_REQUIRED/,"a caller display name is required before an outgoing call is created");
-assert.match(calls,/invitationText=callerDisplay\+" is calling you on Server\. Tap to answer: "/,
+assert.match(calls,/invitationText=callerDisplay\+" is calling: "/,
   "non-Server SMS invitation identifies the caller and directs the recipient to tap to answer in the browser");
 assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview uses the caller's profile name even when the phone number is private");
 assert.match(guestPreview,/"SERVER CALLER"/,"legacy invitations without a stored name use a neutral label instead of PRIVATE CALLER");
