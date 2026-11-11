@@ -709,6 +709,14 @@ assert.match(calls,/guest_invite_sms_sender/);
 assert.match(calls,/guest_invite_id:created\.invite_id/);
 assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
   "Android reports when the first-contact SMS invitation is queued through the caller's own SIM gateway");
+assert.match(androidMain,/deliveryMode == "textbee_sms_accepted"/,
+  "Android distinguishes TextBee provider acceptance from carrier delivery");
+assert.match(androidMain,/deliveryMode == "textbee_send_unknown"/,
+  "Android warns when TextBee's send result is uncertain and duplicate prevention applies");
+assert.match(iosModel,/deliveryMode == "textbee_sms_accepted"/,
+  "iOS caller reports TextBee acceptance without claiming delivery");
+assert.match(iosModel,/deliveryMode == "textbee_send_unknown"/,
+  "iOS caller warns about uncertain TextBee outcomes");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
   "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
