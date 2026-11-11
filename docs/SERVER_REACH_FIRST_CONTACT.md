@@ -10,6 +10,7 @@ A Server caller enters an ordinary E.164 phone number and starts a call. The rec
 This is distinct from **native phone ringing with no link**. That experience requires a carrier voice call and a media bridge between the caller's WebRTC session and a PSTN/SIP leg. SMS cannot make the recipient's normal Phone app ring.
 
 ## Existing caller identity and Open Graph preview
+The SMS now uses the short public route `https://server-onboarding-ochre.vercel.app/c/{token}`. Vercel rewrites that path to the Supabase `server-guest-preview` Edge Function without changing the URL shown to the recipient. The preview endpoint remains the source of truth for caller-specific HTML metadata and the 1200 × 630 PNG. This short form reduces SMS length and gives the link preview a stable Server-domain URL; it does not change the underlying invite token or call-authentication checks.
 
 The repository already has a dynamic `server-guest-preview` endpoint. It validates the invite and call state, obtains the caller's Server profile display name, generates a 1200 × 630 caller-specific PNG, and supplies `og:title`, `og:description`, `og:image`, image dimensions, alt text and Twitter card metadata. The title is phrased as “{caller name} is calling you through Server”; the image includes the caller's name and an incoming-call label. The preview page then opens the secure guest call page with an Answer action.
 
