@@ -623,10 +623,60 @@ Deno.serve(async(req:Request)=>{
    const hasPushAccepted=guestPush.accepted>0;
    const guestAvailabilityStatus=guestPush.recent_online>0?"online":
     guestPush.registered>0?"background_reachable":"unknown_guest";
-   const deliveryMode=hasPushAccepted?"web_push":"manual_share";
+
+   // First-contact fallback: use the caller's own paired Android SIM gateway.
+   // The carrier routes the SMS across networks; Server does not need a
+   // separate SMS contract with each destination-country operator.
+   // Never send a second alert when an enrolled browser push was accepted.
+   let simSmsQueued=false;
+   let simSmsGatewayOnline=false;
+   if(!hasPushAccepted){
+    const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
+    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
+     .select("id").eq("owner_user_id",uid).eq("enabled",true)
+     .gte("last_seen_at",gatewayFreshAfter)
+     .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+    if(gatewayError){
+     console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
+    }else if(gateway){
+     simSmsGatewayOnline=true;
+     const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
+      p_scope:"guest_invite_sms_pair",
+      p_key_hash:await sha("guest-invite-sms-pair:"+uid+":"+to),
+      p_window_seconds:3600,p_max_hits:3
+     });
+     const {data:senderAllowed,error:senderLimitError}=await db.rpc("server_rate_limit_allow",{
+      p_scope:"guest_invite_sms_sender",
+      p_key_hash:await sha("guest-invite-sms-sender:"+uid),
+      p_window_seconds:3600,p_max_hits:20
+     });
+     if(!pairLimitError&&!senderLimitError&&pairAllowed===true&&senderAllowed===true){
+      const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
+       category:"guest_invite",
+       recipient_e164:to,
+       body:invitationText,
+       call_id:call.id,
+       guest_invite_id:created.invite_id,
+       source_event_id:"server-guest-invite:"+call.id,
+       status:"queued"
+      }).select("id").maybeSingle();
+      if(!queueError&&queuedJob){
+       simSmsQueued=true;
+      }else{
+       console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
+      }
+     }else{
+      console.warn("GUEST_SIM_SMS_RATE_LIMITED_OR_UNAVAILABLE");
+     }
+    }
+   }
+
+   const deliveryMode=hasPushAccepted?"web_push":simSmsQueued?"sim_sms_queued":"manual_share";
    const deliveryMessage=hasPushAccepted
     ?"Server submitted a caller-identified browser call alert to "+guestPush.accepted+" registered device(s). Push-service acceptance is not proof that the notification has appeared; the guest browser confirms when it opens."
-    :"No guest browser receiver accepted an alert. Share this caller-identifying invitation once; the recipient can enable call alerts on that browser for future calls. No SMS is sent.";
+    :simSmsQueued
+     ?"Server queued the caller-identified invitation on your linked Android SIM gateway. The gateway will send it through its SIM; your mobile plan may charge for this SMS. Queueing is not proof of delivery."
+     :"No enrolled browser receiver or active SIM gateway was available. Share this caller-identifying invitation once, or enable the Server SIM Gateway to send future invitations through your own mobile plan.";
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
     invite_expires_at:expires,delivery_mode:deliveryMode,delivery_channel:deliveryMode,
@@ -642,6 +692,10 @@ Deno.serve(async(req:Request)=>{
       :guestPush.registered>0
        ?"A browser push receiver is registered; waiting for the recipient to open and confirm this call."
        :"The recipient has not enrolled a guest browser receiver yet."
+    },
+    sim_sms_delivery:{
+     channel:"caller_sim_sms",queued:simSmsQueued,gateway_online:simSmsGatewayOnline,
+     carrier_charges_possible:true,device_delivery_confirmed:false
     },
     push_delivery:{
      channel:"web_push",registered_devices:guestPush.registered,
