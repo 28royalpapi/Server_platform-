@@ -36,6 +36,10 @@ export async function sendTextBeeSms(input: {
   const simSubscriptionRaw = (Deno.env.get("TEXTBEE_SIM_SUBSCRIPTION_ID") || "").trim();
   let simSubscriptionId: number | null = null;
   if (simSubscriptionRaw) {
+    if (!deviceId) {
+      console.error("TEXTBEE_SIM_CONFIGURATION_INVALID");
+      return { outcome: "rejected", httpStatus: 0 };
+    }
     const parsedSubscriptionId = Number(simSubscriptionRaw);
     if (!Number.isSafeInteger(parsedSubscriptionId) || parsedSubscriptionId < 0) {
       console.error("TEXTBEE_SIM_CONFIGURATION_INVALID");
