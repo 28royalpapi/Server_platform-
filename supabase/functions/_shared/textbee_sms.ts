@@ -62,12 +62,24 @@ export async function sendTextBeeSms(input: {
       return { outcome: "rejected", httpStatus: response.status };
     }
 
+    const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
     const batchId = [
+      data?.smsBatchId,
       payload?.smsBatchId,
-      payload?.data?.smsBatchId,
       payload?.batch?.smsBatchId,
-      payload?.data?.batchId
+      data?.batchId
     ].find((value) => typeof value === "string" && value.trim().length > 0) || null;
+    const successCount = Number(data?.successCount || 0);
+    const failureCount = Number(data?.failureCount || 0);
+
+    if (data?.success === false || (failureCount > 0 && successCount === 0)) {
+      console.warn("TEXTBEE_SEND_NOT_QUEUED");
+      return { outcome: "rejected", httpStatus: 200 };
+    }
+    if (data?.success !== true && successCount < 1 && !batchId) {
+      console.warn("TEXTBEE_SEND_RESPONSE_UNRECOGNIZED");
+      return { outcome: "uncertain", httpStatus: 200 };
+    }
 
     return { outcome: "accepted", smsBatchId: batchId };
   } catch {
