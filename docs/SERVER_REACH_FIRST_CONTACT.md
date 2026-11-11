@@ -21,7 +21,7 @@ Rich preview rendering is controlled by the receiving SMS app, link-preview sett
 
 Server now has a server-side adapter for TextBee's documented `POST /api/v1/gateway/send-sms` API. The caller-first SMS wording is concise:
 
-`{caller name} is calling you on Server. Tap to answer: {invitation URL}`
+`{caller name} is calling: {invitation URL}`
 
 The guest-call transport order is:
 
