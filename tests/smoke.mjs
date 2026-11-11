@@ -938,7 +938,7 @@ assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
- assert.match(calls,/SERVER CALL:/,"the shared guest invitation clearly announces an incoming Server call");
+ assert.match(calls,/invitationText=callerDisplay\+" is calling you on Server\. Tap to answer: "/,"the SMS invitation begins with the caller's chosen name and a concise answer prompt");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-guest-preview\?token=/,"guest share links open a dynamic caller-branded preview before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
