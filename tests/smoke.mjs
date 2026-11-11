@@ -1094,8 +1094,8 @@ assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
 assert.match(calls,/CALLER_NAME_REQUIRED/,"a caller display name is required before an outgoing call is created");
-assert.match(calls,/Open this previewable invitation to answer over the internet/,
-  "non-Server invitation explains that the recipient can answer through the browser without an app");
+assert.match(calls,/invitationText=callerDisplay\+" is calling you on Server\. Tap to answer: "/,
+  "non-Server SMS invitation identifies the caller and directs the recipient to tap to answer in the browser");
 assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview uses the caller's profile name even when the phone number is private");
 assert.match(guestPreview,/"SERVER CALLER"/,"legacy invitations without a stored name use a neutral label instead of PRIVATE CALLER");
 assert.match(guest,/caller_server_id:callerLabel/,
