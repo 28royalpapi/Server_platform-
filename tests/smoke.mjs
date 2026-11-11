@@ -91,6 +91,7 @@ const guestPreviewImage=read("web/images/server-incoming-call-preview.svg");
 const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
 const gatewayGuestClaimMigration=read("supabase/migrations/20261106170100_server_gateway_guest_owner_claim.sql");
 
+const vercelConfig=JSON.parse(read("vercel.json"));
 const config=read("web/config.js");
 const app=read("web/app.js");
 const html=read("web/index.html");
@@ -1040,6 +1041,9 @@ assert.match(guestPreview,/og:image/,"the guest preview publishes incoming-call 
 assert.match(guestPreview,/og:image:alt/,"the preview image alt text names the actual caller identity");
 assert.match(guestPreview,/content-type.*image[\\/]png/,"caller-specific Open Graph artwork is served as PNG rather than SVG");
 assert.match(guestPreview,/image=1&invite_id=/,"each call preview links to a private caller-specific image");
+assert.ok((vercelConfig.rewrites||[]).some(route=>route.source==="/c/:token"&&route.destination.includes("/server-guest-preview?token=:token")),"the compact /c/:token route is rewritten to the server-rendered guest preview");
+assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"first-contact SMS uses the short caller-preview URL");
+assert.match(guestPreview,/og:url.*canonicalUrl/,"the preview declares the compact URL as its Open Graph canonical URL");
 assert.match(guestPreview,/CALLER IDENTIFICATION/,"the image visibly labels the caller identity");
 assert.match(guestPreview,/pngChunk\("tEXt",callerMetadata\)/,"the PNG embeds inspectable caller identity metadata for production acceptance tests");
 assert.match(guestPreview,/allow_number_based_server_calls/,"the OG card only displays a verified phone when the caller opted into number-based calling");
