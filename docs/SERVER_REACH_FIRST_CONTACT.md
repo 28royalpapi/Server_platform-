@@ -26,6 +26,22 @@ Do not describe these two paths as one transport.
 
 These existing paths must remain independently observable. A push provider accepting a notification is not proof that the handset displayed it.
 
+## Caller-owned Android SIM gateway (implemented on `android-finish`)
+
+The repository already includes an optional Android SIM Gateway companion app. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the Server SMS queue, sends messages using Android `SmsManager`, and reports carrier send/delivery callbacks. No Server-owned SMS number or Twilio account is required for this route.
+
+The guest-call start handler now uses the following order:
+
+1. If Web Push was accepted for an already enrolled guest browser, use Web Push and do not create a duplicate SMS alert.
+2. Otherwise, look for an enabled gateway owned by the caller that checked in within the last 90 seconds.
+3. Apply per-caller/per-recipient and per-caller SMS rate limits.
+4. Queue a `guest_invite` job containing the short-lived caller-identified invitation URL. The existing database claim function only allows a gateway owned by that call's caller to claim this job.
+5. The companion app sends using the SIM in that Android device and reports `sent` / `delivered` / `failed`. A queue response is not a carrier delivery receipt.
+
+The SMS travels through the gateway phone's own operator and that operator's interconnect to the recipient network. Server therefore needs no direct contract with every destination-country operator. The sender's tariff, included SMS bundle, international-SMS pricing, roaming status, and carrier anti-abuse rules still apply. The message is a text containing the secure URL; an Open Graph preview is not guaranteed by SMS clients.
+
+This is an Android-only optional route. Google Play restricts `SEND_SMS` and specifically lists content-sharing/invitation messaging as an invalid use for non-default SMS/Phone apps. The existing companion must not be silently merged into the normal Play-distributed caller app without a compliant permission/distribution plan. iOS does not expose a silent third-party SMS send API: Apple's Message UI displays a compose sheet for the user to approve. For iOS users without an Android SIM gateway, use the user-approved compose route or a separately contracted messaging service.
+
 ## First-contact transport findings
 
 ### Browser Web Push
