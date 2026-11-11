@@ -700,6 +700,8 @@ assert.match(textbeeAdapter,/TEXTBEE_API_KEY/);
 assert.match(textbeeAdapter,/TEXTBEE_DEVICE_ID/);
 assert.match(textbeeAdapter,/TEXTBEE_SIM_SUBSCRIPTION_ID/);
 assert.match(textbeeAdapter,/simSubscriptionId/);
+assert.match(textbeeAdapter,/if \(!deviceId\)/,
+  "TextBee SIM subscription selection requires the device ID that owns that subscription");
 assert.match(textbeeAdapter,/response\.status\s*>=\s*500/,
   "TextBee server errors are treated as uncertain to prevent duplicate invitations");
 assert.ok(textbeeAdapter.includes("data?.success === false"),
