@@ -698,7 +698,7 @@ assert.match(textbeeAdapter,/\/gateway\/send-sms/);
 assert.match(textbeeAdapter,/x-api-key/);
 assert.match(textbeeAdapter,/TEXTBEE_API_KEY/);
 assert.match(textbeeAdapter,/TEXTBEE_DEVICE_ID/);
-assert.match(textbeeAdapter,/response\.status>=500/,
+assert.match(textbeeAdapter,/response\.status\s*>=\s*500/,
   "TextBee server errors are treated as uncertain to prevent duplicate invitations");
 assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
   "SIM invitations can only use an active gateway paired to the calling Server account");
