@@ -801,10 +801,13 @@ assert.match(guest,/SERVER_TURN_URLS/,"guest calls use the same optional TURN re
 assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches Android and browser STUN discovery");
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
-assert.doesNotMatch(calls,/sms_body|server_sms_jobs|automatic_sms_queued/,
-  "guest call invitation links are never represented as SMS payloads or queued for SMS delivery");
-assert.doesNotMatch(calls,/server_sms_jobs|automatic_sms_queued|sourceEventId/,
-  "new guest calls no longer use the paired SIM gateway SMS queue");
+assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
+  "guest invitation SMS can only use a recently active gateway owned by the caller");
+assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
+assert.match(calls,/category:"guest_invite"/);
+assert.match(calls,/source_event_id:"server-guest-invite:"/);
+assert.match(calls,/guest_invite_sms_pair/);
+assert.match(calls,/guest_invite_sms_sender/);
 assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
 assert.match(gateway,/owner_user_id:pair\.owner_user_id/,"claimed SIM gateways inherit the pairing owner's identity");
 assert.match(gatewayOwnerMigration,/add column if not exists owner_user_id uuid references auth\.users\(id\)/,"existing SIM gateway rows can be migrated to account ownership");
