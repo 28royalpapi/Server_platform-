@@ -439,8 +439,14 @@ final class ServerViewModel: ObservableObject {
             try await callKit.reportOutgoingStart(id: id, handle: normalizedPhone ?? typedServerID)
             if !guestInviteMessage.isEmpty {
                 update("No SMS gateway is connected. Tap Share guest invitation and choose Messages to send it to the recipient. They must open it with internet access.")
+            } else if deliveryMode == "textbee_sms_accepted" {
+                update("TextBee accepted the caller-identified SMS invitation. Carrier delivery is not confirmed yet; check TextBee message status.")
+            } else if deliveryMode == "textbee_send_unknown" {
+                update("TextBee's send result is uncertain. Server did not send a duplicate SMS. Check TextBee message history before retrying.")
+            } else if deliveryMode == "sim_sms_queued" {
+                update("Guest invitation queued on your linked Android SIM gateway. Carrier delivery is not confirmed yet.")
             } else {
-                update(route == "guest" ? "Guest invitation queued for SMS delivery. The recipient needs internet and microphone access." : "Calling another Server user…")
+                update(route == "guest" ? "Guest invitation is awaiting delivery. The recipient needs internet and microphone access." : "Calling another Server user…")
             }
             startCallPolling()
         } catch {
