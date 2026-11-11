@@ -36,7 +36,7 @@ Server-side configuration:
 - `TEXTBEE_API_KEY` — required; stored only as a Supabase Edge Function secret.
 - `TEXTBEE_BASE_URL` — optional; defaults to `https://api.textbee.dev/api/v1`.
 - `TEXTBEE_DEVICE_ID` — optional; pins the request to one TextBee gateway device.
-- `TEXTBEE_SIM_SUBSCRIPTION_ID` — optional numeric Android SIM subscription ID; use it to choose the caller's own line on a dual-SIM phone. Leave it unset to use TextBee/Android's configured default SIM.
+- `TEXTBEE_SIM_SUBSCRIPTION_ID` — optional numeric Android SIM subscription ID; use it to choose the caller's own line on a dual-SIM phone. It must be configured together with `TEXTBEE_DEVICE_ID` because subscription IDs belong to one Android gateway device. Leave both unset to use TextBee's default device/SIM.
 
 Set these secrets only in the **Server Backend** Supabase project (`hzuovekqsjtpvmbuybxs`), not in Git, website JavaScript, or the Android APK. The TextBee API key must not be pasted into chat or put in a source file. The SIM subscription ID is obtained from the paired gateway device's TextBee SIM information; confirm it again after changing SIMs or reinstalling the gateway.
 
