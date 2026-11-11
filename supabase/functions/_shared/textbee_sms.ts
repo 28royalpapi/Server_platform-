@@ -33,6 +33,16 @@ export async function sendTextBeeSms(input: {
   }
 
   const deviceId = (Deno.env.get("TEXTBEE_DEVICE_ID") || "").trim();
+  const simSubscriptionRaw = (Deno.env.get("TEXTBEE_SIM_SUBSCRIPTION_ID") || "").trim();
+  let simSubscriptionId: number | null = null;
+  if (simSubscriptionRaw) {
+    const parsedSubscriptionId = Number(simSubscriptionRaw);
+    if (!Number.isSafeInteger(parsedSubscriptionId) || parsedSubscriptionId < 0) {
+      console.error("TEXTBEE_SIM_CONFIGURATION_INVALID");
+      return { outcome: "rejected", httpStatus: 0 };
+    }
+    simSubscriptionId = parsedSubscriptionId;
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
@@ -45,7 +55,8 @@ export async function sendTextBeeSms(input: {
       body: JSON.stringify({
         recipients: [input.recipient],
         message: input.message,
-        ...(deviceId ? { deviceId } : {})
+        ...(deviceId ? { deviceId } : {}),
+        ...(simSubscriptionId !== null ? { simSubscriptionId } : {})
       }),
       signal: controller.signal
     });
