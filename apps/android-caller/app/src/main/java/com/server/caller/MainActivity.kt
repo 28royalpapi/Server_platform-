@@ -778,23 +778,17 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         val guestPush = started.optJSONObject("push_delivery")
         val accepted = guestPush?.optInt("accepted_by_push_service", 0) ?: 0
         val guestStatus = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
-        val textBeeAccepted = deliveryMode == "textbee_sms_accepted" ||
-          started.optJSONObject("textbee_delivery")?.optBoolean("accepted", false) == true
         val message = when {
-          textBeeAccepted ->
-            "TextBee accepted the caller-identified SMS invitation. The recipient's carrier delivery is not confirmed yet; check TextBee message status."
-          deliveryMode == "textbee_send_unknown" ->
-            "TextBee's send result is uncertain. Server did not send a duplicate SMS. Check TextBee message history before retrying."
           deliveryMode == "sim_sms_queued" ->
-            "The caller-identified invitation is queued on your linked Android SIM gateway. Your mobile operator may charge for SMS. Waiting for the gateway's send and delivery receipts."
+            "The caller-identified invitation is queued on your linked Server SIM Gateway. Your mobile operator may charge for SMS. Waiting for the gateway's send and delivery receipts."
           accepted > 0 && guestStatus == "online" ->
             "Guest browser is online. Server submitted the caller-identified alert; waiting for the recipient to answer over WebRTC."
           accepted > 0 ->
             "Server submitted the caller-identified alert to an enrolled guest browser. Delivery is not confirmed; waiting for the recipient to open and answer."
           else ->
-            "No enrolled browser alert receiver or active SMS gateway accepted the invitation. Share the secure invitation manually or configure TextBee."
+            "No enrolled browser alert receiver or active Server SIM Gateway accepted the invitation. Share the secure invitation manually."
         }
-        setStatus(message, accepted == 0 && !textBeeAccepted && deliveryMode != "sim_sms_queued")
+        setStatus(message, accepted == 0 && deliveryMode != "sim_sms_queued")
         if (pendingSystemDialerReturn) returnToSystemPhoneUi()
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")

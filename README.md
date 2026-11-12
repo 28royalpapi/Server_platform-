@@ -8,7 +8,7 @@ Server is a website-led onboarding and internet-calling project. The website cre
 - **Server Backend dashboard:** https://supabase.com/dashboard/project/hzuovekqsjtpvmbuybxs
 - **Server Backend URL:** `https://hzuovekqsjtpvmbuybxs.supabase.co`
 
-The default SMS route does not need a separate DigitalOcean/VPS host or a TextBee account. The project URL above is the address entered by the Android SIM Gateway. Supabase/Vercel usage remains subject to plan quotas and service limits; mobile-network SMS charges are separate.
+The default SMS route uses Server's own Android SIM Gateway and Supabase; it does not require a separate VPS or third-party SMS provider. The two public addresses are the Server digital address (`https://server-onboarding-ochre.vercel.app`) and the Server Backend URL (`https://hzuovekqsjtpvmbuybxs.supabase.co`). The gateway uses the Backend URL; Server puts its digital address in the guest invitation SMS. Supabase/Vercel usage remains subject to plan quotas and service limits; mobile-network SMS charges are separate.
 
 ## Backend and components
 
@@ -31,9 +31,8 @@ A Server call to a non-member is a **guest browser call**, not an ordinary carri
 The automated first-contact alert route is:
 
 1. **Enrolled browser push:** Server first tries a Web Push invitation if the recipient's browser previously enrolled for call alerts.
-2. **Server's own SIM Gateway:** if no browser push accepted the alert, Server checks whether the caller has an enabled Android SIM Gateway paired to their Server identity and recently online. It queues an SMS containing the caller's display name and secure invitation link.
-3. **Optional self-hosted TextBee:** this fallback is disabled unless both `TEXTBEE_API_KEY` and an explicit HTTPS `TEXTBEE_BASE_URL` are configured for a TextBee server operated by Server. There is no default connection to TextBee's hosted service.
-4. **Manual share:** if no automated transport accepts the invitation, Server returns the link for the caller to share through an app they already use.
+2. **Server's own SIM Gateway:** if no browser push accepted the alert, Server checks whether the caller has an enabled Android SIM Gateway paired to their Server identity and recently online. It queues an SMS containing the caller's display name and secure invitation link. The gateway sends it using the paired Android phone's real SIM.
+3. **Manual share:** if no enrolled browser receiver or paired gateway accepts the invitation, Server returns the secure link for the caller to share through an app they already use.
 
 The first-party Gateway source is in `apps/android-sim-gateway/`. It sends the queued SMS through the Android phone's SIM using `SmsManager`, then reports carrier submission/delivery/failure callbacks to Server. The sender number visible to the recipient is the Gateway phone's SIM number. The mobile operator may charge the Gateway owner for each SMS.
 

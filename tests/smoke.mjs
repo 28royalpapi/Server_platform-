@@ -35,7 +35,6 @@ const guestManifest=JSON.parse(read("web/manifest.webmanifest"));
 const guestPwaIcon=read("web/images/server-app-icon.svg");
 const guestWebPushMigration=read("supabase/migrations/20261109165000_server_guest_browser_web_push.sql");
 const guestWebPushSender=read("supabase/functions/_shared/guest_web_push.ts");
-const textbeeAdapter=read("supabase/functions/_shared/textbee_sms.ts");
 const gatewayReleaseWorkflow=read(".github/workflows/server-android-launch-smoke.yml");
 const gatewayOnboarding=read("web/index.html");
 const projectReadme=read("README.md");
@@ -694,45 +693,18 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
 const guestSmsTransport=calls.slice(calls.indexOf("// First-contact transport order:"),calls.indexOf("const deliveryMode=",calls.indexOf("// First-contact transport order:")));
-assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued"/,
-  "guest calls prefer enrolled browser push, then the caller-owned Server SIM Gateway, with TextBee only as an optional fallback");
-assert.ok(guestSmsTransport.indexOf('from("server_gateway_devices")')>=0 &&
-  guestSmsTransport.indexOf('from("server_gateway_devices")')<guestSmsTransport.indexOf("sendTextBeeSms("),
-  "the caller-owned Android SIM gateway is checked and queued before the optional TextBee fallback");
-assert.match(guestSmsTransport,/if\(!simSmsQueued\)/,
-  "TextBee is contacted only when our first-party SIM gateway did not accept the SMS job");
-assert.match(calls,/sendTextBeeSms\(\{recipient:to,message:invitationText\}\)/,
-  "first-contact guest SMS uses the server-side TextBee adapter");
-assert.match(calls,/textBeeOutcome==="uncertain"\?"textbee_send_unknown"/,
-  "an ambiguous TextBee result is surfaced rather than sending a duplicate SMS");
-assert.match(calls,/textbee_delivery:/,
-  "the call response reports TextBee acceptance separately from handset delivery");
- assert.match(textbeeAdapter,/Deno\.env\.get\("TEXTBEE_BASE_URL"\)\s*\|\|\s*""/,
-   "TextBee is usable only when an explicit self-hosted server URL is configured");
- assert.match(projectReadme,/Public service addresses/,
-   "README records the public Server website and backend endpoints");
- assert.match(projectReadme,/first-party Gateway source is in/ ,
-   "README identifies the self-operated Android SIM Gateway implementation");
- assert.match(projectReadme,/explicit HTTPS `TEXTBEE_BASE_URL`/,
-   "README documents self-hosted TextBee as opt-in only");
- assert.doesNotMatch(projectReadme,/guest-call invitations are never automatically queued as paid SMS/i,
-   "README does not retain the obsolete manual-only guest SMS description");
- assert.doesNotMatch(textbeeAdapter,/api\.textbee\.dev/,
-   "the SMS route never defaults to TextBee's hosted service");
-assert.match(textbeeAdapter,/\/gateway\/send-sms/);
-assert.match(textbeeAdapter,/x-api-key/);
-assert.match(textbeeAdapter,/TEXTBEE_API_KEY/);
-assert.match(textbeeAdapter,/TEXTBEE_DEVICE_ID/);
-assert.match(textbeeAdapter,/TEXTBEE_SIM_SUBSCRIPTION_ID/);
-assert.match(textbeeAdapter,/simSubscriptionId/);
-assert.match(textbeeAdapter,/if \(!deviceId\)/,
-  "TextBee SIM subscription selection requires the device ID that owns that subscription");
-assert.match(textbeeAdapter,/response\.status\s*>=\s*500/,
-  "TextBee server errors are treated as uncertain to prevent duplicate invitations");
-assert.ok(textbeeAdapter.includes("data?.success === false"),
-  "TextBee HTTP 200 responses with an explicit rejected batch are not treated as sends");
-assert.match(textbeeAdapter,/successCount < 1 && !batchId/,
-  "unrecognized TextBee 200 responses are not reported as accepted");
+assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued":"manual_share"/,
+  "guest calls use only Server browser push, the first-party SIM Gateway, or manual share");
+assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
+  guestSmsTransport.includes('from("server_sms_jobs").insert') &&
+  guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
+  "the backend queues SMS for the caller-owned Android SIM Gateway and wakes it through Server Realtime");
+assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
+assert.match(projectReadme,/Server digital address/);
+assert.match(projectReadme,/Server Backend URL/);
+assert.match(projectReadme,/first-party Gateway source is in/ ,
+  "README identifies the self-operated Android SIM Gateway implementation");
+assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
 assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
   "SIM invitations can only use an active gateway paired to the calling Server account");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
@@ -757,14 +729,8 @@ assert.match(calls,/guest_invite_sms_sender/);
 assert.match(calls,/guest_invite_id:created\.invite_id/);
 assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
   "Android reports when the first-contact SMS invitation is queued through the caller's own SIM gateway");
-assert.match(androidMain,/deliveryMode == "textbee_sms_accepted"/,
-  "Android distinguishes TextBee provider acceptance from carrier delivery");
-assert.match(androidMain,/deliveryMode == "textbee_send_unknown"/,
-  "Android warns when TextBee's send result is uncertain and duplicate prevention applies");
-assert.match(iosModel,/deliveryMode == "textbee_sms_accepted"/,
-  "iOS caller reports TextBee acceptance without claiming delivery");
-assert.match(iosModel,/deliveryMode == "textbee_send_unknown"/,
-  "iOS caller warns about uncertain TextBee outcomes");
+assert.doesNotMatch(androidMain,/textbee/i,"Android caller UI has no third-party SMS provider states");
+assert.doesNotMatch(iosModel,/textbee/i,"iOS caller UI has no third-party SMS provider states");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
   "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
