@@ -853,7 +853,15 @@ jobs:
           cp "$ARM64_APK" server-android-arm64.apk
           cp "$ARMV7_APK" server-android-armv7.apk
           sha256sum server-android-arm64.apk server-android-armv7.apk
-          gh release upload server-android-connector-preview server-android-arm64.apk server-android-armv7.apk --repo "$GITHUB_REPOSITORY" --clobber
+          GATEWAY_APK="$(find "$ROOT" -type f -name 'server-sim-gateway-debug.apk' -print -quit)"
+          if [[ -z "$GATEWAY_APK" || ! -s "$GATEWAY_APK" ]]; then
+            echo "ERROR: the tested Server SIM Gateway APK is missing from the Android build artifact." >&2
+            find "$ROOT" -maxdepth 8 -type f -print >&2
+            exit 1
+          fi
+          cp "$GATEWAY_APK" server-sim-gateway.apk
+          sha256sum server-sim-gateway.apk
+          gh release upload server-android-connector-preview server-android-arm64.apk server-android-armv7.apk server-sim-gateway.apk --repo "$GITHUB_REPOSITORY" --clobber
           gh release delete-asset server-android-connector-preview app-universal-release.apk --repo "$GITHUB_REPOSITORY" --yes || true
           gh release delete-asset server-android-connector-preview Server-Android-Connector-preview.apk --repo "$GITHUB_REPOSITORY" --yes || true
           echo "ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"
