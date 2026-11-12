@@ -889,9 +889,9 @@ assert.match(calls,/guest_invite_sms_sender/);
 assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
 assert.match(gateway,/owner_user_id:pair\.owner_user_id/,"claimed SIM gateways inherit the pairing owner's identity");
 assert.match(gatewayOwnerMigration,/add column if not exists owner_user_id uuid references auth\.users\(id\)/,"existing SIM gateway rows can be migrated to account ownership");
-assert.equal((gatewayCustomIdentityMigration.match(/REFERENCES public\\.server_profiles\\(user_id\\)/g)||[]).length,2,
+assert.equal((gatewayCustomIdentityMigration.match(/REFERENCES public\.server_profiles\(user_id\)/g)||[]).length,2,
   "SIM Gateway pairings and devices reference the custom Server profile identity");
-assert.doesNotMatch(gatewayCustomIdentityMigration,/REFERENCES auth\\.users/,
+assert.doesNotMatch(gatewayCustomIdentityMigration,/REFERENCES auth\.users/,
   "SIM Gateway ownership no longer requires Supabase Auth user rows");
 assert.match(gatewayGuestClaimMigration,/c\.caller_user_id=d\.owner_user_id/,"only the caller-owned SIM gateway can claim a guest invitation SMS job");
 assert.match(guestInviteSmsGuardMigration,/c\.state in \('ringing','connecting'\)/,
