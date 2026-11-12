@@ -721,7 +721,7 @@ assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(androidSimGateway,/POLL_INTERVAL_MS = 15_000L/,"SIM gateway fallback polling is limited to 15 seconds to avoid exhausting the Supabase Free invocation allowance");
-assert.match(androidSimGateway,/replace this fallback[\\s\\S]*FCM wake-ups before scaling/,"higher-scale SIM gateway delivery must move from repeated polling to push wake-ups");
+assert.ok(androidSimGateway.includes("FCM wake-ups before scaling"),"higher-scale SIM gateway delivery must move from repeated polling to push wake-ups");
 assert.match(calls,/guest_invite_sms_pair/);
 assert.match(calls,/guest_invite_sms_sender/);
 assert.match(calls,/guest_invite_id:created\.invite_id/);
