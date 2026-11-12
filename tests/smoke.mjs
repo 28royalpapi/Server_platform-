@@ -685,8 +685,14 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
-assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":textBeeAccepted\?"textbee_sms_accepted"/,
-  "guest calls prefer enrolled browser push, then configured TextBee, then the caller-owned SIM gateway");
+const guestSmsTransport=calls.slice(calls.indexOf("// First-contact transport order:"),calls.indexOf("const deliveryMode=",calls.indexOf("// First-contact transport order:")));
+assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued"/,
+  "guest calls prefer enrolled browser push, then the caller-owned Server SIM Gateway, with TextBee only as an optional fallback");
+assert.ok(guestSmsTransport.indexOf('from("server_gateway_devices")')>=0 &&
+  guestSmsTransport.indexOf('from("server_gateway_devices")')<guestSmsTransport.indexOf("sendTextBeeSms("),
+  "the caller-owned Android SIM gateway is checked and queued before the optional TextBee fallback");
+assert.match(guestSmsTransport,/if\(!simSmsQueued\)/,
+  "TextBee is contacted only when our first-party SIM gateway did not accept the SMS job");
 assert.match(calls,/sendTextBeeSms\(\{recipient:to,message:invitationText\}\)/,
   "first-contact guest SMS uses the server-side TextBee adapter");
 assert.match(calls,/textBeeOutcome==="uncertain"\?"textbee_send_unknown"/,
