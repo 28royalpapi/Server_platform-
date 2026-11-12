@@ -18,36 +18,40 @@ The preview uses the caller's **Server profile display name**. It cannot read th
 
 Rich preview rendering is controlled by the receiving SMS app, link-preview settings, network access and link scanners. Some apps display the image and title; others show only the SMS text and URL. Server supplies valid OG metadata but cannot force every messaging app to render the card.
 
-## Hosted TextBee pilot adapter — implemented, inactive until configured
+## First-party caller-owned Android SIM Gateway — default SMS route
 
-Server now has a server-side adapter for TextBee's documented `POST /api/v1/gateway/send-sms` API. The caller-first SMS wording is concise:
+Server's own Android SIM Gateway is the default first-contact SMS transport when the caller has paired a gateway that was active in the last 90 seconds. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the Server SMS queue, sends with Android `SmsManager`, and reports carrier send/delivery callbacks.
+
+This is the key cost decision: **the default route does not need a separate TextBee VPS, TextBee API subscription, MongoDB, Redis or a second SMS platform.** The queue and authenticated gateway API already run in the existing Server Backend Supabase project. The Android phone is the SIM gateway; the mobile operator carries and charges for the SMS. The Android device must be online, powered, and allowed to run the foreground service.
+
+The checked-in gateway code is in `apps/android-sim-gateway/`; its backend is `supabase/functions/server-gateway/`. The guest call backend looks up only a fresh gateway owned by the caller, applies per-sender/per-recipient rate limits, and queues the invitation. The database claim guard rechecks caller ownership, active call state, invite expiry, revocation and prior join before the SMS can be claimed.
+
+The caller's SIM number is the SMS sender. The Open Graph card separately displays the caller's Server profile name. To make Android's SMS sender header resolve to a name the recipient saved, the gateway SIM number must be the number saved in the recipient's contacts; the OG metadata cannot read the recipient's private Contacts database.
+
+## Optional TextBee fallback adapter
+
+Server retains a server-side TextBee adapter for controlled experiments or as a fallback when a caller has no usable first-party gateway. It is **not required** for the default self-operated route.
+
+The SMS text remains concise:
 
 `{caller name} is calling: {invitation URL}`
 
 The guest-call transport order is:
 
-1. If Web Push was accepted for an already-enrolled guest browser, use Web Push and do not send an SMS.
-2. Otherwise, apply the existing per-caller/per-recipient and per-caller rate limits, then try TextBee if `TEXTBEE_API_KEY` is configured.
-3. If TextBee is disabled or returns a definitive client rejection, use the caller-owned Server SIM Gateway if it is online.
+1. If Web Push is accepted for an already-enrolled guest browser, use Web Push and do not send an SMS.
+2. Otherwise, apply the existing per-caller/per-recipient and per-caller rate limits, then use the caller-owned Server SIM Gateway if it is online.
+3. Only when our own gateway cannot accept the job, try TextBee if `TEXTBEE_API_KEY` is configured.
 4. If TextBee times out or returns a 5xx response, report an uncertain result and do **not** send a second SMS automatically. This prevents duplicate invitations when the first request may have reached TextBee.
 5. Report TextBee API acceptance separately from carrier `sent` / `delivered` confirmation. A successful API response is not proof that the handset received the message.
 
-Server-side configuration:
+Optional TextBee configuration (store only as Supabase Edge Function secrets in **Server Backend**, never in Git, website JavaScript, the Android APK or chat):
 
-- `TEXTBEE_API_KEY` — required; stored only as a Supabase Edge Function secret.
-- `TEXTBEE_BASE_URL` — optional; defaults to `https://api.textbee.dev/api/v1`.
+- `TEXTBEE_API_KEY` — enables the external fallback.
+- `TEXTBEE_BASE_URL` — optional; defaults to `https://api.textbee.dev/api/v1`, or set this to a separate self-hosted TextBee API.
 - `TEXTBEE_DEVICE_ID` — optional; pins the request to one TextBee gateway device.
-- `TEXTBEE_SIM_SUBSCRIPTION_ID` — optional numeric Android SIM subscription ID; use it to choose the caller's own line on a dual-SIM phone. It must be configured together with `TEXTBEE_DEVICE_ID` because subscription IDs belong to one Android gateway device. Leave both unset to use TextBee's default device/SIM.
+- `TEXTBEE_SIM_SUBSCRIPTION_ID` — optional numeric Android SIM subscription ID; it must be configured together with `TEXTBEE_DEVICE_ID`.
 
-Set these secrets only in the **Server Backend** Supabase project (`hzuovekqsjtpvmbuybxs`), not in Git, website JavaScript, or the Android APK. The TextBee API key must not be pasted into chat or put in a source file. The SIM subscription ID is obtained from the paired gateway device's TextBee SIM information; confirm it again after changing SIMs or reinstalling the gateway.
-
-The hosted Free plan is limited to one active Android device, 50 messages per day and 300 per month. The Android gateway phone must be online and powered, and it sends through its own SIM. The recipient sees that SIM's number as the SMS sender; the caller's Server name appears in the message body and OG preview. **For the recipient's Android Messages app to show the caller's saved contact name in its sender header, the gateway must send from the same phone number the recipient saved.** Therefore, for the first test, install TextBee on the caller's own Android phone and select the same SIM/number the recipient has saved (using `TEXTBEE_SIM_SUBSCRIPTION_ID` when needed). A separate shared gateway SIM will show its own number/contact name instead. The SIM's carrier plan/bundle and international-SMS tariff still apply.
-
-**Hosted-service privacy:** TextBee receives the recipient's phone number and the complete SMS body, including the unique invitation URL. Treat that link as shared with the SMS processor. The preview rejects an invite when the call is no longer ringing/connecting, and the guest call expires after 20 minutes, but the URL itself contains a bearer token. Do not put private call notes or other sensitive content in the SMS. Use the first-party SIM Gateway or self-hosting when stricter data control is required.
-
-## First-party caller-owned Android SIM Gateway — implemented fallback
-
-Server also has its own optional Android SIM Gateway companion. It pairs to the caller's Server account, runs an explicitly started foreground service, polls the SMS queue, sends with Android `SmsManager`, and reports carrier send/delivery callbacks. It is used if TextBee is not configured or definitively rejects the request. It does not require a third-party SMS aggregator, but still uses the linked phone's carrier plan.
+The hosted TextBee Free plan is limited to one active Android device, 50 messages per day and 300 per month. Hosted TextBee receives the recipient's phone number and SMS body, including the invitation URL. Carrier plan/bundle and international-SMS charges still apply. Self-hosting TextBee removes its hosted-plan cap but adds an independently operated API/dashboard/database/Redis/FCM/SMTP stack and server maintenance. TextBee source is AGPL-3.0; review the licence before modifying or incorporating it into Server.
 
 The database restricts a `guest_invite` job to a gateway owned by that call's caller. Before a job is claimed, the database rechecks caller ownership, ringing/connecting state, call expiry, invitation expiry, revocation and prior join state; stale invitations are discarded.
 
@@ -98,7 +102,7 @@ This path can make the recipient's normal cellular Phone UI ring without Server 
 
 1. Keep the existing **Server-to-Server WebRTC** route for Server users.
 2. Keep **guest WebRTC + Web Push** as the zero-carrier-message-cost route after the recipient has enrolled once.
-3. Use the **TextBee hosted API** for the first real-device pilot after the user configures its API key and Android gateway. Keep the existing first-party SIM gateway as the no-aggregator fallback. Measure acceptance, carrier `sent` / `delivered` reports, preview display, link opens and answered calls separately. Before scale, compare TextBee self-hosting and httpSMS self-hosting; both projects are AGPL-3.0 and require server/carrier operating costs.
+3. Use the **first-party caller-owned Android SIM Gateway** as the default first-contact SMS route. Keep TextBee as an optional fallback only when no paired Server gateway can accept the job. Measure queueing, carrier `sent` / `delivered` reports, preview display, link opens and answered calls separately. Do not create a second VPS stack until real usage demonstrates a need for one.
 4. Treat **no-link native ringing** as a separate hybrid voice product path: WebRTC caller → Server media bridge → approved SIP/voice provider → recipient's normal phone. This is the most faithful implementation of the no-link ringing experience, but it has per-minute and infrastructure costs and is not recipient-side browser WebRTC.
 5. Do not describe SMS as a native incoming call. TextBee sends an ordinary SMS containing a link. Native Phone-app ringing without a link remains a separate SIP/PSTN voice-bridge problem.
 
