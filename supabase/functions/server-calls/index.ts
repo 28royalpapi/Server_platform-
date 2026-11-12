@@ -626,9 +626,9 @@ Deno.serve(async(req:Request)=>{
    const guestAvailabilityStatus=guestPush.recent_online>0?"online":
     guestPush.registered>0?"background_reachable":"unknown_guest";
 
-   // First-contact transport order: enrolled browser push, hosted TextBee pilot,
-   // then the caller-owned Server SIM gateway. Never send a second SMS after
-   // TextBee reports an ambiguous timeout/5xx result.
+   // First-contact transport order: enrolled browser push, then the caller-owned
+   // Server SIM Gateway. TextBee is an optional external fallback only when the
+   // caller has no usable first-party gateway. Never retry an ambiguous TextBee send.
    let simSmsQueued=false;
    let simSmsGatewayOnline=false;
    let textBeeAccepted=false;
@@ -646,37 +646,41 @@ Deno.serve(async(req:Request)=>{
      p_window_seconds:3600,p_max_hits:20
     });
     if(!pairLimitError&&!senderLimitError&&pairAllowed===true&&senderAllowed===true){
-     const textBee=await sendTextBeeSms({recipient:to,message:invitationText});
-     textBeeOutcome=textBee.outcome;
-     if(textBee.outcome==="accepted"){
-      textBeeAccepted=true;
-      textBeeBatchId=textBee.smsBatchId;
-     }else if(textBee.outcome!=="uncertain"){
-      // TextBee is disabled or explicitly rejected the request. The independent
-      // caller-owned SIM gateway remains available as a no-aggregator fallback.
-      const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
-      const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
-       .select("id").eq("owner_user_id",uid).eq("enabled",true)
-       .gte("last_seen_at",gatewayFreshAfter)
-       .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
-      if(gatewayError){
-       console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
-      }else if(gateway){
-       simSmsGatewayOnline=true;
-       const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
-        category:"guest_invite",
-        recipient_e164:to,
-        body:invitationText,
-        call_id:call.id,
-        guest_invite_id:created.invite_id,
-        source_event_id:"server-guest-invite:"+call.id,
-        status:"queued"
-       }).select("id").maybeSingle();
-       if(!queueError&&queuedJob){
-        simSmsQueued=true;
-       }else{
-        console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
-       }
+     // Use the caller's own paired SIM first. This is our self-operated SMS
+     // transport: no TextBee account, API subscription or separate VPS needed.
+     const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
+     const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
+      .select("id").eq("owner_user_id",uid).eq("enabled",true)
+      .gte("last_seen_at",gatewayFreshAfter)
+      .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+     if(gatewayError){
+      console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
+     }else if(gateway){
+      simSmsGatewayOnline=true;
+      const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
+       category:"guest_invite",
+       recipient_e164:to,
+       body:invitationText,
+       call_id:call.id,
+       guest_invite_id:created.invite_id,
+       source_event_id:"server-guest-invite:"+call.id,
+       status:"queued"
+      }).select("id").maybeSingle();
+      if(!queueError&&queuedJob){
+       simSmsQueued=true;
+      }else{
+       console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
+      }
+     }
+
+     // TextBee remains an optional fallback for a caller with no live paired
+     // gateway, or when our gateway queue could not accept the job.
+     if(!simSmsQueued){
+      const textBee=await sendTextBeeSms({recipient:to,message:invitationText});
+      textBeeOutcome=textBee.outcome;
+      if(textBee.outcome==="accepted"){
+       textBeeAccepted=true;
+       textBeeBatchId=textBee.smsBatchId;
       }
      }
     }else{
@@ -684,17 +688,18 @@ Deno.serve(async(req:Request)=>{
     }
    }
 
-   const deliveryMode=hasPushAccepted?"web_push":textBeeAccepted?"textbee_sms_accepted":
-    simSmsQueued?"sim_sms_queued":textBeeOutcome==="uncertain"?"textbee_send_unknown":"manual_share";
+   const deliveryMode=hasPushAccepted?"web_push":simSmsQueued?"sim_sms_queued":
+    textBeeAccepted?"textbee_sms_accepted":textBeeOutcome==="uncertain"?"textbee_send_unknown":"manual_share";
    const deliveryMessage=hasPushAccepted
     ?"Server submitted a caller-identified browser call alert to "+guestPush.accepted+" registered device(s). Push-service acceptance is not proof that the notification has appeared; the guest browser confirms when it opens."
-    :textBeeAccepted
-     ?"TextBee accepted the caller-identified SMS invitation for sending. Check the TextBee message status for carrier delivery; API acceptance is not proof that the recipient received it."
-     :simSmsQueued
-      ?"TextBee did not accept the request. Server queued the caller-identified invitation on your linked Android SIM gateway; your mobile plan may charge for this SMS. Queueing is not proof of delivery."
+    :simSmsQueued
+     ?"Server queued the caller-identified invitation on your linked Android SIM gateway. Your mobile carrier plan may charge for this SMS. Queueing is not proof of delivery."
+     :textBeeAccepted
+      ?"TextBee accepted the caller-identified SMS invitation for sending. Check TextBee message status for carrier delivery; API acceptance is not proof that the recipient received it."
       :textBeeOutcome==="uncertain"
-       ?"The TextBee request timed out or returned an uncertain server error. Server did not send a second SMS to avoid duplicate invitations. Check TextBee message history before retrying."
-       :"No enrolled browser receiver or available SMS gateway accepted the invitation. Share this caller-identifying invitation manually or configure TextBee.";
+       ?"The TextBee request timed out or returned an uncertain server error. Server did not send a second SMS to avoid duplicates. Check TextBee message history before retrying."
+       :"No enrolled browser receiver or available Android SIM gateway accepted the invitation. Share this caller-identifying invitation manually or configure an optional SMS provider.";
+
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
     invite_expires_at:expires,delivery_mode:deliveryMode,delivery_channel:deliveryMode,
