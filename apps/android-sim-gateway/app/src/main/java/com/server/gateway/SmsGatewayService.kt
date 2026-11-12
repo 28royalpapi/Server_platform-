@@ -128,7 +128,7 @@ class SmsGatewayService : Service() {
       } else {
         sms.sendTextMessage(phone, null, message, sentIntents.first(), deliveredIntents.first())
       }
-      updateNotification("Submitted SMS through SIM · ${phone.take(5)}…")
+      updateNotification("SMS submitted to Android telephony service")
     } catch (_: Exception) {
       SmsStatusReceiver.reportFromWorker(this, jobId, "failed", "SMS_MANAGER_REJECTED")
     }

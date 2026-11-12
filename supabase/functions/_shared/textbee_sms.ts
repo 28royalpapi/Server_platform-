@@ -18,8 +18,13 @@ export async function sendTextBeeSms(input: {
   const apiKey = (Deno.env.get("TEXTBEE_API_KEY") || "").trim();
   if (!apiKey) return { outcome: "disabled" };
 
-  const configuredBase = (Deno.env.get("TEXTBEE_BASE_URL") || "https://api.textbee.dev/api/v1")
-    .trim().replace(/\/+$/, "");
+  // TextBee is optional and must be explicitly self-hosted by Server. Do not
+  // silently fall back to TextBee's hosted service when no server URL is set.
+  const configuredBase = (Deno.env.get("TEXTBEE_BASE_URL") || "").trim().replace(/\/+$/, "");
+  if (!configuredBase) {
+    console.info("TEXTBEE_SELF_HOST_NOT_CONFIGURED");
+    return { outcome: "disabled" };
+  }
   let endpoint: URL;
   try {
     endpoint = new URL(configuredBase + "/gateway/send-sms");
