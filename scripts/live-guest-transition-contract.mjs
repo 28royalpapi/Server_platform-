@@ -46,7 +46,9 @@ async function request(functionName, body, { token = accessToken, timeout = 1500
 }
 
 function guestTokenFrom(urlValue) {
-  const token = new URL(urlValue).searchParams.get("token") || "";
+  const inviteUrl = new URL(urlValue);
+  const token = inviteUrl.searchParams.get("token") ||
+    inviteUrl.pathname.match(/\/c\/([0-9a-f]{64})$/i)?.[1] || "";
   assert.match(token, /^[0-9a-f]{64}$/i, "guest preview must carry a 256-bit hex invitation token");
   return token;
 }
