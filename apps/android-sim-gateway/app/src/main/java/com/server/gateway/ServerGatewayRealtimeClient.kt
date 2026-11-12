@@ -84,7 +84,7 @@ internal class ServerGatewayRealtimeClient(
         reconnectAttempt = 0
         reconnectScheduled.set(false)
         val config = JSONObject()
-          .put("broadcast", JSONObject().put("ack", false).put("self", false))
+          .put("broadcast", JSONObject().put("ack", false).put("self", true))
           .put("presence", JSONObject().put("enabled", false))
           .put("private", false)
         val join = JSONObject()
