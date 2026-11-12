@@ -16,9 +16,10 @@ Deno.serve(async(req:Request)=>{
   const tokenHash=await sha(sessionToken);
   const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id").eq("token_hash",tokenHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
-  const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
-  if(profileError||!profile?.phone_verified_at)return out({error:"VERIFIED_PROFILE_REQUIRED"},401);
-  const {data:allowed,error:le}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_code",p_key_hash:await sha(profile.user_id),p_window_seconds:3600,p_max_hits:5});
+  // Pairing is account-bound and uses the caller's active Server session.
+  // Requiring a verified phone here would create a bootstrap cycle: the SIM
+  // gateway is what sends the first phone-verification SMS.
+  const {data:allowed,error:le}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_code",p_key_hash:await sha(session.user_id),p_window_seconds:3600,p_max_hits:5});
   if(le||allowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
   const pairing=code(),expires=new Date(Date.now()+10*60*1000).toISOString();
   const {error}=await db.from("server_gateway_pairings").insert({owner_user_id:session.user_id,code_hash:await sha(pairing),expires_at:expires});
