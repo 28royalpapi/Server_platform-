@@ -60,22 +60,22 @@
           <p id="server-id" class="pairing-result"></p>
           <p class="done-text">Your Server ID is ready. Server calls use WebRTC over the internet. When you call a non-member, Server sends a caller-identified browser push alert if that phone number has previously enrolled a guest receiver. On first contact, share the secure invitation once; the recipient can enable call alerts in their browser and answer without installing Server. If no internet receiver is available, Server records the attempt as unreachable—no mobile-operator fallback is placed.</p>
 
-          <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
-          <section id="phone-link-step" class="phone-link-step hidden">
-            <h3>Link your mobile number</h3>
-            <p class="fine-print">Linking and verifying a phone number lets other Server users find your Server identity by number and, with your explicit consent, show that number as caller ID. It does not enable carrier-call fallback. Guest browser receivers are enrolled separately when a non-member opens a secure Server invitation and enables call alerts. Number verification uses the paired Server SMS gateway and may incur carrier SMS charges; it is not used to deliver guest call invitations.</p>
-                      <div class="gateway-setup">
-            <h4>Set up SMS verification</h4>
-            <p class="fine-print">Phone-number verification is optional. It lets other Server users resolve your Server identity by your verified number; it does not change the internet-only calling route. The code expires after 10 minutes.</p>
-            <p class="fine-print">To use this Android phone as your own SMS gateway, install the optional Server SIM Gateway companion below. It sends only after you pair it here, grant Android SMS permission and start its visible service. Your mobile operator may charge for each SMS.</p>
+          <section class="gateway-setup" id="sms-gateway-setup">
+            <h3>Optional: connect your Android SIM Gateway</h3>
+            <p class="fine-print">Install the companion app on an Android phone whose SIM you allow Server to use for first-contact SMS invitations. Pairing uses your active Server session; you do not need to link or verify your own phone number first. Grant Android SMS permission and start the visible gateway service. Your mobile operator may charge for SMS.</p>
             <a class="secondary full install-link-secondary" id="download-server-sim-gateway" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-sim-gateway.apk">Download Server SIM Gateway (Android companion) ↓</a>
-            <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate SMS gateway pairing code</button>
+            <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate one-time gateway pairing code</button>
             <div id="sms-gateway-pairing-result" class="hidden">
               <label for="sms-gateway-pairing-code">One-time pairing code</label>
               <p id="sms-gateway-pairing-code" class="pairing-result"></p>
               <p id="sms-gateway-pairing-expiry" class="fine-print"></p>
             </div>
-          </div>
+            <p id="sms-gateway-pairing-status" class="status hidden" role="status" aria-live="polite"></p>
+          </section>
+          <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
+          <section id="phone-link-step" class="phone-link-step hidden">
+            <h3>Link your mobile number</h3>
+            <p class="fine-print">Linking and verifying a phone number lets other Server users find your Server identity by number and, with your explicit consent, show that number as caller ID. It does not enable carrier-call fallback. Guest browser receivers are enrolled separately when a non-member opens a secure Server invitation and enables call alerts. Number verification uses your paired Server SIM gateway and may incur carrier SMS charges; it is not used to deliver guest call invitations.</p>
             <label class="check-row" for="allow-number-calls"><input id="allow-number-calls" type="checkbox"><span>Allow other Server users to find my Server identity using this verified phone number and show it as my caller ID.</span></label>
             <label for="link-phone-number">Mobile number</label>
             <input id="link-phone-number" type="tel" inputmode="tel" autocomplete="tel" placeholder="+2348012345678 or +919876543210">
