@@ -705,8 +705,10 @@ assert.match(calls,/textBeeOutcome==="uncertain"\?"textbee_send_unknown"/,
   "an ambiguous TextBee result is surfaced rather than sending a duplicate SMS");
 assert.match(calls,/textbee_delivery:/,
   "the call response reports TextBee acceptance separately from handset delivery");
-assert.match(textbeeAdapter,/https:\/\/api\.textbee\.dev\/api\/v1/,
-  "TextBee uses its documented hosted REST API by default");
+ assert.match(textbeeAdapter,/Deno\.env\.get\("TEXTBEE_BASE_URL"\)\s*\|\|\s*""/,
+   "TextBee is usable only when an explicit self-hosted server URL is configured");
+ assert.doesNotMatch(textbeeAdapter,/api\.textbee\.dev/,
+   "the SMS route never defaults to TextBee's hosted service");
 assert.match(textbeeAdapter,/\/gateway\/send-sms/);
 assert.match(textbeeAdapter,/x-api-key/);
 assert.match(textbeeAdapter,/TEXTBEE_API_KEY/);
