@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { sendGuestBrowserPush } from "../_shared/guest_web_push.ts";
+import { sendServerGatewayWake } from "../_shared/server_gateway_wake.ts";
 import { sendTextBeeSms } from "../_shared/textbee_sms.ts";
 const encoder = new TextEncoder();
 
@@ -650,7 +651,7 @@ Deno.serve(async(req:Request)=>{
      // transport: no TextBee account, API subscription or separate VPS needed.
      const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
      const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
-      .select("id").eq("owner_user_id",uid).eq("enabled",true)
+      .select("id,token_hash").eq("owner_user_id",uid).eq("enabled",true)
       .gte("last_seen_at",gatewayFreshAfter)
       .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
      if(gatewayError){
@@ -668,6 +669,8 @@ Deno.serve(async(req:Request)=>{
       }).select("id").maybeSingle();
       if(!queueError&&queuedJob){
        simSmsQueued=true;
+       // Realtime carries only a wake hint; the device must authenticate again to claim SMS.
+       deferRealtime(sendServerGatewayWake(gateway.token_hash));
       }else{
        console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
       }
