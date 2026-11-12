@@ -137,3 +137,13 @@ For either route, test with real Android and iOS devices. A successful API respo
 - httpSMS repository: https://github.com/NdoleStudio/httpsms
 - httpSMS setup: https://docs.httpsms.com/
 - Supabase Edge Function secrets: https://supabase.com/docs/guides/functions/secrets
+
+
+## 2026-11-12 production rollout checkpoint
+
+- Applied the guest invitation claim guard in the live **Server Backend** project. Supabase recorded migration version `20261112093823` (`server_guest_invite_sms_claim_guard`).
+- Deployed `server-calls` version **61** with the first-party caller-owned SIM gateway as the primary SMS route, optional TextBee fallback, and Supabase Realtime wake hint.
+- The existing live `server-gateway` endpoint remains version **8**. The Android gateway still requires a user to pair it once and explicitly grant SMS permission/start its visible foreground service.
+- Deployed the matching Vercel website to production from the `android-finish` branch. The stable `https://server-onboarding-ochre.vercel.app/c/{token}` route now rewrites to `server-guest-preview`; a deliberately invalid test token returned the expected `410 Gone` from the preview function instead of Vercel `404`.
+- Realtime wake-only CI has passed against the live Supabase project: the REST endpoint returned HTTP 202 and the connected WebSocket received the `gateway_wake` event. The message carries only `{ wake: true }`; the SMS itself remains behind the authenticated gateway queue.
+- No SIM gateway has been paired and no real SMS has been sent. Live SMS delivery, OG rendering for a valid invitation, recipient answer, and two-way WebRTC audio remain physical-device acceptance tests.
