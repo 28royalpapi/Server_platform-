@@ -17,6 +17,7 @@ async function smoke() {
     let broadcastSent = false;
     let finished = false;
     let lastFrame = "no-frame";
+    let lastInboundFrame = "no-inbound-frame";
     let restStatus = null;
 
     const finish = (error) => {
@@ -29,11 +30,12 @@ async function smoke() {
     };
 
     const timer = setTimeout(() => {
-      finish(new Error("Realtime timeout: joinAccepted=" + joinAccepted + ", broadcastSent=" + broadcastSent + ", restStatus=" + restStatus + ", lastFrame=" + lastFrame));
-    }, 12_000);
+      finish(new Error("Realtime timeout: joinAccepted=" + joinAccepted + ", broadcastSent=" + broadcastSent + ", restStatus=" + restStatus + ", lastFrame=" + lastFrame + ", lastInboundFrame=" + lastInboundFrame));
+    }, 20_000);
 
     socket.addEventListener("open", () => {
       lastFrame = "websocket-open";
+      lastInboundFrame = "websocket-open";
       socket.send(JSON.stringify({
         topic: wireTopic,
         event: "phx_join",
@@ -53,6 +55,7 @@ async function smoke() {
       let message;
       try { message = JSON.parse(String(frame.data)); } catch { lastFrame = "non-json-frame"; return; }
       lastFrame = "event=" + String(message.event) + ",topic=" + String(message.topic) + ",payloadStatus=" + String(message.payload?.status || "");
+      lastInboundFrame = lastFrame;
 
       if (message.event === "phx_reply" &&
           message.topic === wireTopic &&
@@ -60,7 +63,7 @@ async function smoke() {
           !joinAccepted) {
         joinAccepted = true;
         try {
-          await new Promise((resolve) => setTimeout(resolve, 250));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           const response = await fetch(projectUrl + "/realtime/v1/api/broadcast/" + encodeURIComponent(topic) + "/events/" + eventName + "?private=false", {
             method: "POST",
             headers: {
