@@ -22,6 +22,7 @@ const guestSingleClaimMigration=read("supabase/migrations/20261108152000_server_
 const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
 const keepAliveMigration=read("supabase/migrations/20261108142000_server_keepalive_probe.sql");
 const guestInviteSmsGuardMigration=read("supabase/migrations/20261111100000_server_guest_invite_sms_claim_guard.sql");
+const gatewayCustomIdentityMigration=read("supabase/migrations/20261112144044_server_gateway_custom_identity_foreign_keys.sql");
 const signalRetentionMigration=read("supabase/migrations/20261108170000_server_call_signal_retention.sql");
 const activeCallLeaseMigration=read("supabase/migrations/20261108180000_server_active_call_lease.sql");
 const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
@@ -888,6 +889,10 @@ assert.match(calls,/guest_invite_sms_sender/);
 assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
 assert.match(gateway,/owner_user_id:pair\.owner_user_id/,"claimed SIM gateways inherit the pairing owner's identity");
 assert.match(gatewayOwnerMigration,/add column if not exists owner_user_id uuid references auth\.users\(id\)/,"existing SIM gateway rows can be migrated to account ownership");
+assert.equal((gatewayCustomIdentityMigration.match(/REFERENCES public\\.server_profiles\\(user_id\\)/g)||[]).length,2,
+  "SIM Gateway pairings and devices reference the custom Server profile identity");
+assert.doesNotMatch(gatewayCustomIdentityMigration,/REFERENCES auth\\.users/,
+  "SIM Gateway ownership no longer requires Supabase Auth user rows");
 assert.match(gatewayGuestClaimMigration,/c\.caller_user_id=d\.owner_user_id/,"only the caller-owned SIM gateway can claim a guest invitation SMS job");
 assert.match(guestInviteSmsGuardMigration,/c\.state in \('ringing','connecting'\)/,
   "SIM gateways can only claim guest invitations for calls that are still ringing or connecting");
