@@ -55,7 +55,7 @@ async function smoke() {
       let message;
       try { message = JSON.parse(String(frame.data)); } catch { lastFrame = "non-json-frame"; return; }
       lastFrame = "event=" + String(message.event) + ",topic=" + String(message.topic) + ",payloadStatus=" + String(message.payload?.status || "");
-      lastInboundFrame = lastFrame;
+      lastInboundFrame = JSON.stringify({ event: message.event, topic: message.topic, payload: message.payload });
 
       if (message.event === "phx_reply" &&
           message.topic === wireTopic &&
