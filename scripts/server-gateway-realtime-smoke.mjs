@@ -16,6 +16,8 @@ async function smoke() {
     let joinAccepted = false;
     let broadcastSent = false;
     let finished = false;
+    let lastFrame = "no-frame";
+    let restStatus = null;
 
     const finish = (error) => {
       if (finished) return;
@@ -27,10 +29,11 @@ async function smoke() {
     };
 
     const timer = setTimeout(() => {
-      finish(new Error("Realtime wake broadcast was not received within 12 seconds"));
+      finish(new Error("Realtime timeout: joinAccepted=" + joinAccepted + ", broadcastSent=" + broadcastSent + ", restStatus=" + restStatus + ", lastFrame=" + lastFrame));
     }, 12_000);
 
     socket.addEventListener("open", () => {
+      lastFrame = "websocket-open";
       socket.send(JSON.stringify({
         topic: wireTopic,
         event: "phx_join",
@@ -48,7 +51,8 @@ async function smoke() {
 
     socket.addEventListener("message", async (frame) => {
       let message;
-      try { message = JSON.parse(String(frame.data)); } catch { return; }
+      try { message = JSON.parse(String(frame.data)); } catch { lastFrame = "non-json-frame"; return; }
+      lastFrame = "event=" + String(message.event) + ",topic=" + String(message.topic) + ",payloadStatus=" + String(message.payload?.status || "");
 
       if (message.event === "phx_reply" &&
           message.topic === wireTopic &&
@@ -70,11 +74,13 @@ async function smoke() {
               }]
             })
           });
+          restStatus = response.status;
           if (!response.ok) {
             const body = (await response.text()).slice(0, 240);
             finish(new Error("Realtime REST broadcast returned HTTP " + response.status + ": " + body));
           } else {
             broadcastSent = true;
+            lastFrame = "broadcast-http-" + response.status;
           }
         } catch (error) {
           finish(error instanceof Error ? error : new Error("Realtime REST broadcast failed"));
