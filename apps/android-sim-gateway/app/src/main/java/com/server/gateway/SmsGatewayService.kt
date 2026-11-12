@@ -39,16 +39,16 @@ class SmsGatewayService : Service() {
     if (running.compareAndSet(false, true)) {
       realtimeClient = ServerGatewayRealtimeClient(
         this,
-        onWake = { pollQueue("Realtime wake-up") },
+        onWake = { pollQueue() },
         onState = { state -> updateNotification(state) }
       ).also { it.start() }
 
       // Always check once at startup, then immediately again after Realtime joins.
-      pollQueue("Startup check")
+      pollQueue()
 
       // A low-frequency safety net catches jobs if the WebSocket is unavailable.
       timers.scheduleAtFixedRate(
-        { pollQueue("Safety check") },
+        { pollQueue() },
         FALLBACK_POLL_INTERVAL_MINUTES,
         FALLBACK_POLL_INTERVAL_MINUTES,
         TimeUnit.MINUTES
@@ -66,7 +66,7 @@ class SmsGatewayService : Service() {
     return START_STICKY
   }
 
-  private fun pollQueue(reason: String) {
+  private fun pollQueue() {
     if (!running.get() || !pollInProgress.compareAndSet(false, true)) return
     try {
       executor.execute {
