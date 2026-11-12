@@ -39,7 +39,7 @@ async function smoke() {
         event: "phx_join",
         payload: {
           config: {
-            broadcast: { ack: false, self: false },
+            broadcast: { ack: true, self: true },
             presence: { enabled: false },
             private: false
           }
@@ -60,19 +60,14 @@ async function smoke() {
           !joinAccepted) {
         joinAccepted = true;
         try {
-          const response = await fetch(projectUrl + "/realtime/v1/api/broadcast", {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          const response = await fetch(projectUrl + "/realtime/v1/api/broadcast/" + encodeURIComponent(topic) + "/events/" + eventName + "?private=false", {
             method: "POST",
             headers: {
               "apikey": publishableKey,
               "content-type": "application/json"
             },
-            body: JSON.stringify({
-              messages: [{
-                topic,
-                event: eventName,
-                payload: { wake: true }
-              }]
-            })
+            body: JSON.stringify({ wake: true })
           });
           restStatus = response.status;
           if (!response.ok) {
