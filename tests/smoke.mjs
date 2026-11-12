@@ -37,6 +37,7 @@ const guestWebPushSender=read("supabase/functions/_shared/guest_web_push.ts");
 const textbeeAdapter=read("supabase/functions/_shared/textbee_sms.ts");
 const gatewayReleaseWorkflow=read(".github/workflows/server-android-launch-smoke.yml");
 const gatewayOnboarding=read("web/index.html");
+const projectReadme=read("README.md");
 const offlineArchitecture=read("docs/offline-delivery.md");
 const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
@@ -707,6 +708,14 @@ assert.match(calls,/textbee_delivery:/,
   "the call response reports TextBee acceptance separately from handset delivery");
  assert.match(textbeeAdapter,/Deno\.env\.get\("TEXTBEE_BASE_URL"\)\s*\|\|\s*""/,
    "TextBee is usable only when an explicit self-hosted server URL is configured");
+ assert.match(projectReadme,/Public service addresses/,
+   "README records the public Server website and backend endpoints");
+ assert.match(projectReadme,/first-party Gateway source is in/ ,
+   "README identifies the self-operated Android SIM Gateway implementation");
+ assert.match(projectReadme,/explicit HTTPS `TEXTBEE_BASE_URL`/,
+   "README documents self-hosted TextBee as opt-in only");
+ assert.doesNotMatch(projectReadme,/guest-call invitations are never automatically queued as paid SMS/i,
+   "README does not retain the obsolete manual-only guest SMS description");
  assert.doesNotMatch(textbeeAdapter,/api\.textbee\.dev/,
    "the SMS route never defaults to TextBee's hosted service");
 assert.match(textbeeAdapter,/\/gateway\/send-sms/);

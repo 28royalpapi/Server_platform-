@@ -1,5 +1,5 @@
 /**
- * Server's hosted TextBee transport adapter.
+ * Optional self-hosted TextBee transport adapter.
  *
  * The API key is read only inside the Edge Function. Never pass it to the
  * Android app, web client, logs, or database. A successful HTTP response means

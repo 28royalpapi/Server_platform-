@@ -1,59 +1,80 @@
 # Server Platform
 
-Server is a website-led onboarding and internet-calling project. Android uses a small native connector only for Android-controlled microphone/notification permissions and Telecom registration. SIM selection, SIM-number reading and SMS verification are not required to create a Server ID. Server is **not** an extra SIM/eSIM and this repo does not contain a PSTN/SIP carrier bridge.
+Server is a website-led onboarding and internet-calling project. The website creates a Server ID. Android's small native connector registers Server with Android Telecom; a separate optional SIM Gateway can send real SMS messages using an Android phone's SIM. Server is not a cloned SIM/eSIM and this repository does not provide a PSTN/SIP carrier bridge.
 
-## Live Supabase backend
+## Public service addresses
 
-- **Project:** [Server Backend](https://supabase.com/dashboard/project/hzuovekqsjtpvmbuybxs)
-- **Project URL:** `https://hzuovekqsjtpvmbuybxs.supabase.co`
-- **Organization:** Viva Aliya Baby
-- **Current deployment:** five Edge Functions are deployed and ACTIVE; the database schema, private session/OTP migration, and five-minute maintenance schedule are applied.
+- **Server onboarding website:** https://server-onboarding-ochre.vercel.app
+- **Server Backend dashboard:** https://supabase.com/dashboard/project/hzuovekqsjtpvmbuybxs
+- **Server Backend URL:** `https://hzuovekqsjtpvmbuybxs.supabase.co`
 
-| Component | Current status |
+The default SMS route does not need a separate DigitalOcean/VPS host or a TextBee account. The project URL above is the address entered by the Android SIM Gateway. Supabase/Vercel usage remains subject to plan quotas and service limits; mobile-network SMS charges are separate.
+
+## Backend and components
+
+| Component | Responsibility |
 |---|---|
-| `server-auth` | Device-bound Server ID registration, optional phone OTP verification/linking, high-entropy opaque session tokens (30 days), renewal and revocation |
-| `server-calls` | Private-session authorization, profiles/preferences, calls, incoming-call lookup and WebRTC signalling |
-| `server-gateway` | Optional Android SIM gateway for user-requested phone-number verification OTPs; guest-call invitations are never automatically queued as paid SMS |
-| `server-guest` | Time-limited guest browser call invitation and WebRTC signalling |
-| `server-send-sms` | Optional Supabase Auth Send SMS Hook adapter; the main custom OTP flow does not require Supabase Auth's SMS hook |
-| `server-handoff` | Two-minute single-use exchange transfers verified onboarding to a native app |
+| `server-auth` | Device-bound Server ID registration, optional phone OTP verification/linking, session renewal and revocation |
+| `server-calls` | Authenticated call creation, WebRTC signalling, guest invitations and push/SMS delivery orchestration |
+| `server-gateway` | Secure one-time pairing, per-device gateway tokens, durable SMS queue claiming, device presence and delivery callbacks |
+| `server-guest` | Secure, time-limited guest browser invitations and WebRTC signalling |
+| `server-send-sms` | Optional Supabase Auth Send SMS Hook adapter; not required for Server's custom OTP flow |
+| `server-handoff` | Single-use website-to-native session handoff |
 | `server-health` | Protected deployment heartbeat endpoint |
-| Database | Profile, gateway, call, signalling, SMS, OTP-challenge, private-session, rate-limit tables and five-minute maintenance |
-| Web | Website-led Server ID onboarding, optional verified-number linking, consent and guest-call page; `server-web` redirects to the repository-backed static HTML host |
-| Native apps | Android caller, Android SIM gateway and iOS caller source checked in; build/test status is linked below |
+| Database | Server identities, sessions, calls, guest invitations, push receivers, gateway devices, SMS jobs, OTP challenges and rate limits |
+| Web/native | Website-led onboarding, Android Telecom connector, Android SIM Gateway and iOS calling integration |
 
-## Optional phone-number linking
+## Calling someone who does not use Server
 
-Creating a device-bound Server ID does not require SMS OTP. After setup, users can optionally verify and link a mobile number so saved contacts can resolve to an existing Server identity. That optional step uses the existing Server OTP API and needs a paired Android SMS gateway; carrier charges may apply. The core Server ID registration flow does not use SMS. Only the optional phone-number linking feature uses the OTP flow described here:
-1. `server-auth` makes a six-digit code, stores an HMAC (pepper held in Supabase Vault), limits requests/attempts, and queues the actual SMS only if a gateway has reported online recently.
-2. The paired Android SIM gateway uses the device's SIM to send the queued SMS. Mobile carrier fees may apply.
-3. The code expires after five minutes, is single-use, and only up to five wrong attempts are allowed per challenge. The server stores only the HMAC of the code, not the plaintext code.
-4. On successful verification, the client receives an opaque random session token (not a Supabase Auth JWT); only its SHA-256 hash is stored. The token is valid for 30 days, can be renewed while active, and can be revoked on logout.
-5. Calls and pairing-code creation validate that session in the Edge Function before using the service-role database client. Database secrets and session tokens are never committed into GitHub. After consent and preferences are saved, the web app exchanges its verified session for a two-minute, single-use code; the native app redeems it for its own private session. The 30-day session itself is never placed in the deep-link URL.
+A Server call to a non-member is a **guest browser call**, not an ordinary carrier voice call. The recipient receives an invitation link, opens it in a browser, grants microphone access and joins the WebRTC call. Both sides need internet access for the conversation.
 
-No Supabase Auth Phone provider or Send SMS Hook setting is required for this custom OTP path. The optional `server-send-sms` function remains for deployments that specifically choose the Supabase Auth hook route.
+The automated first-contact alert route is:
 
-## First real SMS test
+1. **Enrolled browser push:** Server first tries a Web Push invitation if the recipient's browser previously enrolled for call alerts.
+2. **Server's own SIM Gateway:** if no browser push accepted the alert, Server checks whether the caller has an enabled Android SIM Gateway paired to their Server identity and recently online. It queues an SMS containing the caller's display name and secure invitation link.
+3. **Optional self-hosted TextBee:** this fallback is disabled unless both `TEXTBEE_API_KEY` and an explicit HTTPS `TEXTBEE_BASE_URL` are configured for a TextBee server operated by Server. There is no default connection to TextBee's hosted service.
+4. **Manual share:** if no automated transport accepts the invitation, Server returns the link for the caller to share through an app they already use.
 
-The core Server ID flow does not need an SMS gateway. A gateway is needed only when a user chooses to verify and link a mobile number; without one, they can skip that optional feature and continue using their Server ID.
+The first-party Gateway source is in `apps/android-sim-gateway/`. It sends the queued SMS through the Android phone's SIM using `SmsManager`, then reports carrier submission/delivery/failure callbacks to Server. The sender number visible to the recipient is the Gateway phone's SIM number. The mobile operator may charge the Gateway owner for each SMS.
 
-1. Install `apps/android-sim-gateway` on an Android phone with a working SIM, SMS permission and mobile data/Wi-Fi. Keep its foreground service running and disable battery optimization for it.
-2. Enter the project URL `https://hzuovekqsjtpvmbuybxs.supabase.co` and public publishable key shown in `web/config.js` in the gateway setup screen, then claim a valid one-time pairing code. Pairing codes should be generated by the signed-in setup page.
-3. Once the gateway reports online, request a code for a phone you control and verify the SMS receipt and code entry. API responses alone are not proof of carrier delivery.
+An invitation SMS is only an alert and link. It does **not** ring the recipient's cellular line, make a PSTN call, or let an offline recipient answer. The actual conversation remains a WebRTC internet call.
 
-## Calling limitations
+Before an SMS can be claimed, the backend rechecks that the paired Gateway belongs to the caller and that the exact call is still ringing/connecting, the call and invitation have not expired, the invitation is not revoked, and the guest has not already joined. Stale jobs are discarded instead of sending late messages. The route is rate-limited to 3 messages per caller/recipient pair per hour and 20 per caller per hour.
 
-Server-to-Server calls and guest browser calls use WebRTC. Guest-call invitations are shared manually through an app the caller already uses; Server does not automatically send paid guest-invitation SMS or place a cellular voice call. If the caller explicitly chooses SMS in another app, that app's mobile-network charges may apply. Guest calls require the recipient to open the invitation while online and grant microphone access. Only a public STUN server is configured by default; restrictive networks need a separately operated TURN relay. A message or link cannot cause a traditional cellular ring or work when a guest has no data. On Android, after the user enables Server in Calling accounts, a foreground listener service currently polls for incoming calls and reports them to Telecom; this uses an ongoing Android notification and is a first implementation, not a push-based production design. iOS PushKit/APNs incoming-call delivery is not configured.
+## Set up the optional Android SIM Gateway
 
-## Normal dialer integration
+The core Server ID works without the Gateway. Install this companion only when you want Server to send first-contact invitation SMS or optional phone-verification codes from a SIM you control.
 
-- **Android:** the launcher opens the website onboarding inside the installed connector's WebView. The current connector requests microphone permission, optional contacts access, and notifications where available. It does not request `READ_PHONE_STATE`, `READ_PHONE_NUMBERS`, or `CALL_PHONE`, does not enumerate SIMs, and does not read a SIM phone number. It registers Server as a system-managed `PhoneAccount`; the user must explicitly enable Server in Android Calling accounts. To see Server alongside SIM 1/SIM 2 for outgoing calls, some dialers also require the system outgoing-call preference to be set to Ask every time; otherwise Android may route immediately through the current default SIM. The exact menu and picker behavior vary by device and dialer. Server is never registered as a cellular SIM and does not clone a carrier subscription. A failed Server call is not automatically handed to a carrier SIM.
-- **iPhone:** the native integration uses Apple's Default Calling App entitlement for iOS 18.2+. When Apple authorizes the entitlement and the user chooses Server as their default calling app, a Contacts tap-to-call can be handed to Server, where the user can choose Server internet calling or explicitly return to the carrier. iOS does not expose SIM-slot selection to Server and this does not add a third cellular line. The iPhone setup also supports optional phone-number verification/linking using the same backend OTP flow. The entitlement is in source; a valid Apple-authorized signing profile and on-device acceptance test are still required.
-- **Phone-number linking:** the Android website flow can request an OTP and link a verified number to the same device-bound Server ID; the phone number is never treated as verified merely because Android exposes it on a SIM. If the SMS gateway is offline, users can skip number linking and still use their Server ID.
-- **Calling scope:** Server-to-Server WebRTC is supported by the current call engine. A number that is not a Server account currently follows the guest-invitation path; this repository does not provide PSTN/SIP trunking, so it must not be described as a normal carrier-network call to any arbitrary phone number.
+- **Gateway companion APK:** [Download server-sim-gateway.apk](https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-sim-gateway.apk)
+- Install it on an Android phone with a working SIM and mobile data or Wi-Fi.
+- Sign in to Server onboarding and create your Server ID.
+- In the optional SIM Gateway section, generate a one-time pairing code. It expires after approximately ten minutes and can only be claimed once.
+- Open the Gateway companion, use the Server Backend URL above, enter the pairing code and tap **Pair this gateway**.
+- Grant Android's SMS permission and notification permission when asked, then start the visible foreground service. Keep its persistent notification enabled and allow background operation/battery use on that phone.
+- Return to onboarding. The Gateway needs to report online before Server can queue a message to it.
 
-## Build/test status
+The Gateway stores its private device token in Android encrypted storage. The backend stores only a hash of that token. Realtime broadcasts carry only a wake hint; the Gateway must still authenticate to claim the durable SMS job. A low-frequency queue check remains as a recovery path if Realtime is unavailable.
 
-The live Server Backend includes explicit verified-number call consent. Check the GitHub Actions history at https://github.com/28royalpapi/Server_platform-/actions for current system-dialer acceptance results; a successful compile is not proof that a dialer choice or real-audio call has passed.
+## Optional phone-number verification
 
-Real SMS delivery for optional number linking, end-to-end audio between two physical devices, incoming-call reliability under battery restrictions, TURN, iOS push delivery and store-ready device security have not been confirmed. Do not treat Server as production-ready until those checks pass.
+A Server ID does not require a phone number or SMS OTP. Users may optionally verify and link a number to their existing Server identity. This requires a paired Gateway that is online; carrier SMS charges may apply.
+
+1. `server-auth` generates a six-digit one-time code, stores only an HMAC of it, and applies request/attempt rate limits.
+2. An SMS job is queued only for a recently online Gateway paired to that Server account.
+3. The code expires after five minutes and is single-use.
+4. Successful verification links the number to the existing Server identity. Number-based incoming Server calls remain disabled until the user separately opts in.
+5. Private Server session tokens are not put into website-to-app deep links.
+
+The main custom OTP flow does not require Supabase Auth Phone or the optional `server-send-sms` hook.
+
+## Normal phone integration and platform limits
+
+- **Android:** the installed connector opens website-led setup and bridges the OS APIs that a browser cannot access. It registers Server as a system-managed Android `PhoneAccount`; the user must enable Server in Android Calling accounts. The connector does not clone a SIM, read the SIM phone number or require SIM selection. Phone dialer choices vary by Android version and manufacturer.
+- **iPhone:** the native integration uses Apple's supported calling-app/CallKit path where the OS and required entitlement permit it. iOS does not expose SIM-slot selection or create a third cellular line for Server.
+- **Carrier calling:** this codebase does not provide PSTN/SIP termination. An invitation SMS is not a carrier voice call, and a failed Server internet call is not silently handed over to a SIM.
+
+## Testing and remaining physical-device gates
+
+CI builds and tests native packages, checks website/backend contracts, and launches the Android SIM Gateway in a hosted emulator. These tests do not prove that a physical SIM delivered an SMS or that two physical phones completed a two-way audio call.
+
+The physical test still required is: pair the Gateway on a real Android phone with a working SIM, send one invitation to a phone number you control, verify the received message and delivery callback, open the invitation on the recipient phone, and answer the guest WebRTC call. Also test background delivery under the phone manufacturer's battery restrictions and verify calling audio across two physical devices. Do not treat Server as production-ready until those checks pass.
