@@ -8,6 +8,25 @@ echo "=== Emulator/device ==="
 adb devices -l
 adb shell getprop sys.boot_completed | grep -q '^1$'
 
+echo "=== Wait for Android Package Manager readiness ==="
+# sys.boot_completed can become 1 before system services have registered.
+# In that window adb install fails with: "Can't find service: package".
+package_manager_ready=false
+for attempt in $(seq 1 60); do
+  if adb shell pm list packages >/dev/null 2>&1; then
+    package_manager_ready=true
+    break
+  fi
+  echo "Package Manager is not ready yet (attempt $attempt/60)."
+  sleep 2
+done
+if [[ "$package_manager_ready" != true ]]; then
+  adb logcat -d -t 1200 > artifacts/server-gateway-package-manager-logcat.txt 2>&1 || true
+  adb shell dumpsys -l > artifacts/server-gateway-system-services.txt 2>&1 || true
+  echo "FAIL: Android Package Manager did not become available after boot." >&2
+  exit 1
+fi
+
 echo "=== Install the exact SIM gateway APK ==="
 timeout 120s adb install -r "$APK"
 adb shell pm path com.server.gateway.debug | grep -q '^package:'
