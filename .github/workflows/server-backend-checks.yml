@@ -23,3 +23,5 @@ jobs:
           npm run check:web
       - name: Test live Supabase function contracts without sending real SMS
         run: npm run check:live
+      - name: Verify Supabase Realtime SIM-gateway wake-up transport without sending SMS
+        run: node scripts/server-gateway-realtime-smoke.mjs
