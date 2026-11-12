@@ -37,15 +37,15 @@ jobs:
         run: gradle -p apps/android-sim-gateway assembleDebug --no-daemon
 
       - name: Install and launch the gateway in a hosted Android emulator
-        timeout-minutes: 25
+        timeout-minutes: 18
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-boot-timeout: 1200
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -memory 2048 -cores 2
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -memory 4096 -cores 2
           disable-animations: true
           script: bash scripts/android-gateway-launch-smoke.sh
 
