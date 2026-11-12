@@ -19,7 +19,6 @@ export async function sendServerGatewayWake(tokenHash: string): Promise<boolean>
   const projectUrl = (Deno.env.get("SUPABASE_URL") || "").trim().replace(/\/$/, "");
   const publishableKey = (
     Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ||
-    Deno.env.get("SUPABASE_ANON_KEY") ||
     FALLBACK_SUPABASE_PUBLIC_KEY
   ).trim();
 
