@@ -72,6 +72,8 @@ jobs:
             artifacts/server-gateway-activities.txt
             artifacts/server-gateway-activity-top.txt
             artifacts/server-gateway-launch-logcat.txt
+            artifacts/server-gateway-package-manager-logcat.txt
+            artifacts/server-gateway-system-services.txt
             artifacts/server-gateway-screen.png
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
