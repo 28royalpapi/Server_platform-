@@ -39,21 +39,19 @@ export async function sendServerGatewayWake(tokenHash: string): Promise<boolean>
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2500);
   try {
-    const response = await fetch(projectUrl + "/realtime/v1/api/broadcast", {
-      method: "POST",
-      headers: {
-        "apikey": publishableKey,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        messages: [{
-          topic,
-          event: "gateway_wake",
-          payload: { wake: true }
-        }]
-      }),
-      signal: controller.signal
-    });
+    const response = await fetch(
+      projectUrl + "/realtime/v1/api/broadcast/" +
+        encodeURIComponent(topic) + "/events/gateway_wake?private=false",
+      {
+        method: "POST",
+        headers: {
+          "apikey": publishableKey,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ wake: true }),
+        signal: controller.signal
+      }
+    );
 
     if (!response.ok) {
       console.warn("SERVER_GATEWAY_REALTIME_WAKE_HTTP_" + response.status);
