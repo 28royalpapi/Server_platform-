@@ -9,7 +9,7 @@ on:
       - '.github/workflows/server-android-launch-smoke.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   gateway-launch:
@@ -49,6 +49,19 @@ jobs:
           disable-animations: true
           script: bash scripts/android-gateway-launch-smoke.sh
 
+      - name: Publish the emulator-tested SIM Gateway companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose "$APK"
+          sha256sum "$APK"
+          gh release upload server-android-connector-preview "$APK#Server SIM Gateway — Android preview" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "SIM_GATEWAY_PREVIEW_PUBLISHED"
       - name: Save emulator launch evidence
         if: always()
         uses: actions/upload-artifact@v4
