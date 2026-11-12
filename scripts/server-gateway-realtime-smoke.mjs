@@ -15,6 +15,7 @@ async function smoke() {
     const socket = new WebSocket(wsUrl);
     let joinAccepted = false;
     let broadcastSent = false;
+    let eventReceived = false;
     let finished = false;
     let lastFrame = "no-frame";
     let lastInboundFrame = "no-inbound-frame";
@@ -27,6 +28,10 @@ async function smoke() {
       try { socket.close(1000, "Realtime smoke complete"); } catch {}
       if (error) reject(error);
       else resolve();
+    };
+
+    const finishIfComplete = () => {
+      if (broadcastSent && eventReceived) finish();
     };
 
     const timer = setTimeout(() => {
@@ -79,6 +84,7 @@ async function smoke() {
           } else {
             broadcastSent = true;
             lastFrame = "broadcast-http-" + response.status;
+            finishIfComplete();
           }
         } catch (error) {
           finish(error instanceof Error ? error : new Error("Realtime REST broadcast failed"));
@@ -90,9 +96,9 @@ async function smoke() {
       if (message.event === "broadcast" &&
           message.topic === wireTopic &&
           payload?.event === eventName &&
-          payload?.payload?.wake === true &&
-          broadcastSent) {
-        finish();
+          payload?.payload?.wake === true) {
+        eventReceived = true;
+        finishIfComplete();
       }
     });
 
