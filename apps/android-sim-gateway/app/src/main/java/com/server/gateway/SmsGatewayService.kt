@@ -126,6 +126,10 @@ class SmsGatewayService : Service() {
     const val ACTION_STOP = "com.server.gateway.STOP"
     private const val CHANNEL_ID = "server-sim-gateway"
     private const val NOTIFICATION_ID = 4127
-    private const val POLL_INTERVAL_MS = 2_500L
+    // Supabase Free includes 500,000 Edge Function invocations/month.
+    // At 2.5 seconds, one always-on gateway alone would make ~1.04m polls/month.
+    // 15 seconds is ~172,800 polls/month per gateway; replace this fallback
+    // polling with FCM wake-ups before scaling beyond a small pilot.
+    private const val POLL_INTERVAL_MS = 15_000L
   }
 }
