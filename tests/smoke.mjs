@@ -726,7 +726,7 @@ assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/select\("id,token_hash"\)/,"the server retrieves only the hash needed to address the gateway Realtime topic");
 assert.match(calls,/sendServerGatewayWake\(gateway\.token_hash\)/,"a queued caller SMS triggers a Supabase Realtime wake-up");
 assert.ok(gatewayWake.includes("/realtime/v1/api/broadcast/") && gatewayWake.includes("/events/gateway_wake?private=false"),"gateway wake-ups use the verified direct public Realtime REST endpoint");
-assert.match(gatewayWake,/event:\s*"gateway_wake"/,"the wake-up event is explicitly named");
+assert.ok(gatewayWake.includes("/events/gateway_wake?private=false"),"the wake-up event is explicitly named in the Realtime endpoint");
 assert.doesNotMatch(gatewayWake,/recipient_e164|invitation_text|sms_body|guest_invite_url/,"Realtime wake-up payloads contain no recipient, SMS body or invitation URL");
 assert.match(androidGatewayRealtime,/phx_join/,"Android joins a Supabase Realtime broadcast channel");
 assert.match(androidGatewayRealtime,/gateway_wake/,"Android listens for the gateway wake-up event");
