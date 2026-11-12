@@ -206,6 +206,6 @@ internal class ServerGatewayRealtimeClient(
 
   private fun sha256Hex(value: String): String {
     val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-    return digest.joinToString("") { "%02x".format(it) }
+    return digest.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
   }
 }
