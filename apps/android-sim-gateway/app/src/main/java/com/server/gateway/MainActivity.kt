@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -26,6 +27,7 @@ class MainActivity : ComponentActivity() {
   private lateinit var publishableKey: EditText
   private lateinit var pairingCode: EditText
   private lateinit var deviceLabel: EditText
+  private lateinit var sharedGatewayConsent: CheckBox
   private lateinit var status: TextView
 
   private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -40,11 +42,18 @@ class MainActivity : ComponentActivity() {
     setContentView(scroll)
 
     root.addView(TextView(this).apply { text = "SERVER SIM GATEWAY"; textSize = 23f; setTextColor(0xff155f3d.toInt()) })
-    root.addView(TextView(this).apply { text = "A dedicated Android handset uses its real SIM to send Server OTPs and guest-call invitations. SMS may incur normal carrier charges."; textSize = 14f; setPadding(0, 10, 0, 22) })
+    root.addView(TextView(this).apply { text = "One optional Android handset can send Server invitation SMS through its real SIM. Recipients and ordinary callers do not install this companion. The phone owner can choose to share this SIM as the central Server guest-call gateway. Carrier SMS charges may apply."; textSize = 14f; setPadding(0, 10, 0, 16) })
     endpoint = edit(root, "Supabase project URL", SecureStore.getText(this, "url").ifBlank { DEFAULT_SUPABASE_URL })
     publishableKey = edit(root, "Supabase publishable key", SecureStore.getText(this, "key").ifBlank { DEFAULT_PUBLISHABLE_KEY })
     pairingCode = edit(root, "One-time pairing code", "")
     deviceLabel = edit(root, "Gateway device label", "Server SIM Gateway")
+    sharedGatewayConsent = CheckBox(this).apply {
+      text = "I consent to share this SIM for guest-call invitations from other Server users. My carrier may charge for these SMS messages."
+      textSize = 14f
+      setPadding(0, 8, 0, 14)
+      isChecked = false
+    }
+    root.addView(sharedGatewayConsent)
     root.addView(button("Pair this gateway") { pairGateway() })
     root.addView(button("Start sending queue from SIM") { requestPermissionsAndStart() })
     root.addView(button("Stop gateway") { stopService(Intent(this, SmsGatewayService::class.java)); setStatus("Gateway stopped.") })
@@ -78,12 +87,21 @@ class MainActivity : ComponentActivity() {
     setStatus("Pairing…")
     executor.execute {
       try {
-        val result = postJson("$base/functions/v1/server-gateway", key, null, JSONObject().put("action", "claim").put("pairing_code", code).put("device_label", deviceLabel.text.toString().trim().ifBlank { "Server SIM Gateway" }))
+        val result = postJson("$base/functions/v1/server-gateway", key, null,
+          JSONObject().put("action", "claim")
+            .put("pairing_code", code)
+            .put("device_label", deviceLabel.text.toString().trim().ifBlank { "Server SIM Gateway" })
+            .put("shared_guest_sms_enabled", sharedGatewayConsent.isChecked))
         val token = result.optString("gateway_token")
         if (token.length < 32) throw IllegalStateException(result.optString("error", "Pairing failed"))
         SecureStore.putSecret(this, "gateway_token", token)
         SecureStore.putText(this, "device_id", result.optString("device_id"))
-        runOnUiThread { pairingCode.setText(""); setStatus("Paired securely. Next grant SMS permission and start the foreground service.") }
+        runOnUiThread {
+          pairingCode.setText("")
+          val sharing = result.optBoolean("shared_guest_sms_enabled", false)
+          setStatus(if (sharing) "Paired. This SIM is opted in as a shared Server guest-call gateway. Next grant SMS permission and start the foreground service."
+            else "Paired privately to this Server account. Next grant SMS permission and start the foreground service.")
+        }
       } catch (e: Exception) { runOnUiThread { setStatus("Pairing failed: ${e.message?.take(150) ?: "network error"}") } }
     }
   }

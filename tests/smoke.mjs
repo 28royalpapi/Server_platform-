@@ -97,6 +97,7 @@ const guestPreview=read("supabase/functions/server-guest-preview/index.ts");
 const guestBrowserHtml=read("web/guest.html");
 const guestPreviewImage=read("web/images/server-incoming-call-preview.svg");
 const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
+const sharedGatewayMigration=read("supabase/migrations/20261113120000_server_shared_guest_sms_gateway.sql");
 const gatewayGuestClaimMigration=read("supabase/migrations/20261106170100_server_gateway_guest_owner_claim.sql");
 
 const vercelConfig=JSON.parse(read("vercel.json"));
@@ -732,8 +733,22 @@ assert.match(projectReadme,/Server Backend URL/);
 assert.match(projectReadme,/first-party Gateway source is in/ ,
   "README identifies the self-operated Android SIM Gateway implementation");
 assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
-assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
-  "SIM invitations can only use an active gateway paired to the calling Server account");
+assert.match(calls,/eq\("owner_user_id",uid\)/,
+  "the caller's private Gateway is preferred when configured");
+assert.match(calls,/eq\("shared_guest_sms_enabled",true\)/,
+  "an explicitly shared Server Gateway can serve callers who have no private Gateway");
+assert.match(calls,/shared_guest_sms_gateway_hour/,
+  "shared guest-call SMS is rate-limited per shared physical Gateway");
+assert.match(gateway,/const sharedGuestSmsEnabled=b\.shared_guest_sms_enabled===true/);
+assert.match(gateway,/shared_guest_sms_enabled:sharedGuestSmsEnabled/);
+assert.match(androidGatewayMain,/sharedGatewayConsent\.isChecked/);
+assert.match(androidGatewayMain,/I consent to share this SIM/);
+assert.match(sharedGatewayMigration,/add column if not exists shared_guest_sms_enabled boolean not null default false/);
+assert.match(sharedGatewayMigration,/d\.shared_guest_sms_enabled=true/);
+assert.match(sharedGatewayMigration,/gi\.phone_e164=j\.recipient_e164/);
+assert.match(projectReadme,/Only the Gateway operator installs this companion/);
+assert.match(projectReadme,/callers do not need to install this companion/);
+assert.match(html,/This is an operator companion/);
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/select\("id,token_hash"\)/,"the server retrieves only the hash needed to address the gateway Realtime topic");

@@ -42,17 +42,18 @@ Before an SMS can be claimed, the backend rechecks that the paired Gateway belon
 
 ## Set up the optional Android SIM Gateway
 
-The core Server ID works without the Gateway. Install this companion only when you want Server to send first-contact invitation SMS or optional phone-verification codes from a SIM you control.
+The core Server ID and all recipient browser calls work without installing the Gateway. Server can use one optional, explicitly shared Android SIM Gateway to send guest-call invitation SMS for all Server callers. Only the Gateway operator installs this companion; ordinary callers and recipients do not. The operator must opt in on the device and may incur carrier SMS charges.
 
 - **Gateway companion APK:** [Download server-sim-gateway.apk](https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-sim-gateway.apk)
 - Install it on an Android phone with a working SIM and mobile data or Wi-Fi.
 - Sign in to Server onboarding and create your Server ID.
 - In the optional SIM Gateway section, generate a one-time pairing code. It expires after approximately ten minutes and can only be claimed once.
 - Open the Gateway companion, use the Server Backend URL above, enter the pairing code and tap **Pair this gateway**.
+- On the Gateway device, explicitly tick **I consent to share this SIM** to let this SIM send guest-call invitations on behalf of other Server users. Leave it unticked to keep this SIM private to the account that paired it.
 - Grant Android's SMS permission and notification permission when asked, then start the visible foreground service. Keep its persistent notification enabled and allow background operation/battery use on that phone.
-- Return to onboarding. The Gateway needs to report online before Server can queue a message to it.
+- Keep the shared Gateway online. Once a shared Gateway is paired and online, callers do not need to install this companion or pair their own SIM Gateway.
 
-The Gateway stores its private device token in Android encrypted storage. The backend stores only a hash of that token. Realtime broadcasts carry only a wake hint; the Gateway must still authenticate to claim the durable SMS job. A low-frequency queue check remains as a recovery path if Realtime is unavailable.
+The Gateway stores its private device token in Android encrypted storage. The backend stores only a hash of that token. Realtime broadcasts carry only a wake hint; the Gateway must still authenticate to claim the durable SMS job. A low-frequency queue check remains as a recovery path if Realtime is unavailable. Shared mode is limited to guest-call invitations, is rate-limited per caller and per shared device, and does not make the shared SIM available for another user's phone-verification OTPs.
 
 ## Optional phone-number verification
 

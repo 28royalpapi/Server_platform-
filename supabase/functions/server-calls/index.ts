@@ -631,6 +631,7 @@ Deno.serve(async(req:Request)=>{
    // Gateway; a registered/stale push token alone does not prove internet reachability.
    let simSmsQueued=false;
    let simSmsGatewayOnline=false;
+   let sharedSmsGatewayUsed=false;
    if(!guestInternetReachable){
     const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
      p_scope:"guest_invite_sms_pair",
@@ -646,14 +647,38 @@ Deno.serve(async(req:Request)=>{
      // Use the caller's own paired SIM through Server's first-party Android
      // gateway. Supabase owns the queue; the handset's carrier sends the SMS.
      const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
-     const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
+     const {data:ownedGateway,error:gatewayError}=await db.from("server_gateway_devices")
       .select("id,token_hash").eq("owner_user_id",uid).eq("enabled",true)
       .gte("last_seen_at",gatewayFreshAfter)
       .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+     let gateway:any=ownedGateway||null;
+     let sharedGateway=false;
+     if(!gateway&&!gatewayError){
+      const {data:sharedDevice,error:sharedError}=await db.from("server_gateway_devices")
+       .select("id,token_hash").eq("shared_guest_sms_enabled",true).eq("enabled",true)
+       .gte("last_seen_at",gatewayFreshAfter)
+       .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+      if(sharedError){
+       console.warn("GUEST_SHARED_SIM_GATEWAY_LOOKUP_FAILED");
+      }else if(sharedDevice){
+       const {data:deviceAllowed,error:deviceLimitError}=await db.rpc("server_rate_limit_allow",{
+        p_scope:"shared_guest_sms_gateway_hour",
+        p_key_hash:await sha("shared-guest-sms-gateway:"+sharedDevice.id),
+        p_window_seconds:3600,p_max_hits:120
+       });
+       if(!deviceLimitError&&deviceAllowed===true){
+        gateway=sharedDevice;
+        sharedGateway=true;
+       }else{
+        console.warn("GUEST_SHARED_SIM_GATEWAY_RATE_LIMITED");
+       }
+      }
+     }
      if(gatewayError){
       console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
      }else if(gateway){
       simSmsGatewayOnline=true;
+      sharedSmsGatewayUsed=sharedGateway;
       const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
        category:"guest_invite",
        recipient_e164:to,
@@ -681,7 +706,7 @@ Deno.serve(async(req:Request)=>{
    const deliveryMessage=guestInternetReachable&&hasPushAccepted
     ?"A fresh guest-browser heartbeat confirms internet reachability. Server submitted the caller-identified browser alert; push-service acceptance is not proof that the notification has appeared."
     :simSmsQueued
-     ?"The recipient has no fresh guest-browser internet heartbeat. Server queued the caller-identified invitation on the paired Android SIM Gateway. Carrier charges may apply; queueing is not proof of delivery."
+     ?"The recipient has no fresh guest-browser internet heartbeat. Server queued the caller-identified invitation on "+(sharedSmsGatewayUsed?"the shared Server SIM Gateway":"your private Server SIM Gateway")+". The SIM owner’s carrier charges may apply; queueing is not proof of delivery."
      :hasPushAccepted
       ?"A browser push service accepted an alert, but no fresh internet heartbeat was received and no paired SIM Gateway accepted an SMS. Share the secure invitation manually if the recipient does not come online."
       :"The recipient's internet state is unknown and no available Android SIM Gateway accepted the invitation. Share the secure invitation manually.";
