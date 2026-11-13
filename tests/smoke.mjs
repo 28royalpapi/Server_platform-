@@ -97,7 +97,6 @@ const guestPreview=read("supabase/functions/server-guest-preview/index.ts");
 const guestBrowserHtml=read("web/guest.html");
 const guestPreviewImage=read("web/images/server-incoming-call-preview.svg");
 const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
-const sharedGatewayMigration=read("supabase/migrations/20261113120000_server_shared_guest_sms_gateway.sql");
 const gatewayGuestClaimMigration=read("supabase/migrations/20261106170100_server_gateway_guest_owner_claim.sql");
 
 const vercelConfig=JSON.parse(read("vercel.json"));
@@ -695,10 +694,13 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
 const guestSmsTransport=calls.slice(calls.indexOf("// First-contact transport order:"),calls.indexOf("const deliveryMode=",calls.indexOf("// First-contact transport order:")));
-assert.match(calls,/deliveryMode=guestInternetReachable&&hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued":"manual_share"/,
-  "only a guest browser with a fresh internet heartbeat suppresses the SMS fallback");
-assert.match(calls,/if\(!guestInternetReachable\)/,
-  "a guest without a fresh internet heartbeat falls back to the caller-owned SIM Gateway");
+assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\?"web_push":"manual_share"/,
+  "the caller SIM SMS is the primary guest invitation transport");
+assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
+  "guest browser reachability must never suppress the first-contact caller SIM SMS");
+assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
+assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server\. Turn on mobile data or Wi-Fi, then tap to answer: "/);
+assert.match(calls,/This invitation expires in 2 minutes/);
 assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   guestSmsTransport.includes('from("server_sms_jobs").insert') &&
   guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
@@ -733,22 +735,8 @@ assert.match(projectReadme,/Server Backend URL/);
 assert.match(projectReadme,/first-party Gateway source is in/ ,
   "README identifies the self-operated Android SIM Gateway implementation");
 assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
-assert.match(calls,/eq\("owner_user_id",uid\)/,
-  "the caller's private Gateway is preferred when configured");
-assert.match(calls,/eq\("shared_guest_sms_enabled",true\)/,
-  "an explicitly shared Server Gateway can serve callers who have no private Gateway");
-assert.match(calls,/shared_guest_sms_gateway_hour/,
-  "shared guest-call SMS is rate-limited per shared physical Gateway");
-assert.match(gateway,/const sharedGuestSmsEnabled=b\.shared_guest_sms_enabled===true/);
-assert.match(gateway,/shared_guest_sms_enabled:sharedGuestSmsEnabled/);
-assert.match(androidGatewayMain,/sharedGatewayConsent\.isChecked/);
-assert.match(androidGatewayMain,/I consent to share this SIM/);
-assert.match(sharedGatewayMigration,/add column if not exists shared_guest_sms_enabled boolean not null default false/);
-assert.match(sharedGatewayMigration,/d\.shared_guest_sms_enabled=true/);
-assert.match(sharedGatewayMigration,/gi\.phone_e164=j\.recipient_e164/);
-assert.match(projectReadme,/Only the Gateway operator installs this companion/);
-assert.match(projectReadme,/callers do not need to install this companion/);
-assert.match(html,/This is an operator companion/);
+assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
+  "SIM invitations can only use an active gateway paired to the calling Server account");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/select\("id,token_hash"\)/,"the server retrieves only the hash needed to address the gateway Realtime topic");
@@ -1014,7 +1002,8 @@ assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
- assert.match(calls,/invitationText=callerDisplay\+" is calling: "/,"the SMS invitation begins with the caller's chosen name and a concise answer prompt");
+ assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server/,"the SMS identifies the caller and tells the recipient to turn on internet");
+assert.match(calls,/This invitation expires in 2 minutes/,"the SMS advertises the two-minute invitation expiry");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");

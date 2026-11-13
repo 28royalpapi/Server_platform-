@@ -138,7 +138,7 @@ function callTransitionFailure(transition:any){
 
 const SERVER_CALL_TTL_SECONDS = 180;
 const GUEST_CALL_TTL_SECONDS = 20 * 60;
-const GUEST_INVITE_TTL_SECONDS = 24 * 60 * 60;
+const GUEST_INVITE_TTL_SECONDS = 2 * 60;
 const CALL_START_RATE_WINDOW_SECONDS = 60;
 const CALL_START_RATE_MAX = 20;
 const PRESENCE_FRESH_SECONDS = 35;
@@ -614,7 +614,7 @@ Deno.serve(async(req:Request)=>{
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
    const callerDisplay=profile.display_name;
    const invitationUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
-   const invitationText=callerDisplay+" is calling: "+invitationUrl;
+   const invitationText=callerDisplay+" is calling you through Server. Turn on mobile data or Wi-Fi, then tap to answer: "+invitationUrl+" This invitation expires in 2 minutes.";
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
    const guestPush=await sendGuestBrowserPush(db,to,{
     call_id:call.id,caller_label:callerDisplay,
@@ -626,90 +626,60 @@ Deno.serve(async(req:Request)=>{
    const guestInternetReachable=guestPush.recent_online>0;
    const guestAvailabilityStatus=guestInternetReachable?"online":"unknown_guest";
 
-   // First-contact transport order: a freshly-heartbeating guest browser can
-   // receive its Web Push alert. Otherwise use the caller-owned Server SIM
-   // Gateway; a registered/stale push token alone does not prove internet reachability.
+   // SMS is the primary first-contact transport for every guest-number call.
+   // It is sent by the caller's own paired Android SIM Gateway; browser push is
+   // an additional alert, never a reason to suppress the SMS invitation.
    let simSmsQueued=false;
    let simSmsGatewayOnline=false;
-   let sharedSmsGatewayUsed=false;
-   if(!guestInternetReachable){
-    const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
-     p_scope:"guest_invite_sms_pair",
-     p_key_hash:await sha("guest-invite-sms-pair:"+uid+":"+to),
-     p_window_seconds:3600,p_max_hits:3
-    });
-    const {data:senderAllowed,error:senderLimitError}=await db.rpc("server_rate_limit_allow",{
-     p_scope:"guest_invite_sms_sender",
-     p_key_hash:await sha("guest-invite-sms-sender:"+uid),
-     p_window_seconds:3600,p_max_hits:20
-    });
-    if(!pairLimitError&&!senderLimitError&&pairAllowed===true&&senderAllowed===true){
-     // Use the caller's own paired SIM through Server's first-party Android
-     // gateway. Supabase owns the queue; the handset's carrier sends the SMS.
-     const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
-     const {data:ownedGateway,error:gatewayError}=await db.from("server_gateway_devices")
-      .select("id,token_hash").eq("owner_user_id",uid).eq("enabled",true)
-      .gte("last_seen_at",gatewayFreshAfter)
-      .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
-     let gateway:any=ownedGateway||null;
-     let sharedGateway=false;
-     if(!gateway&&!gatewayError){
-      const {data:sharedDevice,error:sharedError}=await db.from("server_gateway_devices")
-       .select("id,token_hash").eq("shared_guest_sms_enabled",true).eq("enabled",true)
-       .gte("last_seen_at",gatewayFreshAfter)
-       .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
-      if(sharedError){
-       console.warn("GUEST_SHARED_SIM_GATEWAY_LOOKUP_FAILED");
-      }else if(sharedDevice){
-       const {data:deviceAllowed,error:deviceLimitError}=await db.rpc("server_rate_limit_allow",{
-        p_scope:"shared_guest_sms_gateway_hour",
-        p_key_hash:await sha("shared-guest-sms-gateway:"+sharedDevice.id),
-        p_window_seconds:3600,p_max_hits:120
-       });
-       if(!deviceLimitError&&deviceAllowed===true){
-        gateway=sharedDevice;
-        sharedGateway=true;
-       }else{
-        console.warn("GUEST_SHARED_SIM_GATEWAY_RATE_LIMITED");
-       }
-      }
+   const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
+    p_scope:"guest_invite_sms_pair",
+    p_key_hash:await sha("guest-invite-sms-pair:"+uid+":"+to),
+    p_window_seconds:3600,p_max_hits:3
+   });
+   const {data:senderAllowed,error:senderLimitError}=await db.rpc("server_rate_limit_allow",{
+    p_scope:"guest_invite_sms_sender",
+    p_key_hash:await sha("guest-invite-sms-sender:"+uid),
+    p_window_seconds:3600,p_max_hits:20
+   });
+   if(!pairLimitError&&!senderLimitError&&pairAllowed===true&&senderAllowed===true){
+    // Use the caller's own paired SIM through Server's first-party Android
+    // gateway. Supabase owns the queue; the handset's carrier sends the SMS.
+    const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
+    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
+     .select("id,token_hash").eq("owner_user_id",uid).eq("enabled",true)
+     .gte("last_seen_at",gatewayFreshAfter)
+     .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+    if(gatewayError){
+     console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
+    }else if(gateway){
+     simSmsGatewayOnline=true;
+     const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
+      category:"guest_invite",
+      recipient_e164:to,
+      body:invitationText,
+      call_id:call.id,
+      guest_invite_id:created.invite_id,
+      source_event_id:"server-guest-invite:"+call.id,
+      status:"queued"
+     }).select("id").maybeSingle();
+     if(!queueError&&queuedJob){
+      simSmsQueued=true;
+      // Realtime carries only a wake hint; the device must authenticate again to claim SMS.
+      deferRealtime(sendServerGatewayWake(gateway.token_hash));
+     }else{
+      console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
      }
-     if(gatewayError){
-      console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
-     }else if(gateway){
-      simSmsGatewayOnline=true;
-      sharedSmsGatewayUsed=sharedGateway;
-      const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
-       category:"guest_invite",
-       recipient_e164:to,
-       body:invitationText,
-       call_id:call.id,
-       guest_invite_id:created.invite_id,
-       source_event_id:"server-guest-invite:"+call.id,
-       status:"queued"
-      }).select("id").maybeSingle();
-      if(!queueError&&queuedJob){
-       simSmsQueued=true;
-       // Realtime carries only a wake hint; the device must authenticate again to claim SMS.
-       deferRealtime(sendServerGatewayWake(gateway.token_hash));
-      }else{
-       console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
-      }
-     }
-
-    }else{
-     console.warn("GUEST_SIM_SMS_RATE_LIMITED_OR_UNAVAILABLE");
     }
+   }else{
+    console.warn("GUEST_SIM_SMS_RATE_LIMITED_OR_UNAVAILABLE");
    }
 
-   const deliveryMode=guestInternetReachable&&hasPushAccepted?"web_push":simSmsQueued?"sim_sms_queued":"manual_share";
-   const deliveryMessage=guestInternetReachable&&hasPushAccepted
-    ?"A fresh guest-browser heartbeat confirms internet reachability. Server submitted the caller-identified browser alert; push-service acceptance is not proof that the notification has appeared."
-    :simSmsQueued
-     ?"The recipient has no fresh guest-browser internet heartbeat. Server queued the caller-identified invitation on "+(sharedSmsGatewayUsed?"the shared Server SIM Gateway":"your private Server SIM Gateway")+". The SIM owner’s carrier charges may apply; queueing is not proof of delivery."
-     :hasPushAccepted
-      ?"A browser push service accepted an alert, but no fresh internet heartbeat was received and no paired SIM Gateway accepted an SMS. Share the secure invitation manually if the recipient does not come online."
-      :"The recipient's internet state is unknown and no available Android SIM Gateway accepted the invitation. Share the secure invitation manually.";
+   const deliveryMode=simSmsQueued?"sim_sms_queued":hasPushAccepted?"web_push":"manual_share";
+   const deliveryMessage=simSmsQueued
+    ?"Server queued the caller-identified invitation through your paired Android SIM Gateway. Your carrier may charge for SMS. Queueing is not proof of handset delivery."
+    :hasPushAccepted
+     ?"Browser push was accepted, but SMS could not be queued because the caller's paired Android SIM Gateway is not available. Share the secure invitation manually if needed."
+     :"The caller's paired Android SIM Gateway is not available, so Server could not queue the SMS. Share the secure invitation manually.";
 
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,

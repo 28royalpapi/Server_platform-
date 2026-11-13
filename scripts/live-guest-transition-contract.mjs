@@ -27,7 +27,7 @@ function pass(name, detail = "") {
 
 async function request(functionName, body, { token = accessToken, timeout = 15000 } = {}) {
   const headers = { ...baseHeaders, "content-type": "application/json" };
-  if (token) headers.authorization = "Bearer " + token;
+  if (token) headers["x-server-session-token"] = token;
   const response = await fetch(projectUrl + "/functions/v1/" + functionName, {
     method: "POST", headers, body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeout)
