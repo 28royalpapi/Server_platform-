@@ -694,8 +694,10 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
 const guestSmsTransport=calls.slice(calls.indexOf("// First-contact transport order:"),calls.indexOf("const deliveryMode=",calls.indexOf("// First-contact transport order:")));
-assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued":"manual_share"/,
-  "guest calls use only Server browser push, the first-party SIM Gateway, or manual share");
+assert.match(calls,/deliveryMode=guestInternetReachable&&hasPushAccepted\?"web_push":simSmsQueued\?"sim_sms_queued":"manual_share"/,
+  "only a guest browser with a fresh internet heartbeat suppresses the SMS fallback");
+assert.match(calls,/if\(!guestInternetReachable\)/,
+  "a guest without a fresh internet heartbeat falls back to the caller-owned SIM Gateway");
 assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   guestSmsTransport.includes('from("server_sms_jobs").insert') &&
   guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
