@@ -86,8 +86,11 @@ let b:any={},u=new URL(req.url);if(req.method==="POST"){try{b=await req.json();i
 const raw=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||b.token||u.searchParams.get("token")||"";
 if(typeof raw!=="string"||raw.length<48||raw.length>256)return out({error:"INVALID_INVITE"},401);
 let db:any;try{db=client()}catch{return out({error:"SERVER_NOT_CONFIGURED"},503)}
-const {data:invite,error:ie}=await db.from("server_guest_invites").select("id,call_id,phone_e164,expires_at,joined_at,revoked_at").eq("token_hash",await sha(raw)).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+const {data:invite,error:ie}=await db.from("server_guest_invites").select("id,call_id,phone_e164,expires_at,joined_at,revoked_at").eq("token_hash",await sha(raw)).is("revoked_at",null).maybeSingle();
 if(ie||!invite)return out({error:"GUEST_INVITE_EXPIRED_OR_INVALID"},401);
+// The link is valid for joining only during its two-minute invitation window.
+// A guest who joined in time may continue WebRTC signalling after that window.
+if(Date.parse(invite.expires_at)<=Date.now()&&!invite.joined_at)return out({error:"GUEST_INVITE_EXPIRED_OR_INVALID"},401);
 const action=String(b.action||"");
 const validGuestPushEndpoint=(value:unknown):value is string=>{
  if(typeof value!=="string"||value.length>2048)return false;

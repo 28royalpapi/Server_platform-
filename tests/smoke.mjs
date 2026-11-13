@@ -25,6 +25,7 @@ const guestInviteSmsGuardMigration=read("supabase/migrations/20261111100000_serv
 const gatewayCustomIdentityMigration=read("supabase/migrations/20261112144044_server_gateway_custom_identity_foreign_keys.sql");
 const signalRetentionMigration=read("supabase/migrations/20261108170000_server_call_signal_retention.sql");
 const activeCallLeaseMigration=read("supabase/migrations/20261108180000_server_active_call_lease.sql");
+const guestAnswerGraceMigration=read("supabase/migrations/20261113160000_server_guest_answered_session_grace.sql");
 const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
 const elfAlignmentScript=read("scripts/check-16kb-elf-alignment.py");
 const android17InstallScript=read("scripts/android17-16kb-acceptance.sh");
@@ -1238,6 +1239,7 @@ assert.ok(activeCallLeaseMigration.includes("v_now+interval '10 minutes'"),"answ
 assert.ok(activeCallLeaseMigration.includes("v_now+interval '24 hours'"),"active Server and guest calls receive a 24-hour renewable-by-transition lease");
 assert.ok(activeCallLeaseMigration.includes("state='active'") && activeCallLeaseMigration.includes("v_active_timed_out"),"maintenance fails orphaned active calls after their lease expires");
 assert.ok(activeCallLeaseMigration.includes("GUEST_ALREADY_JOINED"),"guest single-claim protection remains in the replacement transition function");
+assert.match(guestAnswerGraceMigration,/expires_at>v_now or joined_at is not null/,"a guest who joined within two minutes can finish WebRTC after the link expiry");
 assert.ok(activeCallLeaseMigration.includes("revoke all on function public.server_call_transition_atomic") && activeCallLeaseMigration.includes("grant execute on function public.server_call_transition_atomic") && activeCallLeaseMigration.includes("to service_role"),"call transition RPC remains service-role-only");
 
 assert.ok(keepAliveMigration.includes("security invoker"));

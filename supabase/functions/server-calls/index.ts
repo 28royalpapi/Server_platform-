@@ -137,7 +137,7 @@ function callTransitionFailure(transition:any){
 
 
 const SERVER_CALL_TTL_SECONDS = 180;
-const GUEST_CALL_TTL_SECONDS = 20 * 60;
+const GUEST_CALL_TTL_SECONDS = 2 * 60;
 const GUEST_INVITE_TTL_SECONDS = 2 * 60;
 const CALL_START_RATE_WINDOW_SECONDS = 60;
 const CALL_START_RATE_MAX = 20;

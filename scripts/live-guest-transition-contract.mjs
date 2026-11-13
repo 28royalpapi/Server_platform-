@@ -232,6 +232,9 @@ try {
   const joined = successfulJoins[0].value;
   assert.equal(joined.ok, true);
   assert.equal(joined.call?.state, "connecting");
+  const connectedSetupWindow = Date.parse(joined.call?.expires_at || "") - Date.now();
+  assert.ok(connectedSetupWindow >= 9 * 60 * 1000,
+    "joining within the two-minute invitation window extends the call setup session to at least ten minutes");
   const realtime = await guest(token, "realtime_token");
   if (realtime.realtime_available === true) {
     assert.ok((realtime.url || "").startsWith("wss://"));
