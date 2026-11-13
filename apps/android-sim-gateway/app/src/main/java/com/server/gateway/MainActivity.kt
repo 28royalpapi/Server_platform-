@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
     connection.doOutput = true
     connection.setRequestProperty("content-type", "application/json")
     connection.setRequestProperty("apikey", key)
-    if (!token.isNullOrBlank()) connection.setRequestProperty("authorization", "Bearer $token")
+    if (!token.isNullOrBlank()) connection.setRequestProperty("x-server-gateway-token", token)
     connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
     val code = connection.responseCode
     val stream = if (code in 200..299) connection.inputStream else connection.errorStream
@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
       if (base.isBlank() || key.isBlank()) throw IllegalStateException("gateway project config missing")
       val connection = URL("$base/functions/v1/server-gateway").openConnection() as HttpURLConnection
       connection.requestMethod = "POST"; connection.connectTimeout = 12_000; connection.readTimeout = 12_000; connection.doOutput = true
-      connection.setRequestProperty("content-type", "application/json"); connection.setRequestProperty("apikey", key); connection.setRequestProperty("authorization", "Bearer $token")
+      connection.setRequestProperty("content-type", "application/json"); connection.setRequestProperty("apikey", key); connection.setRequestProperty("x-server-gateway-token", token)
       connection.outputStream.use { it.write(action.toString().toByteArray(Charsets.UTF_8)) }
       val code = connection.responseCode
       val stream = if (code in 200..299) connection.inputStream else connection.errorStream

@@ -124,7 +124,7 @@ internal object ServerDeviceSessionManager {
       doOutput = true
       setRequestProperty("content-type", "application/json")
       setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-      if (!bearer.isNullOrBlank()) setRequestProperty("authorization", "Bearer " + bearer)
+      if (!bearer.isNullOrBlank()) setRequestProperty("x-server-session-token", bearer)
     }
     try {
       connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }

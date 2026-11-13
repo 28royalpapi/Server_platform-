@@ -86,6 +86,7 @@ const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/cal
 const androidProguard=read("apps/android-caller/app/proguard-rules.pro");
 const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
+const androidGatewayMain=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/MainActivity.kt");
 const androidSimGateway=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/SmsGatewayService.kt");
 const androidGatewayRealtime=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/ServerGatewayRealtimeClient.kt");
 const gatewayWake=read("supabase/functions/_shared/server_gateway_wake.ts");
@@ -700,6 +701,30 @@ assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
   "the backend queues SMS for the caller-owned Android SIM Gateway and wakes it through Server Realtime");
 assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
+assert.match(auth,/x-server-session-token/,"Server auth reads its opaque Server session from a dedicated header");
+assert.match(calls,/x-server-session-token/,"Server calls read the opaque Server session from a dedicated header");
+assert.match(gateway,/x-server-session-token/,"Gateway pairing reads the Server account session from a dedicated header");
+assert.match(gateway,/x-server-gateway-token/,"Gateway polling reads a separate paired-device token header");
+assert.match(handoff,/x-server-session-token/,"App handoff creation reads the Server session from a dedicated header");
+assert.match(androidMain,/setRequestProperty\("x-server-session-token", accessToken\)/);
+assert.doesNotMatch(androidMain,/setRequestProperty\("authorization"/);
+assert.match(androidSessionManager,/setRequestProperty\("x-server-session-token", bearer\)/);
+assert.doesNotMatch(androidSessionManager,/setRequestProperty\("authorization"/);
+assert.match(androidIncoming,/setRequestProperty\("x-server-session-token", token\)/);
+assert.doesNotMatch(androidIncoming,/setRequestProperty\("authorization"/);
+assert.match(androidFirebase,/setRequestProperty\("x-server-session-token", accessToken\)/);
+assert.doesNotMatch(androidFirebase,/setRequestProperty\("authorization"/);
+assert.match(iosModel,/forHTTPHeaderField: "x-server-session-token"/);
+assert.doesNotMatch(iosModel,/forHTTPHeaderField: "authorization"/);
+assert.match(androidGatewayMain,/setRequestProperty\("x-server-gateway-token", token\)/);
+assert.doesNotMatch(androidGatewayMain,/setRequestProperty\("authorization"/);
+assert.match(e2eIdentityScript,/"x-server-session-token": result\.access_token/);
+assert.doesNotMatch(e2eIdentityScript,/authorization: "Bearer "/);
+assert.match(calls,/guestInternetReachable=guestPush\.recent_online>0/);
+assert.match(calls,/if\(!guestInternetReachable\)/,"guest SMS is attempted unless a fresh browser heartbeat confirms internet");
+assert.match(calls,/internet_status:guestInternetReachable\?"internet_on":"unknown"/);
+assert.match(calls,/phone's internet state is unknown, not offline/);
+assert.match(guestWebPushSender,/await Promise\.all\(freshDevices\.map/,"stale subscriptions are not counted as live guest internet connections");
 assert.match(projectReadme,/Server digital address/);
 assert.match(projectReadme,/Server Backend URL/);
 assert.match(projectReadme,/first-party Gateway source is in/ ,

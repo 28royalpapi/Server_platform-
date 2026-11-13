@@ -122,7 +122,7 @@ function deferRealtime(task: Promise<unknown>): void {
 }
 
 
-const cors = {"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
+const cors = {"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type,x-server-session-token","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
 const out=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:cors});
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 const phone=(v:unknown)=>typeof v==="string"&&/^\+[1-9][0-9]{7,14}$/.test(v.trim())?v.trim():null;
@@ -328,7 +328,7 @@ Deno.serve(async(req:Request)=>{
  const url=Deno.env.get("SUPABASE_URL")||""; const key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();
  if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
- const auth=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+ const auth=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
  if(!/^[0-9a-f]{64}$/.test(auth))return out({error:"SESSION_REQUIRED"},401);
  const sessionHash=await sha(auth);
  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id,expires_at,last_seen_at").eq("token_hash",sessionHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
@@ -623,15 +623,15 @@ Deno.serve(async(req:Request)=>{
     url:guestBrowserUrl
    });
    const hasPushAccepted=guestPush.accepted>0;
-   const guestAvailabilityStatus=guestPush.recent_online>0?"online":
-    guestPush.registered>0?"background_reachable":"unknown_guest";
+   const guestInternetReachable=guestPush.recent_online>0;
+   const guestAvailabilityStatus=guestInternetReachable?"online":"unknown_guest";
 
-   // First-contact transport order: enrolled browser push, then the caller-owned
-   // Server SIM Gateway. If neither accepts the invitation, return the secure
-   // Server link for manual sharing; no third-party SMS provider is used.
+   // First-contact transport order: a freshly-heartbeating guest browser can
+   // receive its Web Push alert. Otherwise use the caller-owned Server SIM
+   // Gateway; a registered/stale push token alone does not prove internet reachability.
    let simSmsQueued=false;
    let simSmsGatewayOnline=false;
-   if(!hasPushAccepted){
+   if(!guestInternetReachable){
     const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
      p_scope:"guest_invite_sms_pair",
      p_key_hash:await sha("guest-invite-sms-pair:"+uid+":"+to),
@@ -677,12 +677,14 @@ Deno.serve(async(req:Request)=>{
     }
    }
 
-   const deliveryMode=hasPushAccepted?"web_push":simSmsQueued?"sim_sms_queued":"manual_share";
-   const deliveryMessage=hasPushAccepted
-    ?"Server submitted a caller-identified browser call alert to "+guestPush.accepted+" registered device(s). Push-service acceptance is not proof that the notification has appeared; the guest browser confirms when it opens."
+   const deliveryMode=guestInternetReachable&&hasPushAccepted?"web_push":simSmsQueued?"sim_sms_queued":"manual_share";
+   const deliveryMessage=guestInternetReachable&&hasPushAccepted
+    ?"A fresh guest-browser heartbeat confirms internet reachability. Server submitted the caller-identified browser alert; push-service acceptance is not proof that the notification has appeared."
     :simSmsQueued
-     ?"Server queued the caller-identified invitation on your linked Android SIM gateway. Your mobile carrier plan may charge for this SMS. Queueing is not proof of delivery."
-     :"No enrolled browser receiver or available Android SIM gateway accepted the invitation. Share this caller-identifying invitation manually.";
+     ?"The recipient has no fresh guest-browser internet heartbeat. Server queued the caller-identified invitation on the paired Android SIM Gateway. Carrier charges may apply; queueing is not proof of delivery."
+     :hasPushAccepted
+      ?"A browser push service accepted an alert, but no fresh internet heartbeat was received and no paired SIM Gateway accepted an SMS. Share the secure invitation manually if the recipient does not come online."
+      :"The recipient's internet state is unknown and no available Android SIM Gateway accepted the invitation. Share the secure invitation manually.";
 
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
@@ -691,14 +693,16 @@ Deno.serve(async(req:Request)=>{
     delivery_message:deliveryMessage,
     caller_display_label:callerDisplay,caller_display_name:callerDisplay,caller_phone_e164:callerPhone||"",
     recipient_availability:{
-     status:guestAvailabilityStatus,connected:guestPush.recent_online>0,
-     internet_status:guestAvailabilityStatus==="online"?"recent_guest_browser_connection":"unknown",
-     background_wake_possible:guestPush.registered>0,
-     explanation:guestAvailabilityStatus==="online"
-      ?"The guest browser recently confirmed its internet connection."
+     status:guestAvailabilityStatus,connected:guestInternetReachable,
+     server_reachable:guestInternetReachable,
+     internet_status:guestInternetReachable?"internet_on":"unknown",
+     push_receiver_registered:guestPush.registered>0,
+     background_wake_possible:guestInternetReachable,
+     explanation:guestInternetReachable
+      ?"The guest browser sent a heartbeat within the 35-second freshness window; internet reachability is confirmed."
       :guestPush.registered>0
-       ?"A browser push receiver is registered; waiting for the recipient to open and confirm this call."
-       :"The recipient has not enrolled a guest browser receiver yet."
+       ?"A browser push subscription exists, but its last heartbeat is stale. The phone's internet state is unknown, not offline."
+       :"The recipient has not enrolled a guest browser receiver. The phone's internet state is unknown, not offline."
     },
     sim_sms_delivery:{
      channel:"caller_sim_sms",queued:simSmsQueued,gateway_online:simSmsGatewayOnline,

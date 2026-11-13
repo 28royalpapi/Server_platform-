@@ -132,7 +132,7 @@ internal object ServerPushRegistration {
               doOutput = true
               setRequestProperty("content-type", "application/json")
               setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-              setRequestProperty("authorization", "Bearer " + accessToken)
+              setRequestProperty("x-server-session-token", accessToken)
             }
             val body = JSONObject()
               .put("action", "register_push_token")
@@ -195,7 +195,7 @@ internal object ServerPushRegistration {
           doOutput = true
           setRequestProperty("content-type", "application/json")
           setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-          setRequestProperty("authorization", "Bearer " + accessToken)
+          setRequestProperty("x-server-session-token", accessToken)
         }
         val body = JSONObject().put("action", "remove_push_token").put("push_token", token)
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }

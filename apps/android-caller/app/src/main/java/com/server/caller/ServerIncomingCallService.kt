@@ -340,7 +340,7 @@ class ServerIncomingCallService : Service() {
       doOutput = true
       setRequestProperty("content-type", "application/json")
       setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-      setRequestProperty("authorization", "Bearer " + token)
+      setRequestProperty("x-server-session-token", token)
     }
     try {
       connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }

@@ -587,7 +587,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       requestMethod = "POST"; connectTimeout = 15000; readTimeout = 20000; doOutput = true
       setRequestProperty("content-type", "application/json")
       setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-      if (bearer && !accessToken.isNullOrBlank()) setRequestProperty("authorization", "Bearer $accessToken")
+      if (bearer && !accessToken.isNullOrBlank()) setRequestProperty("x-server-session-token", accessToken)
     }
     try {
       connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }

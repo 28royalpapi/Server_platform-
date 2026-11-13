@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
-const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
+const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type,x-server-session-token","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
 const out=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:cors});
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 const phone=(v:unknown)=>typeof v==="string"&&/^\+[1-9][0-9]{7,14}$/.test(v.trim())?v.trim():null;
@@ -20,7 +20,7 @@ function client(){
 }
 function ipHash(req:Request){const ip=(req.headers.get("cf-connecting-ip")||req.headers.get("x-real-ip")||(req.headers.get("x-forwarded-for")||"unknown").split(",")[0].trim()||"unknown").slice(0,160);return sha("server-auth-ip:"+ip);}
 async function bearer(req:Request,db:any,allowExpiredForRefresh=false){
- const token=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+ const token=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
  if(!/^[0-9a-f]{64}$/.test(token))return null;
  const hash=await sha(token);
  // A client may be offline when its session expires. Permit a short grace window

@@ -41,7 +41,7 @@ for (let offset = 0; offset < 25; offset++) {
     headers: {
       "content-type": "application/json",
       apikey: publishableKey,
-      authorization: "Bearer " + result.access_token
+      "x-server-session-token": result.access_token
     },
     body: JSON.stringify({ action: "availability", to_phone: candidatePhone })
   });

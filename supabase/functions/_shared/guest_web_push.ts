@@ -133,23 +133,27 @@ export async function sendGuestBrowserPush(
     return { registered: 0, recent_online: 0, accepted: 0, failed: 0, configured: !error };
   }
 
-  const keys = await getGuestPushVapidKeys(db);
-  if (!keys) {
-    return { registered: devices.length, recent_online: 0, accepted: 0, failed: devices.length, configured: false };
-  }
-
   const now = Date.now();
   const eligibleDevices = devices.filter((device: any) =>
     !device.expiration_at || Date.parse(device.expiration_at) > now
   );
-  const recentOnline = eligibleDevices.filter((device: any) =>
+  const freshDevices = eligibleDevices.filter((device: any) =>
     Number.isFinite(Date.parse(device.last_seen_at || "")) &&
     now - Date.parse(device.last_seen_at) <= FRESH_GUEST_SECONDS * 1000
-  ).length;
-
+  );
+  const recentOnline = freshDevices.length;
+  if (!freshDevices.length) {
+    return { registered: eligibleDevices.length, recent_online: 0, accepted: 0,
+      failed: devices.length - eligibleDevices.length, configured: true };
+  }
+  const keys = await getGuestPushVapidKeys(db);
+  if (!keys) {
+    return { registered: eligibleDevices.length, recent_online: recentOnline, accepted: 0,
+      failed: devices.length - eligibleDevices.length + freshDevices.length, configured: false };
+  }
   let accepted = 0;
   let failed = devices.length - eligibleDevices.length;
-  await Promise.all(eligibleDevices.map(async (device: any) => {
+  await Promise.all(freshDevices.map(async (device: any) => {
     if (!validPushEndpoint(device.endpoint) || !device.p256dh || !device.auth) {
       await db.from("server_guest_push_devices")
         .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })

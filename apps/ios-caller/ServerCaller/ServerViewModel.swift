@@ -861,7 +861,7 @@ final class ServerViewModel: ObservableObject {
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue(ServerBuildConfig.key, forHTTPHeaderField: "apikey")
-        if authorized, let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "authorization") }
+        if authorized, let accessToken { request.setValue(accessToken, forHTTPHeaderField: "x-server-session-token") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ServerError.message("No response from Server backend.") }
