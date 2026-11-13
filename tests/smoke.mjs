@@ -726,7 +726,7 @@ assert.doesNotMatch(androidGatewayMain,/setRequestProperty\("authorization"/);
 assert.match(e2eIdentityScript,/"x-server-session-token": result\.access_token/);
 assert.doesNotMatch(e2eIdentityScript,/authorization: "Bearer "/);
 assert.match(calls,/guestInternetReachable=guestPush\.recent_online>0/);
-assert.match(calls,/if\(!guestInternetReachable\)/,"guest SMS is attempted unless a fresh browser heartbeat confirms internet");
+assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,"guest browser reachability never suppresses SIM SMS");
 assert.match(calls,/internet_status:guestInternetReachable\?"internet_on":"unknown"/);
 assert.match(calls,/phone's internet state is unknown, not offline/);
 assert.match(guestWebPushSender,/await Promise\.all\(freshDevices\.map/,"stale subscriptions are not counted as live guest internet connections");
@@ -735,11 +735,11 @@ assert.match(projectReadme,/Server Backend URL/);
 assert.match(projectReadme,/first-party Gateway source is in/ ,
   "README identifies the self-operated Android SIM Gateway implementation");
 assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
-assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
+assert.match(calls,/shared_guest_sms_enabled/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
   "SIM invitations can only use an active gateway paired to the calling Server account");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
-assert.match(calls,/select\("id,token_hash"\)/,"the server retrieves only the hash needed to address the gateway Realtime topic");
+assert.match(calls,/select\("id,token_hash(?:,shared_guest_sms_enabled)?"\)/,"the server retrieves only the hash and Gateway consent metadata needed for wake routing");
 assert.match(calls,/sendServerGatewayWake\(gateway\.token_hash\)/,"a queued caller SMS triggers a Supabase Realtime wake-up");
 assert.ok(gatewayWake.includes("/realtime/v1/api/broadcast/") && gatewayWake.includes("/events/gateway_wake?private=false"),"gateway wake-ups use the verified direct public Realtime REST endpoint");
 assert.ok(gatewayWake.includes("/events/gateway_wake?private=false"),"the wake-up event is explicitly named in the Realtime endpoint");
@@ -751,14 +751,14 @@ assert.match(androidGatewayRealtime,/scheduleReconnect/,"Android reconnects afte
 assert.match(androidGatewayRealtime,/sha256Hex/,"the Android channel topic is derived from the gateway bearer token hash");
 assert.match(androidSimGateway,/ServerGatewayRealtimeClient/,"the foreground SIM gateway starts the Realtime listener");
 assert.match(androidSimGateway,/PRESENCE_HEARTBEAT_SECONDS = 60L/,"the gateway refreshes its online timestamp every 60 seconds");
-assert.match(androidSimGateway,/FALLBACK_POLL_INTERVAL_MINUTES = 5L/,"a five-minute queue poll remains as the Realtime safety net");
+assert.match(androidSimGateway,/FALLBACK_POLL_INTERVAL_SECONDS = 15L/,"the SIM Gateway retries the queue every 15 seconds if Realtime is unavailable");
 assert.match(androidSimGateway,/put\("action", "health"\)/,"the gateway health heartbeat refreshes server-side reachability");
 assert.match(gatewayGradle,/com\.squareup\.okhttp3:okhttp:4\.12\.0/,"the Realtime WebSocket client uses a pinned OkHttp version");
 assert.match(calls,/guest_invite_sms_pair/);
 assert.match(calls,/guest_invite_sms_sender/);
 assert.match(calls,/guest_invite_id:created\.invite_id/);
 assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
-  "Android reports when the first-contact SMS invitation is queued through the caller's own SIM gateway");
+  "Android reports when the first-contact SMS invitation is queued through an active Server SIM Gateway");
 assert.doesNotMatch(androidMain,/textbee/i,"Android caller UI has no third-party SMS provider states");
 assert.doesNotMatch(iosModel,/textbee/i,"iOS caller UI has no third-party SMS provider states");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
@@ -875,7 +875,7 @@ assert.match(guest,/SERVER_TURN_URLS/,"guest calls use the same optional TURN re
 assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches Android and browser STUN discovery");
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
-assert.match(calls,/from\("server_gateway_devices"\)[\s\S]*?eq\("owner_user_id",uid\)/,
+assert.match(calls,/shared_guest_sms_enabled/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
   "guest invitation SMS can only use a recently active gateway owned by the caller");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);

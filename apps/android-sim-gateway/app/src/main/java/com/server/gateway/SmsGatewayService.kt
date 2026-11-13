@@ -46,12 +46,13 @@ class SmsGatewayService : Service() {
       // Always check once at startup, then immediately again after Realtime joins.
       pollQueue()
 
-      // A low-frequency safety net catches jobs if the WebSocket is unavailable.
+      // A short safety net ensures the 2-minute invitation isn't missed
+      // when the Realtime WebSocket is temporarily unavailable.
       timers.scheduleAtFixedRate(
         { pollQueue() },
-        FALLBACK_POLL_INTERVAL_MINUTES,
-        FALLBACK_POLL_INTERVAL_MINUTES,
-        TimeUnit.MINUTES
+        FALLBACK_POLL_INTERVAL_SECONDS,
+        FALLBACK_POLL_INTERVAL_SECONDS,
+        TimeUnit.SECONDS
       )
 
       // Keep the device's server-side last_seen_at fresh so callers only choose
@@ -189,6 +190,6 @@ class SmsGatewayService : Service() {
     private const val CHANNEL_ID = "server-sim-gateway"
     private const val NOTIFICATION_ID = 4127
     private const val PRESENCE_HEARTBEAT_SECONDS = 60L
-    private const val FALLBACK_POLL_INTERVAL_MINUTES = 5L
+    private const val FALLBACK_POLL_INTERVAL_SECONDS = 15L
   }
 }

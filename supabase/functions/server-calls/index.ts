@@ -645,10 +645,22 @@ Deno.serve(async(req:Request)=>{
     // Use the caller's own paired SIM through Server's first-party Android
     // gateway. Supabase owns the queue; the handset's carrier sends the SMS.
     const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
-    const {data:gateway,error:gatewayError}=await db.from("server_gateway_devices")
-     .select("id,token_hash").eq("owner_user_id",uid).eq("enabled",true)
+    // Prefer the caller's own Gateway; otherwise use one explicitly opted-in
+    // shared Server SIM Gateway. One operator device can serve all guest calls.
+    const ownGatewayLookup=await db.from("server_gateway_devices")
+     .select("id,token_hash,shared_guest_sms_enabled").eq("owner_user_id",uid).eq("enabled",true)
      .gte("last_seen_at",gatewayFreshAfter)
      .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+    let gateway=ownGatewayLookup.error?null:ownGatewayLookup.data;
+    let gatewayError=ownGatewayLookup.error;
+    if(!gateway){
+     const sharedGatewayLookup=await db.from("server_gateway_devices")
+      .select("id,token_hash,shared_guest_sms_enabled").eq("shared_guest_sms_enabled",true).eq("enabled",true)
+      .gte("last_seen_at",gatewayFreshAfter)
+      .order("last_seen_at",{ascending:false}).limit(1).maybeSingle();
+     gateway=sharedGatewayLookup.error?null:sharedGatewayLookup.data;
+     gatewayError=sharedGatewayLookup.error;
+    }
     if(gatewayError){
      console.warn("GUEST_SIM_GATEWAY_LOOKUP_FAILED");
     }else if(gateway){

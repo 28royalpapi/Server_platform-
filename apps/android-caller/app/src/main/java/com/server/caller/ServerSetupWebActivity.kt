@@ -178,7 +178,7 @@ class ServerSetupWebActivity : Activity() {
       doOutput = true
       setRequestProperty("content-type", "application/json")
       setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-      if (!accessToken.isNullOrBlank()) setRequestProperty("authorization", "Bearer $accessToken")
+      if (!accessToken.isNullOrBlank()) setRequestProperty("x-server-session-token", accessToken)
     }
     return try {
       conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
@@ -205,7 +205,7 @@ class ServerSetupWebActivity : Activity() {
       doOutput = true
       setRequestProperty("content-type", "application/json")
       setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-      setRequestProperty("authorization", "Bearer " + accessToken)
+      setRequestProperty("x-server-session-token", accessToken)
     }
     return try {
       conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
