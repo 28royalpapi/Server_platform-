@@ -735,8 +735,8 @@ assert.match(projectReadme,/Server Backend URL/);
 assert.match(projectReadme,/first-party Gateway source is in/ ,
   "README identifies the self-operated Android SIM Gateway implementation");
 assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
-assert.match(calls,/shared_guest_sms_enabled/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
-  "SIM invitations can only use an active gateway paired to the calling Server account");
+assert.match(calls,/eq\("owner_user_id",uid\)/,"the caller's own active SIM Gateway is preferred");
+assert.match(calls,/eq\("shared_guest_sms_enabled",true\)/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/select\("id,token_hash(?:,shared_guest_sms_enabled)?"\)/,"the server retrieves only the hash and Gateway consent metadata needed for wake routing");
@@ -876,7 +876,6 @@ assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches An
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
 assert.match(calls,/shared_guest_sms_enabled/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
-  "guest invitation SMS can only use a recently active gateway owned by the caller");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/source_event_id:"server-guest-invite:"/);
