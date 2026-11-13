@@ -693,7 +693,7 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
-const guestSmsTransport=calls.slice(calls.indexOf("// First-contact transport order:"),calls.indexOf("const deliveryMode=",calls.indexOf("// First-contact transport order:")));
+const guestSmsTransport=calls.slice(calls.indexOf("// SMS is the primary first-contact transport"),calls.indexOf("const deliveryMode=",calls.indexOf("// SMS is the primary first-contact transport")));
 assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\?"web_push":"manual_share"/,
   "the caller SIM SMS is the primary guest invitation transport");
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
@@ -1256,7 +1256,7 @@ assert.match(guest,/CALLER_PROFILE_LOOKUP_FAILED/,
   "guest caller-profile database errors are surfaced as service failures, not hidden");
 
 assert.match(calls,/missed_call_saved:true/);
-assert.match(calls,/GUEST_INVITE_TTL_SECONDS = 24 \* 60 \* 60/);
+assert.match(calls,/GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
 assert.match(offlineInbox,/replicateRxCollection/);
 assert.match(offlineInbox,/getRxStorageDexie/);
 assert.match(offlineInbox,/rxdb@17\.6\.0/);

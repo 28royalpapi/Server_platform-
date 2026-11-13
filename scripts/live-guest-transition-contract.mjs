@@ -83,6 +83,11 @@ async function startGuestCall() {
   assert.ok(created.call_id);
   assert.equal(created.call?.state, "ringing");
   assert.ok(created.guest_invite_url);
+  assert.match(created.invitation_text || "", /Turn on mobile data or Wi-Fi/);
+  assert.match(created.invitation_text || "", /This invitation expires in 2 minutes/);
+  const inviteExpiryMs = Date.parse(created.invite_expires_at || "") - Date.now();
+  assert.ok(inviteExpiryMs > 0 && inviteExpiryMs <= 125000,
+    "the actual guest invitation token must expire within two minutes");
   createdCallIds.add(created.call_id);
   return { created, token: guestTokenFrom(created.guest_invite_url) };
 }
