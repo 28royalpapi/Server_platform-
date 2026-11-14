@@ -81,7 +81,7 @@ async function iceServersForCall(identity:string, ttlSeconds:number):Promise<Ice
 }
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 function client(){const url=Deno.env.get("SUPABASE_URL")||"";let key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";if(!key){try{const k=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}");key=k.default||Object.values(k)[0]||"";}catch{}}if(!url||!key)throw new Error("SERVER_NOT_CONFIGURED");return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});}
-Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("ok",{status:204,headers:cors});if(!["POST","GET"].includes(req.method))return out({error:"METHOD_NOT_ALLOWED"},405);
+Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response(null,{status:204,headers:cors});if(!["POST","GET"].includes(req.method))return out({error:"METHOD_NOT_ALLOWED"},405);
 let b:any={},u=new URL(req.url);if(req.method==="POST"){try{b=await req.json();if(!b||typeof b!=="object"||Array.isArray(b))throw 0;}catch{return out({error:"INVALID_JSON"},400)}}
 const raw=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||b.token||u.searchParams.get("token")||"";
 if(typeof raw!=="string"||raw.length<48||raw.length>256)return out({error:"INVALID_INVITE"},401);
@@ -184,12 +184,12 @@ if(req.method==="GET"||action==="inspect"){
  if(callError)return out({error:"CALL_LOOKUP_FAILED"},503);
  if(!call)return out({error:"CALL_NOT_FOUND"},404);
  const {data:caller,error:callerError}=await db.from("server_profiles")
-  .select("display_name,phone_e164,phone_verified_at,allow_number_based_server_calls")
+  .select("server_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls")
   .eq("user_id",call.caller_user_id).maybeSingle();
  if(callerError)return out({error:"CALLER_PROFILE_LOOKUP_FAILED"},503);
  const mayShowPhone=caller?.phone_verified_at&&caller?.allow_number_based_server_calls===true&&
   typeof caller.phone_e164==="string"&&/^\+[1-9][0-9]{7,14}$/.test(caller.phone_e164);
- const callerLabel=caller?.display_name||"SERVER CALLER";
+ const callerLabel=(typeof caller?.display_name==="string"&&caller.display_name.trim())?caller.display_name.trim():(caller?.server_id||"SERVER CALLER");
  return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,
   caller_server_id:callerLabel,caller_label:callerLabel,caller_display_name:callerLabel,caller_phone:mayShowPhone?caller.phone_e164:null,
   call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
