@@ -336,7 +336,7 @@ Deno.serve(async(req:Request)=>{
  const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,server_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls").eq("user_id",session.user_id).maybeSingle();
  if(profileError||!profile)return out({error:"PROFILE_REQUIRED"},401);
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
- if(action==="start"&&!profile.display_name)return out({error:"CALLER_NAME_REQUIRED",message:"Set your Server caller name before placing a call."},409);
+ const callerDisplayName=(typeof profile.display_name==="string"&&profile.display_name.trim())?profile.display_name.trim():(profile.server_id||"SERVER USER");
  try{
   if(action==="realtime_token"){
    const requestedCallId=typeof b.call_id==="string"?b.call_id.trim():"";
@@ -591,11 +591,11 @@ Deno.serve(async(req:Request)=>{
    if(ce||!created?.call)return out({error:"CALL_CREATE_FAILED"},503);
    const call=created.call;
    if(route==="server"){
-    const callerLabel=profile.display_name;
+    const callerLabel=callerDisplayName;
     deferRealtime(publishRealtime(userRealtimeChannel(callee.user_id),{
      type:"incoming_call",
      call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,expires_at:call.expires_at},
-     caller:{label:callerLabel,display_name:profile.display_name,server_id:profile.server_id}
+     caller:{label:callerLabel,display_name:callerDisplayName,server_id:profile.server_id}
     },"incoming:"+call.id));
    }
    const iceConfig=await iceServersForCall(call.id,callTtlSeconds);
@@ -612,7 +612,7 @@ Deno.serve(async(req:Request)=>{
    // the recipient to the secure browser call. The link is sent by the selected
    // first-contact transport below when an eligible route is configured.
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
-   const callerDisplay=profile.display_name;
+   const callerDisplay=callerDisplayName;
    const invitationUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
    const invitationText=callerDisplay+" is calling you through Server. Turn on mobile data or Wi-Fi, then tap to answer: "+invitationUrl+" This invitation expires in 2 minutes.";
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
