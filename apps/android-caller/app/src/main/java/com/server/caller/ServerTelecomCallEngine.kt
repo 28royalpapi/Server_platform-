@@ -82,6 +82,9 @@ internal data class ServerCallTarget private constructor(
   }
 }
 
+/** Android Telecom should play ringback for both registered Server users and SMS/browser guest calls. */
+internal fun shouldRequestTelecomRingback(route: String): Boolean = route == "server" || route == "guest"
+
 internal class ServerTelecomCallEngine(
   private val owner: ServerConnectionService,
   private val connection: ServerTelecomConnection
@@ -192,7 +195,7 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
       route = started.optString("route", "guest")
 // Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
-      connection.setRingbackRequested(route == "server")
+      connection.setRingbackRequested(shouldRequestTelecomRingback(route))
       if (route == "guest") {
         // The number is not registered as a Server identity. This does NOT tell us
         // whether its ordinary handset has mobile data or Wi-Fi. Keep the guest
