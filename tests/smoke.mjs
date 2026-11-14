@@ -1163,10 +1163,11 @@ assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
 assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
-assert.match(calls,/CALLER_NAME_REQUIRED/,"a caller display name is required before an outgoing call is created");
+assert.match(calls,/callerDisplayName=.*profile\.server_id/,"a caller without a display name remains callable through the stable Server ID fallback");
 assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server\. Turn on mobile data or Wi-Fi, then tap to answer: "/,
   "non-Server SMS invitation identifies the caller, asks for internet and includes the answer link");
-assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview uses the caller's profile name even when the phone number is private");
+assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview prefers the caller profile name");
+assert.match(guestPreview,/profile\?\.server_id/,"the Open Graph preview falls back to the stable Server ID when no display name exists");
 assert.match(guestPreview,/"SERVER CALLER"/,"legacy invitations without a stored name use a neutral label instead of PRIVATE CALLER");
 assert.match(guest,/caller_server_id:callerLabel/,
   "guest invitation verification returns a human-facing label rather than a Server ID");
