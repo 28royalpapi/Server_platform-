@@ -619,8 +619,10 @@ assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList
 assert.match(androidSetup,/requestCallPermissions/);
 assert.doesNotMatch(androidSetup,/READ_PHONE_STATE|CALL_PHONE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
-assert.match(androidEngine,/connection\.setRingbackRequested\(route == "server"\)/,
-  "Telecom ringback is requested only for a real Server recipient, never for a manual guest share");
+assert.match(androidEngine,/connection\.setRingbackRequested\(shouldRequestTelecomRingback\(route\)\)/,
+  "Telecom ringback is requested for Server and guest-browser calls until answered");
+assert.match(androidEngine,/shouldRequestTelecomRingback\(route: String\): Boolean = route == "server" \|\| route == "guest"/,
+  "Only known Server and guest routes request framework ringback");
 assert.match(androidEngine,/toStartPayload\("android_telecom"\)/,
   "system Phone calls use the explicit native source payload when creating a backend call");
 assert.match(androidEngine,/two_way_audio_media_ready/);
