@@ -1,0 +1,126 @@
+services:
+  redis:
+    image: redis:7.4.2-alpine
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        exec redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction --requirepass "$REDIS_PASSWORD"
+    env_file:
+      - .env
+    volumes:
+      - server-realtime-redis:/data
+    networks:
+      - server-realtime
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    profiles: ["turn"]
+    # Coturn's official Docker guidance recommends host networking for large
+    # relay-port ranges; Docker port publishing adds substantial overhead here.
+    network_mode: host
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        set -- -n --log-file=stdout --listening-ip=0.0.0.0 --listening-port=3478 \
+          --min-port=49160 --max-port=65535 --realm="$REALTIME_HOST" \
+          --use-auth-secret --static-auth-secret="$SERVER_TURN_SHARED_SECRET" \
+          --fingerprint --no-cli --no-tls --no-dtls --stale-nonce=600 \
+          --denied-peer-ip=0.0.0.0-0.255.255.255 \
+          --denied-peer-ip=10.0.0.0-10.255.255.255 \
+          --denied-peer-ip=100.64.0.0-100.127.255.255 \
+          --denied-peer-ip=169.254.0.0-169.254.255.255 \
+          --denied-peer-ip=172.16.0.0-172.31.255.255 \
+          --denied-peer-ip=192.0.0.0-192.0.0.255 \
+          --denied-peer-ip=192.168.0.0-192.168.255.255 \
+          --denied-peer-ip=198.18.0.0-198.19.255.255 \
+          --denied-peer-ip=224.0.0.0-255.255.255.255
+        # CI-only opt-in: allow a loopback echo peer for the authenticated
+        # relay smoke. Never enable this on a production TURN server.
+        if [ "$${SERVER_TURN_TEST_ALLOW_LOOPBACK_PEERS:-}" = "1" ]; then
+          set -- "$@" --allow-loopback-peers
+        fi
+        if [ -n "$SERVER_TURN_EXTERNAL_IP" ]; then
+          set -- "$@" --external-ip="$SERVER_TURN_EXTERNAL_IP"
+        fi
+        exec turnserver "$@"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "turnutils_stunclient -p 3478 127.0.0.1 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    profiles: ["ingress"]
+    environment:
+      REALTIME_HOST: ${REALTIME_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - server-realtime-caddy-data:/data
+      - server-realtime-caddy-config:/config
+    networks:
+      - server-realtime
+    depends_on:
+      - centrifugo
+    restart: unless-stopped
+
+  centrifugo:
+    image: centrifugo/centrifugo:v6.9.7
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export CENTRIFUGO_ENGINE_REDIS_PASSWORD="$REDIS_PASSWORD"
+        exec centrifugo -c config.json
+    env_file:
+      - .env
+    environment:
+      CENTRIFUGO_HTTP_SERVER_PORT: "8000"
+      CENTRIFUGO_ENGINE_TYPE: redis
+      CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://redis:6379
+      CENTRIFUGO_ADMIN_ENABLED: "false"
+    volumes:
+      - ./config.json:/centrifugo/config.json:ro
+    expose:
+      - "8000"
+    networks:
+      - server-realtime
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+networks:
+  server-realtime:
+    driver: bridge
+
+volumes:
+  server-realtime-redis:
+  server-realtime-caddy-data:
+  server-realtime-caddy-config:

@@ -14,12 +14,15 @@ import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SmsGatewayService : Service() {
   private val executor = Executors.newSingleThreadExecutor()
+  private val timers = Executors.newScheduledThreadPool(2)
   private val running = AtomicBoolean(false)
-  @Volatile private var pollThread: Thread? = null
+  private val pollInProgress = AtomicBoolean(false)
+  @Volatile private var realtimeClient: ServerGatewayRealtimeClient? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -28,29 +31,82 @@ class SmsGatewayService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     if (intent?.action == ACTION_STOP) {
-      stopGateway(); stopSelf(); return START_NOT_STICKY
+      stopGateway()
+      stopSelf()
+      return START_NOT_STICKY
     }
     startForeground(NOTIFICATION_ID, notification("Starting secure gateway…"))
     if (running.compareAndSet(false, true)) {
-      pollThread = Thread({ pollingLoop() }, "server-sms-gateway-poller").apply { isDaemon = true; start() }
+      realtimeClient = ServerGatewayRealtimeClient(
+        this,
+        onWake = { pollQueue() },
+        onState = { state -> updateNotification(state) }
+      ).also { it.start() }
+
+      // Always check once at startup, then immediately again after Realtime joins.
+      pollQueue()
+
+      // A short safety net ensures the 2-minute invitation isn't missed
+      // when the Realtime WebSocket is temporarily unavailable.
+      timers.scheduleAtFixedRate(
+        { pollQueue() },
+        FALLBACK_POLL_INTERVAL_SECONDS,
+        FALLBACK_POLL_INTERVAL_SECONDS,
+        TimeUnit.SECONDS
+      )
+
+      // Keep the device's server-side last_seen_at fresh so callers only choose
+      // gateways which are demonstrably online. This is not a queue poll.
+      timers.scheduleAtFixedRate(
+        { refreshGatewayPresence() },
+        PRESENCE_HEARTBEAT_SECONDS,
+        PRESENCE_HEARTBEAT_SECONDS,
+        TimeUnit.SECONDS
+      )
     }
     return START_STICKY
   }
 
-  private fun pollingLoop() {
-    while (running.get()) {
-      try {
-        val response = MainActivity.postGateway(this, JSONObject().put("action", "poll"))
-        val jobs = response.optJSONArray("jobs") ?: JSONArray()
-        for (i in 0 until jobs.length()) {
-          val job = jobs.optJSONObject(i) ?: continue
-          sendJob(job)
+  private fun pollQueue() {
+    if (!running.get() || !pollInProgress.compareAndSet(false, true)) return
+    try {
+      executor.execute {
+        try {
+          val response = MainActivity.postGateway(this, JSONObject().put("action", "poll"))
+          val jobs = response.optJSONArray("jobs") ?: JSONArray()
+          for (i in 0 until jobs.length()) {
+            val job = jobs.optJSONObject(i) ?: continue
+            sendJob(job)
+          }
+          if (jobs.length() > 0) {
+            updateNotification("Processing ${jobs.length()} SMS job(s) · Server SIM active")
+          } else {
+            updateNotification("Realtime wake-up active · SIM gateway ready")
+          }
+        } catch (e: Exception) {
+          updateNotification("Waiting for Server · ${e.message?.take(65) ?: "network unavailable"}")
+        } finally {
+          pollInProgress.set(false)
         }
-        updateNotification("Connected · ${jobs.length()} job(s) claimed · SIM gateway active")
-      } catch (e: Exception) {
-        updateNotification("Waiting for network · ${e.message?.take(70) ?: "connection unavailable"}")
       }
-      try { Thread.sleep(POLL_INTERVAL_MS) } catch (_: InterruptedException) { break }
+    } catch (_: Exception) {
+      pollInProgress.set(false)
+    }
+  }
+
+  private fun refreshGatewayPresence() {
+    if (!running.get()) return
+    try {
+      executor.execute {
+        if (!running.get()) return@execute
+        try {
+          MainActivity.postGateway(this, JSONObject().put("action", "health"))
+        } catch (_: Exception) {
+          updateNotification("Server heartbeat delayed · Realtime will reconnect")
+        }
+      }
+    } catch (_: Exception) {
+      // The service may be shutting down.
     }
   }
 
@@ -73,7 +129,7 @@ class SmsGatewayService : Service() {
       } else {
         sms.sendTextMessage(phone, null, message, sentIntents.first(), deliveredIntents.first())
       }
-      updateNotification("Submitted SMS through SIM · ${phone.take(5)}…")
+      updateNotification("SMS submitted to Android telephony service")
     } catch (_: Exception) {
       SmsStatusReceiver.reportFromWorker(this, jobId, "failed", "SMS_MANAGER_REJECTED")
     }
@@ -114,11 +170,18 @@ class SmsGatewayService : Service() {
 
   private fun stopGateway() {
     running.set(false)
-    pollThread?.interrupt()
+    realtimeClient?.close()
+    realtimeClient = null
+    timers.shutdownNow()
+    executor.shutdownNow()
     stopForeground(STOP_FOREGROUND_REMOVE)
   }
 
-  override fun onDestroy() { stopGateway(); executor.shutdownNow(); super.onDestroy() }
+  override fun onDestroy() {
+    stopGateway()
+    super.onDestroy()
+  }
+
   override fun onBind(intent: Intent?): IBinder? = null
 
   companion object {
@@ -126,6 +189,7 @@ class SmsGatewayService : Service() {
     const val ACTION_STOP = "com.server.gateway.STOP"
     private const val CHANNEL_ID = "server-sim-gateway"
     private const val NOTIFICATION_ID = 4127
-    private const val POLL_INTERVAL_MS = 12_000L
+    private const val PRESENCE_HEARTBEAT_SECONDS = 60L
+    private const val FALLBACK_POLL_INTERVAL_SECONDS = 15L
   }
 }

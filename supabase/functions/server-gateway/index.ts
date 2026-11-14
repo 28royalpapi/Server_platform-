@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
-const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
+const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type,x-server-session-token,x-server-gateway-token","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
 const out=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:cors});
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 const alphabet="23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -11,17 +11,18 @@ Deno.serve(async(req:Request)=>{
  const url=Deno.env.get("SUPABASE_URL")||"",key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});const action=typeof b.action==="string"?b.action:"";
  if(action==="create_pairing_code"){
-  const sessionToken=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+  const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
   if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
   const tokenHash=await sha(sessionToken);
   const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id").eq("token_hash",tokenHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
-  const {data:profile,error:profileError}=await db.from("server_profiles").select("user_id,phone_verified_at").eq("user_id",session.user_id).maybeSingle();
-  if(profileError||!profile?.phone_verified_at)return out({error:"VERIFIED_PROFILE_REQUIRED"},401);
-  const {data:allowed,error:le}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_code",p_key_hash:await sha(profile.user_id),p_window_seconds:3600,p_max_hits:5});
+  // Pairing is account-bound and uses the caller's active Server session.
+  // Requiring a verified phone here would create a bootstrap cycle: the SIM
+  // gateway is what sends the first phone-verification SMS.
+  const {data:allowed,error:le}=await db.rpc("server_rate_limit_allow",{p_scope:"gateway_pairing_code",p_key_hash:await sha(session.user_id),p_window_seconds:3600,p_max_hits:5});
   if(le||allowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
   const pairing=code(),expires=new Date(Date.now()+10*60*1000).toISOString();
-  const {error}=await db.from("server_gateway_pairings").insert({code_hash:await sha(pairing),expires_at:expires});
+  const {error}=await db.from("server_gateway_pairings").insert({owner_user_id:session.user_id,code_hash:await sha(pairing),expires_at:expires});
   if(error)return out({error:"PAIRING_CODE_CREATE_FAILED"},503);
   return out({ok:true,pairing_code:pairing,expires_at:expires,instructions:"Enter this one-time code in the Android Server SIM Gateway app within 10 minutes. It is shown only once."});
  }
@@ -31,16 +32,25 @@ Deno.serve(async(req:Request)=>{
   if(claimLimitError||claimAllowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
   const pairingCode=typeof b.pairing_code==="string"?b.pairing_code.trim().toUpperCase():"";
   if(!/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(pairingCode))return out({error:"PAIRING_CODE_INVALID"},400);
-  const {data:pair,error:pe}=await db.from("server_gateway_pairings").select("id,expires_at,claimed_at").eq("code_hash",await sha(pairingCode)).is("claimed_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+  const {data:pair,error:pe}=await db.from("server_gateway_pairings").select("id,owner_user_id,expires_at,claimed_at").eq("code_hash",await sha(pairingCode)).is("claimed_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
   if(pe||!pair)return out({error:"PAIRING_CODE_EXPIRED_OR_INVALID"},401);
   const {data:claimed,error:claimErr}=await db.from("server_gateway_pairings").update({claimed_at:new Date().toISOString()}).eq("id",pair.id).is("claimed_at",null).select("id").maybeSingle();
   if(claimErr||!claimed)return out({error:"PAIRING_CODE_ALREADY_USED"},409);
   const deviceToken=token(),label=(typeof b.device_label==="string"?b.device_label:"Server SIM Gateway").trim().slice(0,80)||"Server SIM Gateway";
-  const {data:device,error}=await db.from("server_gateway_devices").insert({label,token_hash:await sha(deviceToken),enabled:true,last_seen_at:new Date().toISOString()}).select("id,label").single();
+  const sharedGuestSmsEnabled=b.shared_guest_sms_enabled===true;
+  const {error:resetError}=await db.from("server_gateway_devices")
+   .update({shared_guest_sms_enabled:false,updated_at:new Date().toISOString()})
+   .eq("owner_user_id",pair.owner_user_id);
+  if(resetError)return out({error:"GATEWAY_SHARE_SETTING_FAILED"},503);
+  const {data:device,error}=await db.from("server_gateway_devices").insert({
+   owner_user_id:pair.owner_user_id,label,token_hash:await sha(deviceToken),enabled:true,
+   shared_guest_sms_enabled:sharedGuestSmsEnabled,last_seen_at:new Date().toISOString()
+  }).select("id,label,shared_guest_sms_enabled").single();
   if(error||!device)return out({error:"GATEWAY_REGISTER_FAILED"},503);
-  return out({ok:true,gateway_token:deviceToken,device_id:device.id,device_label:device.label});
+  return out({ok:true,gateway_token:deviceToken,device_id:device.id,device_label:device.label,
+   shared_guest_sms_enabled:device.shared_guest_sms_enabled===true});
  }
- const bearer=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+ const bearer=(req.headers.get("x-server-gateway-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
  if(bearer.length<48||bearer.length>256)return out({error:"GATEWAY_UNAUTHORIZED"},401);
  const hash=await sha(bearer);
  const {data:device,error:de}=await db.from("server_gateway_devices").select("id,enabled").eq("token_hash",hash).maybeSingle();

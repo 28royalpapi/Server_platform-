@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1000" viewBox="0 0 600 1000" role="img">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#123528"/><stop offset="1" stop-color="#07110f"/></linearGradient><linearGradient id="screen" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10251d"/><stop offset="1" stop-color="#07120f"/></linearGradient></defs>
+<rect x="12" y="12" width="576" height="976" rx="58" fill="#020706" stroke="#668879" stroke-width="4"/>
+<rect x="32" y="34" width="536" height="932" rx="42" fill="url(#screen)"/>
+<rect x="232" y="22" width="136" height="12" rx="6" fill="#020706"/>
+<text x="62" y="76" fill="#dbe8e1" font-size="20" font-family="Arial">9:41</text><circle cx="494" cy="66" r="9" fill="#dbe8e1"/><path d="M518 56l18 20h-36z" fill="#dbe8e1"/><rect x="544" y="56" width="12" height="20" rx="3" fill="none" stroke="#dbe8e1" stroke-width="2"/>
+
+<rect x="50" y="110" width="500" height="830" rx="22" fill="#f1f3f7"/>
+<rect x="50" y="110" width="500" height="92" rx="22" fill="#fff"/><path d="M50 180h500v22H50z" fill="#fff"/>
+<text x="84" y="165" fill="#263543" font-size="25" font-family="Arial">Phone</text>
+<text x="82" y="260" fill="#263543" font-size="27" font-weight="bold" font-family="Arial">Choose how to call</text>
+<text x="82" y="295" fill="#647381" font-size="16" font-family="Arial">Select Server for an internet call.</text>
+<rect x="76" y="338" width="448" height="120" rx="17" fill="#fff" stroke="#d7dfe5" stroke-width="2"/>
+<circle cx="132" cy="398" r="31" fill="#e4eaf0"/><path d="M120 390q2-9 10-6l6 6-6 7q8 12 16 13l6-6 8 5q3 9-7 11-29-4-33-30" fill="none" stroke="#526577" stroke-width="3"/>
+<text x="184" y="390" fill="#263543" font-size="22" font-weight="bold" font-family="Arial">SIM 1</text><text x="184" y="421" fill="#647381" font-size="15" font-family="Arial">Normal carrier call</text>
+<rect x="76" y="477" width="448" height="140" rx="17" fill="#e0f2e7" stroke="#4aaa77" stroke-width="3"/>
+<circle cx="132" cy="547" r="31" fill="#123d2b"/><text x="132" y="558" fill="#9af0bd" font-size="30" font-weight="bold" text-anchor="middle" font-family="Arial">S</text>
+<text x="184" y="536" fill="#145e3b" font-size="23" font-weight="bold" font-family="Arial">Server</text><text x="184" y="568" fill="#28734e" font-size="15" font-family="Arial">Internet call over data/Wi-Fi</text>
+<rect x="76" y="636" width="448" height="120" rx="17" fill="#fff" stroke="#d7dfe5" stroke-width="2"/>
+<circle cx="132" cy="696" r="31" fill="#e4eaf0"/><path d="M120 688q2-9 10-6l6 6-6 7q8 12 16 13l6-6 8 5q3 9-7 11-29-4-33-30" fill="none" stroke="#526577" stroke-width="3"/>
+<text x="184" y="688" fill="#263543" font-size="22" font-weight="bold" font-family="Arial">SIM 2</text><text x="184" y="719" fill="#647381" font-size="15" font-family="Arial">Normal carrier call</text>
+<rect x="76" y="792" width="448" height="92" rx="14" fill="#e2eaf0"/><text x="300" y="827" fill="#364a58" font-size="16" text-anchor="middle" font-family="Arial">Your phone may show different labels.</text><text x="300" y="854" fill="#364a58" font-size="15" text-anchor="middle" font-family="Arial">Choose Server for Server-to-Server calls.</text>
+
+<rect x="244" y="938" width="112" height="7" rx="4" fill="#dce8e1"/>
+</svg>

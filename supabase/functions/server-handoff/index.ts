@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
 const cors = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, apikey, content-type",
+  "access-control-allow-headers": "authorization, apikey, content-type, x-server-session-token",
   "access-control-allow-methods": "POST, OPTIONS",
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store"
@@ -106,7 +106,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action !== "create") return out({ error: "UNKNOWN_ACTION" }, 400);
-  const bearer = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1] || "";
+  const bearer = (req.headers.get("x-server-session-token") || (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1] || "").trim();
   if (!/^[0-9a-f]{64}$/.test(bearer)) return out({ error: "SESSION_REQUIRED" }, 401);
   const now = new Date().toISOString();
   const { data: session, error: sessionError } = await db.from("server_sessions")

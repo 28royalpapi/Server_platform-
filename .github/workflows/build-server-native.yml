@@ -1,7 +1,8 @@
 name: Build Server native clients and emulator previews
 on:
   workflow_dispatch:
-  push:
+  pull_request:
+    branches: [main]
     paths:
       - 'apps/android-caller/**'
       - 'apps/android-sim-gateway/**'
@@ -11,16 +12,89 @@ on:
       - 'web/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'infra/**'
+  push:
+    # Run the same release-gating workflow on the active completion branch so
+    # newly pushed final fixes are built and tested (not merely source-audited).
+    branches: [main, android-finish]
+    paths:
+      - 'apps/android-caller/**'
+      - 'apps/android-sim-gateway/**'
+      - 'apps/ios-caller/**'
+      - '.github/workflows/build-server-native.yml'
+      - 'supabase/**'
+      - 'web/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'infra/**'
 concurrency:
   group: server-native-${{ github.ref }}-kvm
   cancel-in-progress: true
 permissions:
   contents: read
 jobs:
+  realtime-infrastructure-smoke:
+    name: Centrifugo and Redis authenticated WebSocket smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Start the pinned Centrifugo and Redis stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > infra/realtime/.env <<'EOF'
+          REALTIME_HOST=localhost
+          REDIS_PASSWORD=server-ci-redis-password-0123456789abcdef
+          CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY=server-ci-hmac-secret-0123456789abcdef0123456789abcdef
+          CENTRIFUGO_HTTP_API_KEY=server-ci-api-key-0123456789abcdef0123456789abcdef
+          SERVER_TURN_SHARED_SECRET=server-ci-turn-secret-0123456789abcdef0123456789abcdef
+          SERVER_TURN_EXTERNAL_IP=
+          EOF
+          docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml up -d --wait
+          docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml ps
+      - name: Verify Coturn accepts a time-limited authenticated TURN allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          TURN_SECRET="$(awk -F= '$1 == "SERVER_TURN_SHARED_SECRET" {print substr($0, index($0, "=") + 1)}' infra/realtime/.env)"
+          test "${#TURN_SECRET}" -ge 32
+          TURN_USERNAME="$(( $(date +%s) + 600 )):server-turn-smoke"
+          # Start the echo peer inside the isolated TURN container. The test
+          # overlay enables loopback peers only for this CI run.
+          docker exec -d realtime-coturn-1 sh -ec 'turnutils_peer -p 3480 >/tmp/turnutils-peer.log 2>&1'
+          sleep 1
+          test "$(docker exec realtime-coturn-1 printenv SERVER_TURN_TEST_ALLOW_LOOPBACK_PEERS)" = "1"
+          timeout 20s docker exec realtime-coturn-1 turnutils_uclient \
+            -X -c -e 127.0.0.1 -r 3480 -n 1 -u "$TURN_USERNAME" -W "$TURN_SECRET" -p 3478 127.0.0.1
+      - name: Validate optional Coturn relay compose configuration
+        run: |
+          docker compose --profile turn --env-file infra/realtime/.env \
+            -f infra/realtime/docker-compose.yml \
+            -f infra/realtime/docker-compose.test.yml config --quiet
+      - name: Verify authenticated WebSocket subscription and Redis publication fanout
+        env:
+          CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: server-ci-hmac-secret-0123456789abcdef0123456789abcdef
+          CENTRIFUGO_HTTP_API_KEY: server-ci-api-key-0123456789abcdef0123456789abcdef
+          CENTRIFUGO_TEST_WS_URL: ws://127.0.0.1:8000/connection/websocket
+          CENTRIFUGO_TEST_API_URL: http://127.0.0.1:8000/api
+        run: node scripts/realtime-infrastructure-smoke.mjs
+      - name: Show realtime stack diagnostics on failure
+        if: failure()
+        run: docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml logs --no-color
+      - name: Stop realtime stack and remove ephemeral data
+        if: always()
+        run: docker compose --profile turn -f infra/realtime/docker-compose.yml -f infra/realtime/docker-compose.test.yml down -v
+
   backend-source-contract-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check guest audio pilot JavaScript syntax
+        run: node --check scripts/android-guest-browser-e2e.mjs
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -30,13 +104,26 @@ jobs:
           npm run check:web
       - name: Probe deployed Supabase functions without triggering real SMS
         run: npm run check:live
+      - name: Exercise live guest call lifecycle and Open Graph invitation without SMS or PSTN
+        run: npm run check:live:guest
+      - name: Exercise live Server-to-Server online and offline call lifecycle
+        run: npm run check:live:server
 
   android-build-and-emulator-smoke:
-    # GitHub Ubuntu runners expose /dev/kvm; grant the job user access before emulator-runner probes it.
+    # Use Linux KVM for repeatable x86_64 Android emulator boot and instrumentation.
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86_64
+    outputs:
+      preview_signing_ready: ${{ steps.server_preview_signing.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux build inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coreutils binutils
+          command -v readelf
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -46,8 +133,10 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Install Android SDK components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
-      - name: Enable KVM access for Android emulator
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Preinstall Android 14 emulator image with integrity retries
+        run: bash scripts/install-android-system-image.sh 'system-images;android-34;google_apis;x86_64'
+      - name: Enable Linux KVM access for Android emulator
         shell: bash
         run: |
           set -euo pipefail
@@ -58,31 +147,147 @@ jobs:
           sudo chmod 666 /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
           ls -l /dev/kvm
+      - name: Prepare persistent Android preview signing key
+        id: server_preview_signing
+        shell: bash
+        env:
+          SERVER_ANDROID_KEYSTORE_BASE64: ${{ secrets.SERVER_ANDROID_KEYSTORE_BASE64 }}
+          SERVER_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SERVER_ANDROID_KEYSTORE_PASSWORD }}
+          SERVER_ANDROID_KEY_ALIAS: ${{ secrets.SERVER_ANDROID_KEY_ALIAS }}
+          SERVER_ANDROID_KEY_PASSWORD: ${{ secrets.SERVER_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${SERVER_ANDROID_KEYSTORE_BASE64:-}" && -n "${SERVER_ANDROID_KEYSTORE_PASSWORD:-}" && -n "${SERVER_ANDROID_KEY_ALIAS:-}" && -n "${SERVER_ANDROID_KEY_PASSWORD:-}" ]]; then
+            KEYSTORE_PATH="$RUNNER_TEMP/server-preview-upload.jks"
+            printf '%s' "$SERVER_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            test -s "$KEYSTORE_PATH"
+            keytool -list -keystore "$KEYSTORE_PATH" -storetype JKS -storepass "$SERVER_ANDROID_KEYSTORE_PASSWORD" -alias "$SERVER_ANDROID_KEY_ALIAS" >/dev/null
+            echo "SERVER_ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "ANDROID_PREVIEW_SIGNING=persistent"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "ANDROID_PREVIEW_SIGNING=missing; preview release upload is disabled until the repository signing secrets are configured."
+          fi
       - name: Build Server caller and SIM gateway
         timeout-minutes: 18
         shell: bash
+        env:
+          SERVER_FIREBASE_API_KEY: ${{ secrets.SERVER_FIREBASE_API_KEY }}
+          SERVER_FIREBASE_APP_ID: ${{ secrets.SERVER_FIREBASE_APP_ID }}
+          SERVER_FIREBASE_PROJECT_ID: ${{ secrets.SERVER_FIREBASE_PROJECT_ID }}
+          SERVER_FIREBASE_SENDER_ID: ${{ secrets.SERVER_FIREBASE_SENDER_ID }}
+          SERVER_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SERVER_ANDROID_KEYSTORE_PASSWORD }}
+          SERVER_ANDROID_KEY_ALIAS: ${{ secrets.SERVER_ANDROID_KEY_ALIAS }}
+          SERVER_ANDROID_KEY_PASSWORD: ${{ secrets.SERVER_ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          if [[ -n "$SERVER_FIREBASE_API_KEY" && -n "$SERVER_FIREBASE_APP_ID" && -n "$SERVER_FIREBASE_PROJECT_ID" && -n "$SERVER_FIREBASE_SENDER_ID" ]]; then
+            echo "ANDROID_FCM_CLIENT_CONFIG=present"
+          else
+            echo "ANDROID_FCM_CLIENT_CONFIG=missing; background incoming calls use the existing foreground-listener fallback"
+          fi
           set -euo pipefail
           echo "BUILD_SERVER_CALLER_START $(date -u +%FT%TZ)"
           timeout 480s gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_CALLER_COMPLETE $(date -u +%FT%TZ)"
           timeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SIM_GATEWAY_COMPLETE $(date -u +%FT%TZ)"
-      - name: Compile Android instrumentation tests before booting emulator
-        timeout-minutes: 8
+          echo "BUILD_SERVER_RELEASE_BUNDLE_START $(date -u +%FT%TZ)"
+          timeout 600s gradle -p apps/android-caller bundleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=false --no-daemon --console=plain --stacktrace
+          echo "BUILD_SERVER_RELEASE_BUNDLE_COMPLETE $(date -u +%FT%TZ)"
+          timeout 600s gradle -p apps/android-caller assembleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=true --no-daemon --console=plain --stacktrace
+          echo "BUILD_SERVER_RELEASE_APK_COMPLETE $(date -u +%FT%TZ)"
+          ls -lh apps/android-caller/app/build/outputs/bundle/release/*.aab apps/android-caller/app/build/outputs/apk/release/*.apk
+      - name: Assemble x86_64 emulator and ARM64 physical-device instrumentation APK pairs
+        timeout-minutes: 25
         shell: bash
         run: |
           set -euo pipefail
-          echo "COMPILE_ANDROID_TESTS_START $(date -u +%FT%TZ)"
-          timeout 420s gradle -p apps/android-caller compileDebugAndroidTestKotlin --no-daemon --console=plain --stacktrace
-          echo "COMPILE_ANDROID_TESTS_COMPLETE $(date -u +%FT%TZ)"
+          DEBUG_APK_DIR='apps/android-caller/app/build/outputs/apk/debug'
+          TEST_APK='apps/android-caller/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'
+          find_debug_apk_for_abi() {
+            local target_abi="$1"
+            local candidate
+            while IFS= read -r candidate; do
+              if unzip -l "$candidate" | grep -F "lib/$target_abi/libjingle_peerconnection_so.so" >/dev/null; then
+                echo "$candidate"
+                return 0
+              fi
+            done < <(find "$DEBUG_APK_DIR" -maxdepth 1 -type f -name '*.apk' ! -name '*androidTest*' | sort)
+            echo "ERROR: no debug APK in $DEBUG_APK_DIR contains lib/$target_abi/libjingle_peerconnection_so.so" >&2
+            find "$DEBUG_APK_DIR" -maxdepth 1 -type f -name '*.apk' -print >&2 || true
+            return 1
+          }
+          APP_RELEASE='apps/android-caller/app/build/outputs/apk/release'
+          BUNDLE_RELEASE='apps/android-caller/app/build/outputs/bundle/release'
+          GATEWAY_APK='apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk'
+          mkdir -p artifacts/physical artifacts/release
+
+          # Preserve release deliverables before any clean instrumentation build.
+          cp "$APP_RELEASE"/*.apk artifacts/release/
+          cp "$BUNDLE_RELEASE"/*.aab artifacts/release/
+          cp "$GATEWAY_APK" artifacts/release/server-sim-gateway-debug.apk
+
+          # Step 10 only runs assembleDebug. Build the x86_64 instrumentation APK
+          # explicitly before expecting the test APK to exist.
+          echo "ASSEMBLE_X86_64_INSTRUMENTATION_PAIR_START $(date -u +%FT%TZ)"
+          timeout 720s gradle -p apps/android-caller assembleDebugAndroidTest --no-daemon --console=plain --stacktrace
+          APP_APK="$(find_debug_apk_for_abi x86_64)"
+          test -s "$APP_APK" && test -s "$TEST_APK"
+          if unzip -l "$APP_APK" | grep 'lib/arm64-v8a/' >/dev/null; then
+            echo "ERROR: x86_64 test pair unexpectedly contains ARM64 libraries; keep the emulator pair isolated." >&2
+            exit 1
+          fi
+          echo "X86_64_DEBUG_APK=$APP_APK"
+          cp "$APP_APK" artifacts/physical/server-android-x86_64-debug.apk
+          cp "$TEST_APK" artifacts/physical/server-android-x86_64-androidTest.apk
+
+          # Cleanly rebuild the same source for physical ARM64 devices.
+          echo "CLEAN_AND_ASSEMBLE_ARM64_TEST_PAIR_START $(date -u +%FT%TZ)"
+          timeout 720s gradle -p apps/android-caller clean assembleDebug assembleDebugAndroidTest -PSERVER_DEBUG_ABI_FILTERS=arm64-v8a --no-daemon --console=plain --stacktrace
+          APP_APK="$(find_debug_apk_for_abi arm64-v8a)"
+          test -s "$APP_APK" && test -s "$TEST_APK"
+          if unzip -l "$APP_APK" | grep 'lib/x86_64/' >/dev/null; then
+            echo "ERROR: physical ARM64 debug APK still contains x86_64 native libraries." >&2
+            exit 1
+          fi
+          echo "ARM64_DEBUG_APK=$APP_APK"
+          cp "$APP_APK" artifacts/physical/server-android-arm64-debug.apk
+          cp "$TEST_APK" artifacts/physical/server-android-arm64-androidTest.apk
+
+          # Validate actual native ELF PT_LOAD segments in ARM64 packages shipped
+          # to phones. APK ZIP alignment alone does not establish ELF page alignment.
+          echo "CHECK_ARM64_16KB_ELF_START $(date -u +%FT%TZ)"
+          python3 scripts/check-16kb-elf-alignment.py arm64-v8a artifacts/physical/server-android-arm64-debug.apk
+          ARM64_RELEASE_APK="$(find artifacts/release -maxdepth 1 -type f -name '*arm64-v8a*release.apk' -print -quit)"
+          if [[ -z "$ARM64_RELEASE_APK" || ! -s "$ARM64_RELEASE_APK" ]]; then
+            echo "ERROR: ARM64 release split APK was not created." >&2
+            find artifacts/release -maxdepth 1 -type f -print >&2
+            exit 1
+          fi
+          python3 scripts/check-16kb-elf-alignment.py arm64-v8a "$ARM64_RELEASE_APK"
+          echo "CHECK_ARM64_16KB_ELF_PASS"
+
+          # Restore release and gateway outputs for downstream preview publishing.
+          mkdir -p "$APP_RELEASE" "$BUNDLE_RELEASE" "$(dirname "$GATEWAY_APK")"
+          cp artifacts/release/*.apk "$APP_RELEASE"/
+          cp artifacts/release/*.aab "$BUNDLE_RELEASE"/
+          cp artifacts/release/server-sim-gateway-debug.apk "$GATEWAY_APK"
+          ls -lh artifacts/physical/*.apk artifacts/release/*
+          echo "ASSEMBLE_ANDROID_TEST_PAIRS_COMPLETE $(date -u +%FT%TZ)"
       - name: Upload built Android APKs before emulator smoke test
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: server-android-debug-apks
           path: |
-            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/*.apk
+            artifacts/physical/*.apk
+            artifacts/release/*
+            apps/android-caller/app/build/outputs/apk/androidTest/debug/*.apk
+            apps/android-caller/app/build/outputs/apk/release/*.apk
+            apps/android-caller/app/build/outputs/bundle/release/*.aab
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
       - name: Run Android phone emulator UI smoke test
@@ -91,12 +296,12 @@ jobs:
         with:
           api-level: 34
           target: google_apis
-          # Use an x86_64 system image with KVM acceleration; API 34 supports subscription-slot APIs.
+          # Use x86_64; the host macOS emulator runs on Hypervisor.Framework. API 34 supports subscription-slot APIs.
           arch: x86_64
           profile: pixel_2
           cores: 2
-          ram-size: 3072M
-          emulator-boot-timeout: 360
+          ram-size: 4096M
+          emulator-boot-timeout: 480
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
           pre-emulator-launch-script: |
@@ -117,10 +322,387 @@ jobs:
         with:
           name: server-android-build-and-startup-recording
           path: |
-            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
+            apps/android-caller/app/build/outputs/apk/androidTest/debug/*.apk
+            apps/android-caller/app/build/outputs/bundle/release/*.aab
             apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/androidTest-results/**
             artifacts/**
+          if-no-files-found: warn
+
+
+
+  android-guest-browser-e2e:
+    name: Android Telecom to no-install guest browser end-to-end call
+    needs: android-build-and-emulator-smoke
+    # APKs are uploaded before the UI emulator smoke. Run this independent audio
+    # pilot even when that separate emulator fails to boot; skip only cancellation.
+    if: ${{ always() && needs.android-build-and-emulator-smoke.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux emulator and virtual-audio tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pulseaudio pulseaudio-utils
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: android-actions/setup-android@v4
+      - name: Download the x86_64 emulator app and instrumentation pair
+        uses: actions/download-artifact@v4
+        with:
+          name: server-android-debug-apks
+          path: artifacts/server-android-debug-apks
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install chromium
+      - name: Enable Linux KVM access for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+      - name: Prepare Linux PulseAudio guest-call path
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl info >/dev/null
+          echo "Android Emulator uses the host PulseAudio backend; Playwright injects a deterministic WAV microphone source."
+      - name: Create a disposable Server test identity through the real auth endpoint
+        run: node scripts/create-server-e2e-identity.mjs > "$RUNNER_TEMP/server-e2e-identity.json"
+      - name: Run a real Server call from Android Telecom to the no-install guest browser
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 360
+          disable-animations: true
+          emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: bash scripts/android-guest-browser-e2e.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-guest-browser-e2e
+          path: |
+            artifacts/server-guest-browser-e2e/**
+            ${{ runner.temp }}/server-e2e-instrumentation.log
+          if-no-files-found: warn
+
+  android-8-minimum-install-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable Linux KVM access for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 8 SDK components
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Confirm Linux KVM acceleration
+        run: echo "Using /dev/kvm hardware acceleration for the Android emulator."
+      - name: Build caller and Android instrumentation tests
+        run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
+      - name: Run minimum-install and onboarding acceptance test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 26
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 360
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            sh scripts/wait-for-android-package-manager.sh
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#internationalNumberingMetadataCoversEverySupportedRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#destinationCountryFromSavedContactMetadataBeatsCallerRegion
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#explicitInternationalNumbersAndCallerRegionFallbackRemainSupported
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsInternetOnlyOnboardingWithoutSimFallback
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#guestCallInvitationNotificationOffersInternetShareOnly
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 420s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#missedServerCallNotificationOffersQuietCallbackAction
+            python3 scripts/assert-android-test-count.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-8-api26-install-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
+
+  android-8-1-api27-compatibility:
+    name: Android 8.1 API 27 Telecom compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable Linux KVM access for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 8.1 SDK and x86 Google APIs image
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          bash scripts/install-android-system-image.sh 'system-images;android-27;google_apis;x86'
+      - name: Build caller and instrumentation tests for Android 8.1
+        run: gradle -p apps/android-caller assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
+      - name: Run Android 8.1 Telecom and onboarding acceptance
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 27
+          target: google_apis
+          arch: x86
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 480
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            sh scripts/wait-for-android-package-manager.sh
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#launcherShowsInternetOnlyOnboardingWithoutSimFallback
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata
+            python3 scripts/assert-android-test-count.py
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest#phoneAccountCanReceiveIncomingCallThroughTelecom
+            python3 scripts/assert-android-test-count.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-8-1-api27-acceptance-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
+
+  android-10-to-16-platform-matrix:
+    name: Android API ${{ matrix.api-level }} calling-account compatibility
+    env:
+      SERVER_DEBUG_ABI_FILTERS: x86_64
+    strategy:
+      fail-fast: false
+      # Avoid booting eight memory-heavy AVDs at once on the hosted macOS pool.
+      max-parallel: 2
+      matrix:
+        api-level: [28, 29, 30, 31, 32, 33, 34, 35, 36]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable Linux KVM access for Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "ERROR: this GitHub runner does not expose /dev/kvm; hardware-accelerated Android acceptance tests cannot run here." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android SDK components for API ${{ matrix.api-level }} test
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Preinstall the selected API emulator image with integrity retries
+        run: bash scripts/install-android-system-image.sh 'system-images;android-${{ matrix.api-level }};google_apis;x86_64'
+      - name: Confirm Linux KVM acceleration
+        run: echo "Using /dev/kvm hardware acceleration for the Android emulator."
+      - name: Build caller and Android instrumentation tests
+        run: |
+          set -euo pipefail
+          gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
+      - name: Run Android API ${{ matrix.api-level }} Telecom and phone-picker acceptance tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          system-image-api-level: ${{ matrix.api-level }}
+          channel: stable
+          target: google_apis
+          disk-size: 8G
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          # Android 14's Google APIs image plus the WebView onboarding test
+          # exceeded the 3 GB emulator profile in a prior run (the instrumentation
+          # process was SIGKILLed). Give API 34 extra headroom; other APIs retain 3 GB.
+          ram-size: ${{ matrix.api-level == 34 && '4096M' || '3072M' }}
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            sh scripts/wait-for-android-package-manager.sh
+            adb install -r apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
+            adb shell pm path com.server.caller.debug | grep -q '^package:'
+            sh scripts/unlock-android-emulator.sh
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
+            python3 scripts/assert-android-test-count.py --expected-tests 23
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-api-${{ matrix.api-level }}-acceptance-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
+
+  # Android 17 uses a preview 16 KB-page image and remains independently visible.
+  # Its system_server instability must not block release after Android 10–16 pass.
+  android-17-preview-compatibility:
+    name: Android 17 16 KB preview compatibility (non-blocking preview)
+    # Android 17 is a preview image with known system_server/emulator instability.
+    # Keep its failure visible without blocking stable Android 10–16 release gates.
+    continue-on-error: true
+    env:
+      SERVER_DEBUG_ABI_FILTERS: arm64-v8a
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare macOS Android emulator tools
+        shell: bash
+        run: |
+          brew install coreutils llvm
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "RUNNER_ARCH=$(uname -m)"
+          test "$(uname -m)" = "arm64"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android 17 SDK components
+        run: |
+          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools'
+          LLVM_READELF="$(brew --prefix llvm)/bin/llvm-readelf"
+          if [[ ! -x "$LLVM_READELF" ]]; then
+            echo "ERROR: Homebrew LLVM did not provide a native ARM64 llvm-readelf." >&2
+            brew --prefix llvm >&2 || true
+            find "$(brew --prefix llvm)" -name '*readelf*' -print >&2 || true
+            exit 1
+          fi
+          echo "LLVM_READELF=$LLVM_READELF"
+          echo "$(dirname "$LLVM_READELF")" >> "$GITHUB_PATH"
+      - name: Preinstall Android 17 16 KB system image with integrity retries
+        run: bash scripts/install-android-system-image.sh 'system-images;android-37.0;google_apis_ps16k;arm64-v8a'
+      - name: Confirm native macOS emulator acceleration
+        run: echo "Using ReactiveCircus Android Emulator Runner with Apple's Hypervisor.Framework."
+      - name: Build caller and Android instrumentation tests
+        run: gradle -p apps/android-caller assembleDebug compileDebugAndroidTestKotlin --no-daemon --console=plain
+      - name: Run Android 17 16 KB Telecom and phone-picker acceptance tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: '37.0'
+          system-image-api-level: '37.0'
+          channel: stable
+          target: google_apis_ps16k
+          disk-size: 8G
+          arch: arm64-v8a
+          profile: pixel_2
+          cores: 2
+          # macos-15 is a 7 GB M1 runner; keep the emulator within its RAM budget.
+          ram-size: 4096M
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            sh scripts/wait-for-android-package-manager.sh
+            sh scripts/android17-16kb-acceptance.sh
+            python3 scripts/check-16kb-elf-alignment.py arm64-v8a apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
+            # APK installation can re-create the swipe keyguard on API 37.
+            # Confirm ActivityManager reports the primary user unlocked; the
+            # instrumentation suite then exercises the app's private CE storage.
+            sh scripts/unlock-android-emulator.sh
+            test "$(adb shell am get-started-user-state 0 | tr -d '\\r')" = "RUNNING_UNLOCKED"
+            echo "ANDROID17_CREDENTIAL_STORAGE_READY"
+            sh scripts/recover-android17-system-server.sh
+            rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
+            timeout 900s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon --console=plain -Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest
+            python3 scripts/assert-android-test-count.py --expected-tests 23
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: server-android-api-37-acceptance-results
+          path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
   ios-simulator-build-and-preview:
@@ -130,7 +712,11 @@ jobs:
       - name: Resolve WebRTC and build for iOS Simulator
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
+          # GitHub-hosted macOS runners can retain a partial SwiftPM binary
+          # artifact from a failed download. Remove only the Jitsi WebRTC
+          # artifact cache before resolving the pinned package again.
+          rm -rf "$HOME/Library/Caches/org.swift.swiftpm/artifacts/https___github_com_jitsi_webrtc_releases_download_v155_0_1_WebRTC_xcframework_zip"
           xcodebuild -resolvePackageDependencies -project apps/ios-caller/ServerCaller.xcodeproj -scheme ServerCaller
           xcodebuild -project apps/ios-caller/ServerCaller.xcodeproj -scheme ServerCaller -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tee /tmp/server-ios-build.log
       - name: Launch in iOS Simulator and record startup screen
@@ -222,3 +808,60 @@ jobs:
             artifacts/**
             /tmp/server-ios-build.log
           if-no-files-found: warn
+
+  publish-android-preview-release:
+    if: github.ref == 'refs/heads/android-finish' && needs.android-build-and-emulator-smoke.outputs.preview_signing_ready == 'true'
+    needs:
+      - android-build-and-emulator-smoke
+      - android-8-minimum-install-smoke
+      - android-8-1-api27-compatibility
+      - android-10-to-16-platform-matrix
+      - android-guest-browser-e2e
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the tested Android build
+        uses: actions/download-artifact@v4
+        with:
+          name: server-android-debug-apks
+          path: artifacts/server-android-debug-apks
+      - name: Publish the tested ARM64 and ARMv7 phone APKs to onboarding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='artifacts/server-android-debug-apks'
+          ARM64_APK="$(find "$ROOT" -type f -name 'app-arm64-v8a-release.apk' -print -quit)"
+          ARMV7_APK="$(find "$ROOT" -type f -name 'app-armeabi-v7a-release.apk' -print -quit)"
+          if [[ -z "$ARM64_APK" || ! -s "$ARM64_APK" || -z "$ARMV7_APK" || ! -s "$ARMV7_APK" ]]; then
+            echo "ERROR: both ARM64 and ARMv7 release APKs are required for phone onboarding." >&2
+            find "$ROOT" -maxdepth 8 -type f -print >&2
+            exit 1
+          fi
+          unzip -l "$ARM64_APK" | grep -F 'lib/arm64-v8a/libjingle_peerconnection_so.so' >/dev/null
+          unzip -l "$ARMV7_APK" | grep -F 'lib/armeabi-v7a/libjingle_peerconnection_so.so' >/dev/null
+          if unzip -l "$ARM64_APK" | grep -E 'lib/(armeabi-v7a|x86|x86_64)/' >/dev/null; then
+            echo "ERROR: ARM64 phone APK contains a non-ARM64 WebRTC ABI." >&2
+            exit 1
+          fi
+          if unzip -l "$ARMV7_APK" | grep -E 'lib/(arm64-v8a|x86|x86_64)/' >/dev/null; then
+            echo "ERROR: ARMv7 phone APK contains a non-ARMv7 WebRTC ABI." >&2
+            exit 1
+          fi
+          cp "$ARM64_APK" server-android-arm64.apk
+          cp "$ARMV7_APK" server-android-armv7.apk
+          sha256sum server-android-arm64.apk server-android-armv7.apk
+          GATEWAY_APK="$(find "$ROOT" -type f -name 'server-sim-gateway-debug.apk' -print -quit)"
+          if [[ -z "$GATEWAY_APK" || ! -s "$GATEWAY_APK" ]]; then
+            echo "ERROR: the tested Server SIM Gateway APK is missing from the Android build artifact." >&2
+            find "$ROOT" -maxdepth 8 -type f -print >&2
+            exit 1
+          fi
+          cp "$GATEWAY_APK" server-sim-gateway.apk
+          sha256sum server-sim-gateway.apk
+          gh release upload server-android-connector-preview server-android-arm64.apk server-android-armv7.apk server-sim-gateway.apk --repo "$GITHUB_REPOSITORY" --clobber
+          gh release delete-asset server-android-connector-preview app-universal-release.apk --repo "$GITHUB_REPOSITORY" --yes || true
+          gh release delete-asset server-android-connector-preview Server-Android-Connector-preview.apk --repo "$GITHUB_REPOSITORY" --yes || true
+          echo "ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"

@@ -4,15 +4,77 @@ import assert from "node:assert/strict";
 const root = process.cwd();
 const read = (p) => readFileSync(resolve(root,p),"utf8");
 const migration=read("supabase/migrations/20261021114947_server_backend_schema.sql");
+const pushMigration=read("supabase/migrations/20261101175446_server_push_devices_and_call_expiry.sql");
+const schedulerMigration=read("supabase/migrations/20261021121000_server_maintenance_scheduler.sql");
+const callExpiryMigration=read("supabase/migrations/20261105102434_server_call_expiry_reconciliation.sql");
+const atomicCallMigration=read("supabase/migrations/20261105103540_server_atomic_call_creation.sql");
+const queueExtensionMigration=read("supabase/migrations/20261105105014_server_durable_push_queue_extensions.sql");
+const callDeliveryMigration=read("supabase/migrations/20261105105649_server_call_delivery_queue.sql");
+const workerChainingMigration=read("supabase/migrations/20261105111000_server_call_delivery_worker_chaining.sql");
+const dispatchTimeoutMigration=read("supabase/migrations/20261105113000_server_dispatch_timeout_and_noncollapse_push.sql");
+const workerSlotsMigration=read("supabase/migrations/20261105115000_server_call_delivery_worker_slots.sql");
+const workerAuditMigration=read("supabase/migrations/20261105120000_server_call_delivery_worker_audit.sql");
+const presenceMigration=read("supabase/migrations/20261105124000_server_recipient_presence_and_reachability.sql");
+const pushIdentityMigration=read("supabase/migrations/20261105125000_server_push_devices_custom_identity_fk.sql");
+const offlineMissedCallMigration=read("supabase/migrations/20261105131000_server_offline_missed_call_inbox.sql");
+const callStateTransitionMigration=read("supabase/migrations/20261108110000_server_atomic_call_state_transitions.sql");
+const guestSingleClaimMigration=read("supabase/migrations/20261108152000_server_guest_single_claim.sql");
+const activeRenegotiationMigration=read("supabase/migrations/20261108123000_server_atomic_transition_active_renegotiation.sql");
+const keepAliveMigration=read("supabase/migrations/20261108142000_server_keepalive_probe.sql");
+const guestInviteSmsGuardMigration=read("supabase/migrations/20261111100000_server_guest_invite_sms_claim_guard.sql");
+const gatewayCustomIdentityMigration=read("supabase/migrations/20261112144044_server_gateway_custom_identity_foreign_keys.sql");
+const signalRetentionMigration=read("supabase/migrations/20261108170000_server_call_signal_retention.sql");
+const activeCallLeaseMigration=read("supabase/migrations/20261108180000_server_active_call_lease.sql");
+const guestAnswerGraceMigration=read("supabase/migrations/20261113160000_server_guest_answered_session_grace.sql");
+const keepAliveWorkflow=read(".github/workflows/server-supabase-activity.yml");
+const elfAlignmentScript=read("scripts/check-16kb-elf-alignment.py");
+const android17InstallScript=read("scripts/android17-16kb-acceptance.sh");
+const liveGuestTransitionContract=read("scripts/live-guest-transition-contract.mjs");
+const offlineInbox=read("web/offline-inbox.js");
+const guestServiceWorker=read("web/server-guest-sw.js");
+const guestManifest=JSON.parse(read("web/manifest.webmanifest"));
+const guestPwaIcon=read("web/images/server-app-icon.svg");
+const guestWebPushMigration=read("supabase/migrations/20261109165000_server_guest_browser_web_push.sql");
+const guestWebPushSender=read("supabase/functions/_shared/guest_web_push.ts");
+const gatewayReleaseWorkflow=read(".github/workflows/server-android-launch-smoke.yml");
+const gatewayOnboarding=read("web/index.html");
+const projectReadme=read("README.md");
+const offlineArchitecture=read("docs/offline-delivery.md");
+const callDeliveryWorker=read("supabase/functions/server-call-delivery-worker/index.ts");
 const authMigration=read("supabase/migrations/20261021124332_server_custom_phone_auth.sql");
 const handoffMigration=read("supabase/migrations/20261021195856_server_app_handoff.sql");
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
 const handoff=read("supabase/functions/server-handoff/index.ts");
 const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt");
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
+const androidFallbackSim=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFallbackSimManager.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
+const androidIdentityResolver=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallerIdentityResolver.kt");
+const androidIncoming=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallService.kt");
+const androidEngine=read("apps/android-caller/app/src/main/java/com/server/caller/ServerTelecomCallEngine.kt");
+const androidReachability=read("apps/android-caller/app/src/main/java/com/server/caller/ServerRecipientReachability.kt");
+const androidPhoneNormalizer=read("apps/android-caller/app/src/main/java/com/server/caller/ServerPhoneNumberNormalizer.kt");
+const androidGuestNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteNotifications.kt");
+const androidGuestShare=read("apps/android-caller/app/src/main/java/com/server/caller/ServerGuestInviteShareActivity.kt");
+const androidCarrierDialer=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCarrierDialer.kt");
+const androidCarrierActivity=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCarrierDialActivity.kt");
+const androidBuild=read("apps/android-caller/app/build.gradle.kts");
+const androidCallNotifications=read("apps/android-caller/app/src/main/java/com/server/caller/ServerCallNotifications.kt");
 const androidManifest=read("apps/android-caller/app/src/main/AndroidManifest.xml");
 const androidTests=read("apps/android-caller/app/src/androidTest/java/com/server/caller/CallerSmokeTest.kt");
+const androidSessionManager=read("apps/android-caller/app/src/main/java/com/server/caller/ServerDeviceSessionManager.kt");
+const nativeWorkflow=read(".github/workflows/build-server-native.yml");
+const guestBrowserE2eShell=read("scripts/android-guest-browser-e2e.sh");
+const guestBrowserE2e=read("scripts/android-guest-browser-e2e.mjs");
+const e2eIdentityScript=read("scripts/create-server-e2e-identity.mjs");
+const androidVersionMatrix = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"), nativeWorkflow.indexOf("  android-17-preview-compatibility:"));
+const android17Preview = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-17-preview-compatibility:"), nativeWorkflow.indexOf("  ios-simulator-build-and-preview:"));
+const androidReaWorkflow=read(".github/workflows/server-rea-apk-audit.yml");
+const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
+const androidUnlock=read("scripts/unlock-android-emulator.sh");
+const androidPackageManagerWait=read("scripts/wait-for-android-package-manager.sh");
+const androidTestCountCheck=read("scripts/assert-android-test-count.py");
+const android17Acceptance=read("scripts/android17-16kb-acceptance.sh");
 const iosApp=read("apps/ios-caller/ServerCaller/ServerCallerApp.swift");
 const iosInfo=read("apps/ios-caller/ServerCaller/Info.plist");
 const iosEntitlements=read("apps/ios-caller/ServerCaller/ServerCaller.entitlements");
@@ -20,11 +82,25 @@ const iosProject=read("apps/ios-caller/ServerCaller.xcodeproj/project.pbxproj");
 const iosModel=read("apps/ios-caller/ServerCaller/ServerViewModel.swift");
 const iosView=read("apps/ios-caller/ServerCaller/ContentView.swift");
 const auth=read("supabase/functions/server-auth/index.ts");
-const androidIncoming=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallService.kt");
+const androidIncomingAlert=read("apps/android-caller/app/src/main/java/com/server/caller/ServerIncomingCallAlertService.kt");
+const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFirebaseMessagingService.kt");
+const androidProguard=read("apps/android-caller/app/proguard-rules.pro");
 const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
+const androidGatewayMain=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/MainActivity.kt");
+const androidSimGateway=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/SmsGatewayService.kt");
+const androidGatewayRealtime=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/ServerGatewayRealtimeClient.kt");
+const gatewayWake=read("supabase/functions/_shared/server_gateway_wake.ts");
+const gatewayGradle=read("apps/android-sim-gateway/app/build.gradle.kts");
 const calls=read("supabase/functions/server-calls/index.ts");
 const guest=read("supabase/functions/server-guest/index.ts");
+const guestPreview=read("supabase/functions/server-guest-preview/index.ts");
+const guestBrowserHtml=read("web/guest.html");
+const guestPreviewImage=read("web/images/server-incoming-call-preview.svg");
+const gatewayOwnerMigration=read("supabase/migrations/20261106170000_server_gateway_owner_binding.sql");
+const gatewayGuestClaimMigration=read("supabase/migrations/20261106170100_server_gateway_guest_owner_claim.sql");
+
+const vercelConfig=JSON.parse(read("vercel.json"));
 const config=read("web/config.js");
 const app=read("web/app.js");
 const html=read("web/index.html");
@@ -49,10 +125,160 @@ assert.match(auth,/allow_number_based_server_calls/);
 assert.match(auth,/async function bearer\(req:Request,db:any,allowExpiredForRefresh=false\)/,"expired sessions receive a grace window only through refresh");
 assert.match(auth,/const expiryCutoff=allowExpiredForRefresh\?Date\.now\(\)-7\*24\*60\*60\*1000:Date\.now\(\)/,"expired-session cutoff is limited to seven days and is conditional");
 assert.match(auth,/bearer\(req,db,action==="refresh"\)/,"normal API actions cannot use expired sessions");
-assert.match(androidIncoming,/Server session refresh deferred/,"transient token-refresh failures must retry instead of stopping the incoming-call listener");
-assert.match(androidIncoming,/Server session refresh rejected/,"permanent token-refresh failures are rejected");
-assert.match(androidIncoming,/tokenExpired/,"polling distinguishes expired offline sessions from revoked valid sessions");
+assert.match(androidIncoming,/Server session recovery deferred/,"transient session-refresh and device-recovery failures must retry instead of stopping the incoming-call listener");
+assert.match(androidIncoming,/Server session recovery rejected/,"permanent session-refresh and device-recovery failures are rejected");
+assert.match(androidIncoming,/forceRefresh = true/,"incoming-call polling revalidates device sessions after an authoritative HTTP 401");
 assert.match(calls,/found.allow_number_based_server_calls===true/);
+assert.doesNotMatch(calls,/expireStaleRingingCalls|last_seen_at:\s*new Date\(\)\.toISOString\(\)/,
+  "high-frequency call API requests must not run global expiry sweeps or write a session heartbeat");
+assert.doesNotMatch(calls,/allSignals/,
+  "call polling must calculate its cursor from the same signal query, not issue a duplicate database read");
+assert.match(calls,/nextAfterSeq/,
+  "call polling advances its signal cursor from the single ordered signal result");
+assert.match(calls,/server_rate_limit_allow/,
+  "call creation must be protected by a per-caller abuse limit");
+assert.match(calls,/CALL_START_RATE_LIMITED/,
+  "call creation returns an explicit rate-limit response instead of creating unlimited invitations");
+assert.match(calls,/db\.rpc\("server_create_call_atomic"/,
+  "call creation must commit the call, participants and guest invite through one database transaction");
+assert.match(presenceMigration,/server_recipient_availability/,
+  "recipient reachability is determined by a private database function");
+assert.match(presenceMigration,/last_seen_at/,
+  "recipient online status is based on a fresh session heartbeat rather than session expiry");
+assert.match(pushIdentityMigration,/references public\.server_profiles\(user_id\)/,
+  "push endpoints reference Server's custom profile identity rather than Supabase Auth users");
+assert.doesNotMatch(pushIdentityMigration,/references auth\.users/,
+  "push registration does not require a separate Supabase Auth identity");
+assert.match(calls,/PRESENCE_WRITE_INTERVAL_MS = 12000/,
+  "authenticated session presence writes are throttled to avoid a database write on every poll");
+assert.match(calls,/touchSessionPresence\(db,session\)/,
+  "the incoming-call listener refreshes its session presence while it is active");
+assert.match(calls,/if\(action==="presence"\)/,
+  "clients can explicitly refresh their own presence session");
+assert.match(calls,/server_recipient_availability/,
+  "the call start path checks recipient reachability before committing a Server call");
+assert.match(calls,/RECIPIENT_OFFLINE/,
+  "an offline Server recipient is reported before a phantom ringing call is created");
+assert.match(calls,/missed_call_saved:true/,
+  "the offline response confirms that a durable missed-call entry was saved without starting a live ring");
+assert.match(calls,/carrier_fallback:\{status:carrierFallbackPhone\?"user_confirmed_dialer":"unavailable"/,
+  "offline Server recipients receive a caller-confirmed SIM dialler option only when a number may be shared");
+assert.match(calls,/method:"android_action_dial",requires_user_confirmation:true/,
+  "the API describes a user-confirmed Android dialler handoff, not an automatic carrier call");
+assert.match(calls,/status:guestStatus/,
+  "guest availability distinguishes a fresh browser heartbeat, a background Web Push subscription and a never-enrolled number");
+assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
+  "only a fresh browser heartbeat is classified as online; a push subscription alone is not proof of current internet");
+assert.match(calls,/recipient_availability:recipientAvailability/,
+  "successful Server call creation returns the reachability classification to Android");
+assert.match(calls,/return out\(\{[\s\S]*?ok:true,call_id:call\.id,route,call,ice_servers:callIceServers/,
+  "the Server route returns the created call, ICE servers and call ID to the native caller");
+assert.match(androidMain,/optString\("status"\)/,
+  "Android distinguishes online recipients from background-reachable recipients");
+assert.doesNotMatch(calls,/from\("server_call_members"\)\.upsert|from\("server_guest_invites"\)\.insert/,
+  "call creation must not split participant or guest-invite writes across separate requests");
+assert.match(atomicCallMigration,/create or replace function public\.server_create_call_atomic/,
+  "the atomic database call-creation function exists in the migration");
+assert.match(atomicCallMigration,/insert into public\.server_call_members/,
+  "the atomic transaction creates its participant rows");
+assert.match(atomicCallMigration,/insert into public\.server_guest_invites/,
+  "the same atomic transaction creates guest invitation hashes");
+assert.match(atomicCallMigration,/grant execute on function public\.server_create_call_atomic[\s\S]*?to service_role/,
+  "only the service role may execute the internal atomic call-creation RPC");
+assert.match(queueExtensionMigration,/create extension if not exists pgmq/,
+  "durable Postgres-native message queue is enabled");
+assert.match(queueExtensionMigration,/create extension if not exists pg_net/,
+  "asynchronous internal HTTP dispatch is enabled");
+assert.match(callDeliveryMigration,/pgmq\.send\(/,
+  "Server call creation writes its wake-up event to the durable queue in the same transaction");
+assert.match(callDeliveryMigration,/net\.http_post\(/,
+  "the queue dispatcher wakes the private worker without blocking the caller");
+assert.match(callDeliveryMigration,/server-call-delivery-recovery-every-minute/,
+  "a scheduled recovery kick restarts processing after worker or deployment interruption");
+assert.match(callDeliveryMigration,/server_validate_call_dispatch_secret/,
+  "the internal notification worker is authenticated with a Vault-backed dispatch secret");
+assert.match(callDeliveryWorker,/server_call_delivery_read_batch/,
+  "the notification worker claims bounded queue batches");
+assert.match(callDeliveryWorker,/VISIBILITY_SECONDS/,
+  "queue messages are protected by a visibility lease while a worker processes them");
+assert.match(callDeliveryWorker,/server_call_delivery_ack_batch/,
+  "completed or expired notification jobs are acknowledged through the server-only queue API");
+assert.match(callDeliveryWorker,/MAX_BATCH = 250/,
+  "notification worker reads bounded batches rather than one row per HTTP invocation");
+assert.match(callDeliveryWorker,/MAX_PARALLEL_SENDS = 40/,
+  "notification provider fan-out is bounded within each worker invocation");
+assert.match(callDeliveryWorker,/server_call_delivery_kick_continuation/,
+  "worker chains the next batch when additional queue messages are visible");
+assert.match(workerSlotsMigration,/server_call_delivery_worker_slots/,
+  "the call delivery service has an explicit worker-slot lease table");
+assert.match(workerSlotsMigration,/for update skip locked/,
+  "worker slots are claimed exclusively without two dispatchers leasing the same slot");
+assert.match(workerSlotsMigration,/server_call_delivery_claim_worker_slots\(8,90\)/,
+  "the dispatcher enforces a fixed upper bound of eight concurrent workers");
+assert.match(callDeliveryWorker,/server_call_delivery_worker_slot_valid/,
+  "the worker validates its unique lease before reading the message queue");
+assert.match(callDeliveryWorker,/server_call_delivery_release_worker_slot/,
+  "each worker releases its slot in a finally block after batch completion");
+assert.match(callDeliveryWorker,/WORKER_SLOT_LEASE_INVALID/,
+  "requests without a valid worker lease cannot read the delivery queue");
+assert.match(workerAuditMigration,/server_call_delivery_worker_runs/,
+  "worker execution metrics are persisted in a server-only database table");
+assert.match(callDeliveryWorker,/server_call_delivery_worker_runs/,
+  "the worker creates and completes a durable execution record");
+assert.match(callDeliveryWorker,/Number\(ackedResult\.data\) \|\| 0/,
+  "worker acknowledgement metrics use the count confirmed by Postgres, not the intended batch size");
+assert.match(workerChainingMigration,/server_call_delivery_kick_continuation/,
+  "worker continuation endpoint is a server-only database function");
+assert.match(callDeliveryWorker,/job\.read_ct >= MAX_READ_ATTEMPTS/,
+  "missing endpoints and transient provider failures are retried with a finite attempt limit");
+assert.doesNotMatch(callDeliveryWorker,/collapse_key/,
+  "different call IDs must not collapse into one FCM wake notification");
+assert.match(dispatchTimeoutMigration,/timeout_milliseconds:=10000/,
+  "internal queue dispatch allows a cold worker up to ten seconds to respond");
+assert.match(callDeliveryWorker,/call\.state !== "ringing"/,
+  "the worker does not alert for calls already answered or otherwise no longer ringing");
+assert.match(calls,/delivery_queued===true/,
+  "the call API reports durable queue acceptance without claiming delivery");
+assert.doesNotMatch(calls,/pushDelivery=await sendRecipientPush/,
+  "the call API does not block call creation while synchronously contacting push providers");
+assert.match(androidMain,/optBoolean\("queued", false\)/,
+  "Android distinguishes queued delivery from provider acceptance or device delivery");
+assert.match(calls,/CALL_CREATE_FAILED/,
+  "call creation must fail closed when its atomic transaction cannot commit");
+assert.match(schedulerMigration,/cron\.schedule\('server-maintenance-every-5-minutes'/,
+  "expiry and maintenance work must be handled by the scheduled maintenance worker");
+assert.match(callExpiryMigration,/server_calls_unanswered_expiry_idx/,
+  "unanswered call expiry must be indexed outside the API request path");
+assert.match(callExpiryMigration,/expires_at <= now\(\)/,
+  "the maintenance worker must reconcile calls at their own configured expiry");
+assert.match(callExpiryMigration,/cron\.schedule\('server-maintenance-every-minute'/,
+  "call expiry is reconciled on a one-minute background schedule");
+assert.match(signalRetentionMigration,/server_calls_terminal_signal_cleanup_idx/,
+  "terminal calls have an index for bounded signalling-payload retention");
+assert.match(signalRetentionMigration,/delete from public\.server_call_signals/i,
+  "maintenance deletes transient call signalling separately from call history");
+assert.match(signalRetentionMigration,/interval '10 minutes'/,
+  "SDP and ICE signalling payloads are eligible for deletion ten minutes after a terminal call");
+assert.match(signalRetentionMigration,/limit 25000/i,
+  "signalling retention is bounded per maintenance run to control locks and WAL growth");
+assert.match(signalRetentionMigration,/'signals_purged'/,
+  "maintenance exposes the count of removed signalling rows for operational monitoring");
+assert.match(signalRetentionMigration,/revoke all on function public\.server_maintenance\(\) from public, anon, authenticated/i,
+  "the replaced maintenance routine remains unavailable to public client roles");
+assert.match(calls,/state\.eq\.missed,expires_at\.gt\./,
+  "incoming-call lookup must never ring a call after its expiry, even before the cron sweep runs");
+assert.match(atomicCallMigration,/'id',v_call\.id[\s\S]*?'expires_at',v_call\.expires_at/,
+  "atomic call creation returns only public call fields, not callee phone or private user IDs");
+assert.match(calls,/\.select\("id,state,route,created_at,updated_at,expires_at,carrier_fallback_method,carrier_fallback_status,carrier_fallback_sim_slot,carrier_fallback_carrier,carrier_fallback_requested_at,carrier_fallback_handed_off_at,carrier_fallback_failed_at,carrier_fallback_error_code"\)\.or\("caller_user_id\.eq\."\+uid/,
+  "call polling returns public call state and the minimal selected-SIM fallback outcome without private phone or account identifiers");
+assert.match(calls,/if\(action==="record_carrier_fallback"\)/,
+  "selected-SIM handoff outcomes are recorded through an explicit backend action");
+assert.match(calls,/existing\.caller_user_id!==uid/,
+  "only the originating caller may record the selected-SIM fallback for a call");
+assert.match(calls,/carrier_fallback_status==="handed_off"/,
+  "a persisted handoff cannot later be downgraded to a failed attempt");
+assert.doesNotMatch(calls,/\.select\("[^"]*(?:callee_phone_e164|callee_user_id)[^"]*"\)\.or\(/,
+  "call polling must not return private callee contact or identity fields");
 assert.match(calls,/found\.allow_number_based_server_calls===true/);
 assert.doesNotMatch(calls,/NUMBER_CALLING_DISABLED/,"unconsented numbers should use the guest-invite route, not fail at call setup");
 assert.match(androidSetup,/requestPhoneLinkOtp/);
@@ -62,17 +288,235 @@ assert.match(app,/onServerPhoneOtpRequested/);
 assert.match(app,/onServerPhoneLinkResult/);
 assert.match(app,/skip-phone-link/);
 assert.match(app,/allow-number-calls/);
+assert.match(androidSetup,/fun normalizePhoneNumber\(raw: String\): String/,"Android onboarding exposes its device-region phone normalizer to the website");
+assert.match(androidSetup,/ServerPhoneNumberNormalizer\.deviceRegion/,"Android local-number parsing uses the actual device country context");
+assert.match(app,/window\.ServerAndroid\.normalizePhoneNumber/,"Android web onboarding delegates national-number parsing to native metadata");
+assert.ok(app.includes('if (!candidate.startsWith("+")) return null;'),"browser phone linking requires explicit international country-code input when native country metadata is unavailable");
+assert.ok(app.includes(String.raw`return /^\+[1-9][0-9]{7,14}$/.test(candidate) ? candidate : null;`),"browser phone linking validates canonical E.164 numbers");
+assert.ok(!app.includes('digits.startsWith("234")') && !app.includes('candidate = "+234"'),"browser phone linking has no Nigerian-only national-number fallback");
+assert.ok(html.includes("+919876543210"),"website phone-link placeholder demonstrates a non-Nigerian international destination");
+
 assert.match(app,/isAndroidWebView/);
 assert.match(app,/isNativeSetup/);
 assert.match(app,/userAgent\.toLowerCase\(\)\.includes\("; wv"\)/);
 assert.match(app,/setNumberCallConsent/);
 assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
-assert.match(androidMain,/READ_PHONE_NUMBERS/);
-assert.match(androidMain,/SubscriptionManager/);
-assert.match(androidMain,/registerDevice\(\)/);
+assert.doesNotMatch(androidMain,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
+  "the Android call activity must not enumerate SIMs or read protected SIM identifiers directly");
+assert.doesNotMatch(androidMain,/ServerFallbackSimManager|recordCarrierFallbackHistory|handoffToCarrierDialer/,
+  "the Android call activity never reads carrier-fallback consent or records/initiates a SIM handoff");
+assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
+  "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
+assert.doesNotMatch(androidSetup,/ServerFallbackSimManager|READ_PHONE_STATE|CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
+  "the Android setup bridge does not enumerate SIMs or request carrier-call permissions");
+assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/);
+assert.match(androidFallbackSim,/resolveActiveSubscriptionId/);
+assert.doesNotMatch(androidFallbackSim,/getPhoneAccount\(handle\)/,
+  "SIM fallback must not call the protected Telecom metadata API requiring READ_PHONE_NUMBERS");
+assert.match(androidTests,/resolveActiveSubscriptionId\("opaque-account-id", activeSubscriptions, 30, 22\)/,
+  "Android SIM fallback mapping is regression-tested without line-number permission");
+assert.match(androidFallbackSim,/Manifest\.permission\.READ_PHONE_STATE/);
+assert.doesNotMatch(androidFallbackSim,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
+  "SIM fallback selection never invokes APIs that read subscriber phone numbers or serial identifiers");
+assert.match(androidSetup,/registerDevice\(displayName: String, acceptedTerms: Boolean\)/,
+  "Server ID registration saves the caller-chosen name through the website's native permission bridge");
+assert.match(androidSetup,/put\("display_name", normalizedDisplayName\)/,
+  "Android passes the caller display name to the authenticated Server profile endpoint");
+assert.doesNotMatch(androidSetup,/Manifest\.permission\.READ_PHONE_STATE|Manifest\.permission\.CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
+  "Android onboarding requests no SIM-state or carrier-call permissions");
+assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
+  "Server must not request permission to read SIM phone numbers");
+assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
+   "a legacy SIM number must not become Server's calling-account address");
+assert.match(androidTelecom,/setAudioModeIsVoip\(true\)/,
+   "Android Telecom is told that Server connections carry VoIP audio");
+assert.match(androidCallNotifications,/Notification\.CallStyle\.forIncomingCall/,
+  "Android 12+ incoming calls must use the native CallStyle template");
+assert.match(androidCallNotifications,/NotificationManager\.IMPORTANCE_HIGH/,
+  "incoming Server calls must use a high-importance notification channel");
+assert.match(androidCallNotifications,/USAGE_NOTIFICATION_RINGTONE/,
+  "incoming alerts must use ringtone audio usage");
+assert.doesNotMatch(androidCallNotifications,/setBypassDnd\(true\)/,
+  "Server must not bypass Do Not Disturb");
+assert.match(androidCallNotifications,/ACTION_ANSWER/);
+assert.match(androidCallNotifications,/ACTION_DECLINE/);
+assert.match(androidCallNotifications,/ServerIncomingCallAlertService\.showIncomingCall/,
+  "Android 12+ CallStyle must use its dedicated phone-call foreground service");
+assert.match(androidCallNotifications,/ServerIncomingCallAlertService\.clearIncomingCall/,
+  "ending a call must clear its dedicated alert notification");
+assert.match(androidIncomingAlert,/buildIncomingNotification/,
+  "the dedicated alert service must build the incoming CallStyle notification");
+assert.match(androidIncomingAlert,/startForeground\(/,
+  "the incoming CallStyle notification must be promoted by its own foreground service");
+assert.match(androidIncomingAlert,/ACTION_SILENCE/);
+assert.match(androidIncomingAlert,/ACTION_CLEAR/);
+assert.match(androidIncoming,/startForeground\(FOREGROUND_NOTIFICATION_ID, notification/,
+  "the background listener keeps its own low-importance foreground notification");
+
+assert.match(androidTelecom,/ServerCallNotifications\.show/);
+assert.match(androidTelecom,/answerFromNotification/);
+assert.match(androidTelecom,/declineFromNotification/);
+assert.match(androidManifest,/ServerCallActionReceiver/);
+assert.match(androidCallNotifications,/CATEGORY_MISSED_CALL/);
+assert.match(androidCallNotifications,/"Call back"/);
+assert.match(androidCallNotifications,/buildMissedCallIntent/);
+assert.match(androidIncoming,/ServerCallNotifications\.showMissed/);
+assert.match(androidIncoming,/reportedMissedCallIds/);
+assert.match(androidMain,/"missed_callback"/);
+assert.match(calls,/\.in\("state",\["ringing","connecting","missed"\]\)/,
+  "recent missed calls must be returned to Server after an offline recipient reconnects");
+assert.match(calls,/\.gte\("updated_at",new Date\(Date\.now\(\)-14\*24\*60\*60\*1000\)\.toISOString\(\)\)/,
+  "missed-call retrieval must be bounded to the recent two weeks");
+
+assert.doesNotMatch(androidMain,/isSpeakerphoneOn\s*=/,
+   "Server must not force speakerphone routing; Android and Telecom own the call audio route");
+assert.match(androidMain,/endCall\(intent\.getStringExtra\("server_call_id"\)\)/,
+   "system hang-up events must carry their Telecom call ID through to the backend call teardown");
+assert.match(androidEmulatorSmoke,/CALLER_DEBUG_APK="apps\/android-caller\/app\/build\/outputs\/apk\/debug\/app-universal-debug\.apk"/,
+  "Android smoke must use the actual ABI-split universal debug APK output");
+assert.ok(nativeWorkflow.includes("apps/android-caller/app/build/outputs/apk/debug/*.apk"),
+  "all ABI-specific caller debug APKs must be included in uploaded diagnostics");
+assert.ok(nativeWorkflow.includes("find_debug_apk_for_abi()"),
+  "physical and emulator APKs are located by their WebRTC ABI instead of a fixed Gradle filename");
+assert.ok(nativeWorkflow.includes("find_debug_apk_for_abi arm64-v8a"),
+  "the physical-device package selector explicitly requires the ARM64 WebRTC library");
+assert.ok(nativeWorkflow.includes("find_debug_apk_for_abi x86_64"),
+  "the emulator package selector explicitly requires the x86_64 WebRTC library");
+assert.match(androidEmulatorSmoke,/cp "\$CALLER_DEBUG_APK" artifacts\/server-caller-debug-for-reinstall\.apk/,"caller APK is preserved outside Gradle build outputs before instrumentation");
+assert.match(androidEmulatorSmoke,/adb install -r artifacts\/server-caller-debug-for-reinstall\.apk/,"post-test UI smoke reinstalls the preserved caller APK");
+assert.ok(androidEmulatorSmoke.indexOf("CALLER_APK_BACKUP_READY") < androidEmulatorSmoke.indexOf("connectedDebugAndroidTest"),"caller APK backup must happen before instrumentation cleanup");
+assert.match(androidTests,/telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState/,
+   "system hang-up after activity recreation has an Android instrumentation regression test");
+assert.match(androidManifest,/android\.permission\.ACCESS_NETWORK_STATE/,
+   "the native call engine can distinguish a real internet connection from a disconnected device");
+assert.match(androidMain,/isServerInternetUsable\(networkCapabilities\)/,
+   "outgoing Server calls check for an internet-capable network before signalling");
+assert.match(androidMain,/return hasInternetCapability/,
+   "Android captive-portal validation must not falsely reject usable mobile-data networks");
+assert.match(androidMain,/pendingSystemDialerReturn/,
+   "system Phone UI handoff must wait for the actual outgoing-call setup result");
+assert.match(androidMain,/guestShareLauncher\.launch\(chooser\)/,
+   "guest invitations from a system dialer call must open the share chooser while Server is foregrounded");
+assert.match(androidMain,/recordTelecomDebugStage\("backend_start_requested"\)/,
+   "the outgoing Telecom regression records that a real backend call request was attempted");
+assert.match(androidMain,/recordTelecomDebugStage\("call_setup_failed"\)/,
+   "the outgoing Telecom regression records call setup failure rather than silently hiding it");
+assert.doesNotMatch(androidMain,/handoffToCarrierDialer|ServerCarrierDialer/,
+  "when the caller has no internet, Server reports unreachable instead of handing the call to a mobile operator");
+assert.match(androidTests,/phoneAccountCanReceiveIncomingCallThroughTelecom/);
+assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
+assert.match(androidTests,/debug_telecom_connection_engine_started/);
+assert.match(androidTelecom,/ServerTelecomCallEngine\(this, connection\)/,
+  "outgoing calls are processed by the Android Telecom-bound WebRTC engine");
+assert.match(androidTelecom,/engine\.startOutgoing\(phone\)/,
+  "the system Phone provider starts signalling without launching the Server Activity");
+assert.doesNotMatch(androidTelecom,/ServerTelecomRegistry\.openApp\(this/,
+  "outgoing and incoming Telecom call creation must not start a background Activity");
+assert.match(androidTelecom,/callEngine\?\.answerIncoming\(id\)/,
+  "incoming calls are answered by the Telecom-bound WebRTC engine");
+assert.match(androidTelecom,/callEngine\?\.hangup\(\)/,
+  "system disconnect events are handled by the Telecom-bound WebRTC engine");
+assert.match(androidReaWorkflow,/com\.server\.caller\.ServerTelecomCallEngine/,
+  "compiled APK inspection must target the Telecom-bound WebRTC engine used by Android Phone");
+assert.match(androidReaWorkflow,/ServerConnectionService onCreateOutgoingConnection/,
+  "compiled APK inspection must trace the outgoing Telecom callback into the call engine");
+assert.match(androidBuild,/create\("serverPreview"\)/,
+  "preview releases support a persistent private Android signing key");
+assert.match(nativeWorkflow,/SERVER_ANDROID_KEYSTORE_BASE64/,
+  "release CI imports the persistent preview signing key from a GitHub Actions secret");
+assert.match(nativeWorkflow,/preview_signing_ready/,
+  "the website release asset is published only after stable signing is configured");
+assert.match(androidReaWorkflow,/ServerGuestInviteNotifications show/,
+  "compiled APK audit must inspect the actual notification that hands an invitation to the caller for sharing");
+assert.match(androidReaWorkflow,/ServerGuestInviteShareActivity onCreate/,
+  "compiled APK audit must inspect the native share chooser handoff for non-Server recipients");
+assert.match(androidReaWorkflow,/ServerTelecomCallEngine onIceConnectionChange/,
+  "compiled APK inspection must verify the call engine's real ICE-connected state handling");
+assert.doesNotMatch(androidReaWorkflow,/MainActivity startCall|MainActivity preparePeer|MainActivity handleSignal/,
+  "the call-engine audit must not use the obsolete Activity WebRTC implementation");
+assert.match(androidTests,/enablePhoneAccountWithTestShell/);
+assert.match(nativeWorkflow,/api-level: 26/, "Android 8 remains a minimum-install compatibility check");
+assert.ok(nativeWorkflow.includes("script: bash scripts/android-guest-browser-e2e.sh"),
+  "guest E2E runs a checked-in Bash script as one command instead of passing multi-line Bash through sh");
+assert.match(e2eIdentityScript,/action: "availability"/,
+  "the real Server E2E identity exercises the deployed authenticated availability preflight");
+assert.match(e2eIdentityScript,/status === "unknown_guest"/,
+  "the E2E fixture selects a first-time guest number whose internet reachability is honestly unknown");
+assert.match(e2eIdentityScript,/randomInt\(100\)/,
+  "the E2E fixture rotates through fictional recipient numbers to avoid stale browser subscriptions");
+assert.match(e2eIdentityScript,/test_phone: testPhone/,
+  "the selected fictional recipient number is passed to the Android browser-call test");
+assert.doesNotMatch(e2eIdentityScript,/carrier_fallback/,
+  "guest-call availability does not expose a carrier/SIM fallback to non-Server recipients");
+assert.match(guestBrowserE2eShell,/server_test_phone/,
+  "the Bash E2E harness passes the freshly selected guest recipient number into Android");
+assert.match(androidTests,/server_test_phone/,
+  "Android Telecom acceptance uses the same fresh fictional recipient checked by the backend");
+assert.match(guestBrowserE2eShell,/adb shell am instrument -w -r/,
+  "the Bash E2E harness launches the real Android Telecom instrumentation test");
+assert.match(guestBrowserE2eShell,/node scripts\/android-guest-browser-e2e\.mjs/,
+  "the Bash E2E harness drives the no-install guest through Playwright");
+assert.doesNotMatch(nativeWorkflow,/bash -euo pipefail <<'BASH'/,
+  "the emulator action must not split an inline Bash here-document into individual sh commands");
+assert.ok(android17Preview.includes("api-level: '37.0'"), "Android 17 preview job uses the SDK platform 37.0 package identifier");
+assert.ok(android17Preview.includes("system-image-api-level: '37.0'"), "Android 17 preview job uses the 37.0 emulator image namespace");
+assert.ok(android17Preview.includes("target: google_apis_ps16k"), "Android 17 preview job uses the supported 16 KB-page Google APIs image");
+assert.match(nativeWorkflow,/api-level:\s*\[28,\s*29,\s*30,\s*31,\s*32,\s*33,\s*34,\s*35,\s*36\]/, "Android 9/API 28 through Android 16/API 36 are in the stable release matrix; Android 8.0/API 26 has its separate minimum-install job");
+assert.ok(nativeWorkflow.includes("scripts/wait-for-android-package-manager.sh"), "every Android emulator test waits for Package Manager before installing the app");
+const androidBuildJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-build-and-emulator-smoke:"),nativeWorkflow.indexOf("  android-guest-browser-e2e:"));
+const androidGuestJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-guest-browser-e2e:"),nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"));
+const androidMinimumJob = nativeWorkflow.slice(nativeWorkflow.indexOf("  android-8-minimum-install-smoke:"),nativeWorkflow.indexOf("  android-10-to-16-platform-matrix:"));
+assert.ok(androidBuildJob.includes("runs-on: ubuntu-24.04") &&
+  androidGuestJob.includes("runs-on: ubuntu-24.04") &&
+  androidMinimumJob.includes("runs-on: ubuntu-24.04") &&
+  androidVersionMatrix.includes("runs-on: ubuntu-24.04"),
+  "stable Android emulator, guest-audio, minimum-install and API-matrix jobs use Linux KVM rather than the macOS emulator runners that repeatedly timed out offline");
+assert.ok(androidBuildJob.includes("sudo apt-get install -y coreutils binutils") &&
+  androidBuildJob.includes("command -v readelf"),
+  "the Linux build job installs a readelf implementation accepted by the APK ELF-alignment audit");
+for (const job of [androidBuildJob, androidGuestJob, androidMinimumJob, androidVersionMatrix]) {
+  assert.ok(job.includes("Enable Linux KVM access for Android emulator") &&
+    job.includes("sudo chmod 666 /dev/kvm"),
+    "each stable Android emulator job explicitly verifies and enables hardware KVM access");
+}
+assert.ok(androidGuestJob.includes("pulseaudio --start") &&
+  guestBrowserE2e.includes("--use-file-for-fake-audio-capture"),
+  "the Android-to-browser audio E2E uses a Linux virtual-audio host and deterministic microphone input");
+assert.ok(android17Preview.includes("runs-on: macos-15") &&
+  android17Preview.includes("continue-on-error: true"),
+  "Android 17 remains an explicitly non-blocking Apple Silicon preview while stable APIs gate release");
+assert.doesNotMatch(nativeWorkflow,/if: github\.head_ref != 'android-finish' && github\.ref != 'refs\/heads\/android-finish'/,
+  "the Android completion branch also runs the iOS simulator build and startup check");
+assert.ok(androidVersionMatrix.includes("channel: stable"), "stable Android 8–16 matrix uses released SDK images");
+assert.match(nativeWorkflow,/api-level: \[28, 29, 30, 31, 32, 33, 34, 35, 36\]/,
+  "Android API 28 through 36 run the full stable Telecom compatibility matrix; API 26 (8.0) retains its separate minimum-install smoke test");
+
+assert.ok(androidVersionMatrix.includes("disk-size: 8G"), "stable Android emulator jobs use an 8 GB userdata partition for system and test app headroom");
+assert.ok(!nativeWorkflow.includes("android-16-stable-compatibility-smoke"), "Android 16 is tested once in the unified version matrix");
+assert.ok(androidTests.includes("Manifest.permission.READ_CONTACTS"), "the Telecom instrumentation test grants Contacts access before testing national-format dialer destinations");
+assert.ok(androidPhoneNormalizer.includes('private val E164 = Regex("^\\\\+[1-9][0-9]{1,14}$")'), "global E.164 parsing accepts short valid international numbers after libphonenumber validates them");
+assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/, "system Phone chooser test uses explicit E.164 destination to isolate Telecom integration");
+assert.match(androidTests,/serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives/,
+   "mobile-data connectivity gating has an Android instrumentation test that ignores captive-portal validation false negatives");
+assert.match(androidTests,/Outgoing Telecom flow must wait for the Server backend result/,
+   "the preinstalled Phone-app test verifies outgoing calls are not backgrounded before backend success or failure");
+assert.match(androidTests,/launcherShowsInternetOnlyOnboardingWithoutSimFallback/);
+assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"), "every stable Android 8–16 API runs the complete instrumentation class, including onboarding and Telecom acceptance");
+assert.ok(androidVersionMatrix.includes("assert-android-test-count.py --expected-tests 23"), "every stable Android 8–16 API must execute all 23 acceptance tests without skipped or failed tests");
+assert.ok(android17Preview.includes("scripts/android17-16kb-acceptance.sh") && android17Preview.includes("assert-android-test-count.py --expected-tests 23"), "Android 17 remains separately tested with the full 23-test 16 KB acceptance suite");
+assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.includes("emulator-boot-timeout: 600") && android17Preview.includes("timeout-minutes: 50") && android17Preview.includes("disk-size: 8G"), "Android 17 ARM64 preview receives the appropriate 4 GB guest RAM, 8 GB storage and 10-minute boot budget on the 7 GB Apple Silicon runner");
+assert.ok(!nativeWorkflow.slice(nativeWorkflow.indexOf("  publish-android-preview-release:")).includes("android-17-preview-compatibility"), "an unstable Android 17 preview emulator does not block publication after the stable Android release matrix passes");
+assert.match(android17Acceptance,/getconf PAGE_SIZE/);
+assert.match(android17Acceptance,/16384/);
+assert.match(android17Acceptance,/zipalign" -c -P 16/);
+assert.match(android17Acceptance,/adb install -r/);
 assert.match(androidMain,/result\.optJSONObject\("user"\) \?: result\.optJSONObject\("profile"\)/);
 assert.match(iosModel,/func registerDevice\(\) async/);
+assert.match(iosModel,/ServerVoIPPushRegistry/);
+assert.match(iosModel,/didReceiveIncomingPushWith/);
+assert.match(iosModel,/register_push_token/);
+assert.match(iosEntitlements,/<key>aps-environment<\/key>/);
 assert.match(iosModel,/func requestPhoneLinkCode\(\) async/);
 assert.match(iosModel,/func verifyAndLinkPhone\(\) async/);
 assert.match(iosModel,/PHONE_ALREADY_LINKED/);
@@ -110,11 +554,51 @@ assert.doesNotMatch(iosView,/CNContactStore/);
 assert.match(iosModel,/to_server_id/);
 assert.match(handoff,/HANDOFF_EXPIRED_OR_ALREADY_USED/);
 assert.match(handoff,/server_sessions/);
-assert.match(app,/server:\/\/sim-setup/);
+assert.match(app,/server:\/\/device-setup/);
 assert.match(androidMain,/handleAppLink/);
 assert.match(androidManifest,/android:scheme="server"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerSetupWebActivity"/);
 assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallService"/);
+assert.match(androidManifest,/android:name="com.server.caller.ServerIncomingCallAlertService"/);
+assert.match(androidManifest,/com.server.caller.ServerFirebaseMessagingService/);
+assert.match(androidBuild,/isMinifyEnabled = true/);
+assert.match(androidBuild,/isShrinkResources = true/);
+assert.match(androidBuild,/compileSdk = 36/);
+assert.match(androidBuild,/targetSdk = 36/);
+assert.match(androidBuild,/isEnable = releaseAbiSplits/);
+assert.match(androidBuild,/SERVER_ENABLE_RELEASE_ABI_SPLITS/);
+assert.match(androidBuild,/defaultConfig\s*\{[\s\S]*?ndk\s*\{\s*abiFilters\.clear\(\)\s*abiFilters\.addAll\(serverDebugAbiFilters\)/,
+  "the selected debug ABI is applied at defaultConfig so prebuilt WebRTC AAR native libraries are packaged");
+assert.match(androidBuild,/release\s*\{[\s\S]*?abiFilters\.clear\(\)\s*abiFilters\.addAll\(listOf\("armeabi-v7a", "arm64-v8a"\)\)/,
+  "release APKs retain ARM64 and ARMv7 phone ABIs even when the CI debug build targets x86_64");
+assert.match(androidBuild,/isUniversalApk = true/);
+assert.match(nativeWorkflow,/bundleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=false/);
+assert.match(nativeWorkflow,/assembleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=true/);
+assert.match(read("apps/android-caller/build.gradle.kts"),/version "8\.9\.1"/);
+assert.doesNotMatch(read("web/app.js"),/\?\./);
+assert.match(androidBuild,/androidx\.fragment:fragment-ktx:1\.9\.1/);
+assert.match(androidBuild,/versionCode = 2/);
+assert.match(androidBuild,/versionName = "0.2.0"/);
+assert.ok(nativeWorkflow.includes("app-arm64-v8a-release.apk"));
+assert.ok(nativeWorkflow.includes("app-armeabi-v7a-release.apk"));
+assert.ok(nativeWorkflow.includes("ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"));
+assert.match(androidProguard,/-keep class org\.webrtc/);
+assert.match(androidFirebase,/onMessageReceived/);
+assert.match(androidFirebase,/server_incoming_call/);
+assert.match(androidFirebase,/ServerIncomingCallService.start\(this\)/);
+assert.match(calls,/action==="register_push_token"/);
+assert.ok(calls.includes("SERVER_CALL_TTL_SECONDS = 180"));
+assert.ok(calls.includes("GUEST_CALL_TTL_SECONDS = 2 * 60"),"guest call ringing expires at two minutes before answer");
+assert.ok(calls.includes('route==="guest"?GUEST_CALL_TTL_SECONDS:SERVER_CALL_TTL_SECONDS'));
+assert.ok(guest.includes('["ringing","connecting"].includes(call.state)&&call.expires_at'));
+assert.doesNotMatch(androidMain,/callStartedAt|carrierFallbackOfferedFor|carrierFallbackPhone/);
+assert.match(calls,/APNS_TEAM_ID/);
+assert.match(calls,/apns-push-type/);
+assert.match(pushMigration,/create table if not exists public.server_push_devices/);
+assert.match(pushMigration,/add column if not exists expires_at/);
+assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
+  "Server does not include Android carrier-call permission in its internet-only connector");
+
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
 assert.ok(androidSetup.includes('page = page.replace("</body>", inlineScript + "\\n</body>")'));
@@ -130,16 +614,202 @@ assert.match(app,/onServerGatewayPairingCode/,"website handles pairing-code resu
 assert.match(html,/sms-gateway-pairing-code/,"onboarding UI can display the one-time gateway code");
 assert.doesNotMatch(androidManifest,/DialerActivity/);
 assert.match(androidManifest,/android:name="android.intent.action.MAIN"/);
-assert.match(androidSetup,/SubscriptionManager/);
-assert.match(androidSetup,/activeSubscriptionInfoList/);
-assert.match(androidSetup,/selectSim\(subscriptionId: Int\)/);
+assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList|selectSim/,
+  "Android setup must not inspect or select a SIM subscription");
+assert.match(androidSetup,/requestCallPermissions/);
+assert.doesNotMatch(androidSetup,/READ_PHONE_STATE|CALL_PHONE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
+assert.match(androidEngine,/connection\.setRingbackRequested\(shouldRequestTelecomRingback\(route\)\)/,
+  "Telecom ringback is requested for Server and guest-browser calls until answered");
+assert.match(androidEngine,/shouldRequestTelecomRingback\(route: String\): Boolean = route == "server" \|\| route == "guest"/,
+  "Only known Server and guest routes request framework ringback");
+assert.match(androidEngine,/toStartPayload\("android_telecom"\)/,
+  "system Phone calls use the explicit native source payload when creating a backend call");
+assert.match(androidEngine,/two_way_audio_media_ready/);
+assert.match(androidEngine,/remote_audio_track_received/);
+assert.match(androidEngine,/audio_rtp_packets_both_directions/);
+assert.match(androidEngine,/outboundAudioRtpPacketsSent/);
+assert.match(androidEngine,/inboundAudioRtpEnergy/);
+assert.match(androidEngine,/outboundAudioRtpEnergy/);
+assert.match(androidEngine,/RTCStatsCollectorCallback/);
+assert.match(guestWeb,/inbound-rtp/);
+assert.match(androidTests,/Caller received no inbound audio RTP packets/);
+assert.match(androidTests,/Recipient received no inbound audio RTP packets/);
+assert.match(androidTests,/server-guest-preview\[\?\]token=/,"native Android guest E2E checks the caller-preview link rather than the old direct guest-page URL");
+assert.match(androidTests,/webRtcPeersExchangeAudioTracksAndConnectOnAndroidDevice/,
+  "Android instrumentation negotiates two WebRTC peers, exchanges audio tracks and reaches ICE CONNECTED");
+assert.match(androidMain,/if \(pendingSystemDialerReturn\) payload\.put\("source", "android_telecom"\)/,
+  "the legacy Android Phone intent bridge must use the same backend no-guest route guard");
+assert.match(androidEngine,/ServerGuestInviteNotifications\.show\(context, callId\.orEmpty\(\), target\.phoneNumber\.orEmpty\(\), invitation\)/,
+  "a non-Server contact receives an explicit notification to share the expiring browser invitation");
+assert.match(androidGuestNotifications,/NotificationCompat\.Action|addAction/,
+  "the no-install route uses a native notification action rather than opening a caller webpage");
+assert.match(androidGuestShare,/Intent\(Intent\.ACTION_SEND\)/,
+  "the caller explicitly opens Android's native share chooser");
+assert.match(androidMain,/Intent\.createChooser\(share, "Share Server invitation to "/,
+  "MainActivity uses Android's general Sharesheet for guest-call links");
+assert.doesNotMatch(androidMain,/Intent\(Intent\.ACTION_SENDTO|smsto:|putExtra\("sms_body"|EXTRA_INITIAL_INTENTS/,
+  "Server does not promote or pre-address SMS as a guest-call invitation action");
+assert.doesNotMatch(androidGuestShare,/Intent\(Intent\.ACTION_SENDTO|smsto/,
+  "Server uses the generic share chooser and does not force an addressed SMS invitation");
+assert.doesNotMatch(androidGuestShare,/sendTextMessage|SmsManager\.send/,"the caller app delegates SMS transmission to the paired SIM gateway, not its own process");
+assert.match(androidManifest,/android:name="com\.server\.caller\.ServerGuestInviteShareActivity"/,
+  "the native share activity is available only after the user taps the guest invitation notification");
+assert.match(androidPhoneNormalizer,/PhoneNumberUtil\.getInstance\(\)/,
+  "all supported Android releases use the same bundled international numbering metadata");
+assert.match(androidPhoneNormalizer,/phoneUtil\.parse\(value, defaultRegion \?: "ZZ"\)/,
+  "national-format contact numbers are parsed with an explicit destination-region context");
+assert.match(androidPhoneNormalizer,/PhoneLookup\.CONTENT_FILTER_URI/,
+  "Android looks up only the selected saved-contact number before interpreting a national number");
+assert.match(androidPhoneNormalizer,/PhoneLookup\.NORMALIZED_NUMBER/,
+  "Android inspects the contact provider's number but does not blindly trust provider inference");
+assert.match(androidPhoneNormalizer,/savedNumber\.trim\(\)\.startsWith\("\+"\)/,
+  "only an explicitly + prefixed saved contact number is independently trusted");
+assert.match(androidPhoneNormalizer,/normalizedRegion == contactRegion/,
+  "provider-inferred E.164 must agree with the contact country before it is trusted");
+assert.match(androidPhoneNormalizer,/ContactHints\(ambiguous = true\)/,
+  "national-format numbers fail closed when contact lookup is unavailable");
+assert.match(androidPhoneNormalizer,/StructuredPostal\.COUNTRY/,
+  "contact country is compared with provider-normalized E.164 before that inferred value is trusted");
+assert.match(androidPhoneNormalizer,/toE164WithContactMetadata/,
+  "the contact's destination country takes precedence over the caller's SIM region");
+assert.match(androidPhoneNormalizer,/phoneUtil\.format\(parsed, PhoneNumberUtil\.PhoneNumberFormat\.E164\)/,
+  "explicit international contacts retain their destination country code in E.164 form");
+assert.match(androidPhoneNormalizer,/simCountryIso/);
+assert.match(androidPhoneNormalizer,/networkCountryIso/);
+assert.match(androidPhoneNormalizer,/Locale\.getDefault\(\)\.country/,
+  "the default phone region is resolved from SIM, then network, then device locale");
+assert.match(androidEngine,/ServerPhoneNumberNormalizer\.toE164FromDevice\(context, raw\)/,
+  "Telecom resolves the destination from contact metadata before caller-region fallback");
+assert.match(androidMain,/ServerPhoneNumberNormalizer\.toE164FromDevice\(this, raw\)/,
+  "the legacy Android route shares the same contact-first country resolver as Telecom");
+assert.match(androidTests,/internationalNumberingMetadataCoversEverySupportedRegion/,
+  "worldwide numbering metadata is exercised on the Android test matrix");
+assert.match(androidTests,/destinationCountryFromSavedContactMetadataBeatsCallerRegion/,
+  "a saved contact country must override the caller SIM country");
+assert.match(androidSetup,/Manifest\.permission\.READ_CONTACTS/,
+  "Android requests permission to resolve saved-contact destination country locally");
+assert.match(androidManifest,/android\.permission\.READ_CONTACTS/);
+assert.match(app,/destinationCountryContactsGranted/,
+  "the onboarding UI explains that contact country lookup is optional and stays on-device");
+assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
+  "first-time website onboarding registers the FCM token after a Server session is saved");
+assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
+  "a system Phone call may use the secure guest browser route when the recipient does not have Server");
+const guestSmsTransport=calls.slice(calls.indexOf("// SMS is the primary first-contact transport"),calls.indexOf("const deliveryMode=",calls.indexOf("// SMS is the primary first-contact transport")));
+assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\?"web_push":"manual_share"/,
+  "the caller SIM SMS is the primary guest invitation transport");
+assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
+  "guest browser reachability must never suppress the first-contact caller SIM SMS");
+assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
+assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server\. Turn on mobile data or Wi-Fi, then tap to answer: "/);
+assert.match(calls,/This invitation expires in 2 minutes/);
+assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
+  guestSmsTransport.includes('from("server_sms_jobs").insert') &&
+  guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
+  "the backend queues SMS for the caller-owned Android SIM Gateway and wakes it through Server Realtime");
+assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
+assert.match(auth,/x-server-session-token/,"Server auth reads its opaque Server session from a dedicated header");
+assert.match(calls,/x-server-session-token/,"Server calls read the opaque Server session from a dedicated header");
+assert.match(gateway,/x-server-session-token/,"Gateway pairing reads the Server account session from a dedicated header");
+assert.match(gateway,/x-server-gateway-token/,"Gateway polling reads a separate paired-device token header");
+assert.match(handoff,/x-server-session-token/,"App handoff creation reads the Server session from a dedicated header");
+assert.match(androidMain,/setRequestProperty\("x-server-session-token", accessToken\)/);
+assert.doesNotMatch(androidMain,/setRequestProperty\("authorization"/);
+assert.match(androidSessionManager,/setRequestProperty\("x-server-session-token", bearer\)/);
+assert.doesNotMatch(androidSessionManager,/setRequestProperty\("authorization"/);
+assert.match(androidIncoming,/setRequestProperty\("x-server-session-token", token\)/);
+assert.doesNotMatch(androidIncoming,/setRequestProperty\("authorization"/);
+assert.match(androidFirebase,/setRequestProperty\("x-server-session-token", accessToken\)/);
+assert.doesNotMatch(androidFirebase,/setRequestProperty\("authorization"/);
+assert.match(iosModel,/forHTTPHeaderField: "x-server-session-token"/);
+assert.doesNotMatch(iosModel,/forHTTPHeaderField: "authorization"/);
+assert.match(androidGatewayMain,/setRequestProperty\("x-server-gateway-token", token\)/);
+assert.doesNotMatch(androidGatewayMain,/setRequestProperty\("authorization"/);
+assert.match(e2eIdentityScript,/"x-server-session-token": result\.access_token/);
+assert.doesNotMatch(e2eIdentityScript,/authorization: "Bearer "/);
+assert.match(calls,/guestInternetReachable=guestPush\.recent_online>0/);
+assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,"guest browser reachability never suppresses SIM SMS");
+assert.match(calls,/internet_status:guestInternetReachable\?"internet_on":"unknown"/);
+assert.match(calls,/phone's internet state is unknown, not offline/);
+assert.match(guestWebPushSender,/await Promise\.all\(freshDevices\.map/,"stale subscriptions are not counted as live guest internet connections");
+assert.match(projectReadme,/Server digital address/);
+assert.match(projectReadme,/Server Backend URL/);
+assert.match(projectReadme,/first-party Gateway source is in/ ,
+  "README identifies the self-operated Android SIM Gateway implementation");
+assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
+assert.match(calls,/eq\("owner_user_id",uid\)/,"the caller's own active SIM Gateway is preferred");
+assert.match(calls,/eq\("shared_guest_sms_enabled",true\)/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
+assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
+assert.match(calls,/category:"guest_invite"/);
+assert.match(calls,/select\("id,token_hash(?:,shared_guest_sms_enabled)?"\)/,"the server retrieves only the hash and Gateway consent metadata needed for wake routing");
+assert.match(calls,/sendServerGatewayWake\(gateway\.token_hash\)/,"a queued caller SMS triggers a Supabase Realtime wake-up");
+assert.ok(gatewayWake.includes("/realtime/v1/api/broadcast/") && gatewayWake.includes("/events/gateway_wake?private=false"),"gateway wake-ups use the verified direct public Realtime REST endpoint");
+assert.ok(gatewayWake.includes("/events/gateway_wake?private=false"),"the wake-up event is explicitly named in the Realtime endpoint");
+assert.doesNotMatch(gatewayWake,/recipient_e164|invitation_text|sms_body|guest_invite_url/,"Realtime wake-up payloads contain no recipient, SMS body or invitation URL");
+assert.match(androidGatewayRealtime,/phx_join/,"Android joins a Supabase Realtime broadcast channel");
+assert.match(androidGatewayRealtime,/gateway_wake/,"Android listens for the gateway wake-up event");
+assert.match(androidGatewayRealtime,/heartbeat/,"Android sends Phoenix heartbeats to keep its WebSocket alive");
+assert.match(androidGatewayRealtime,/scheduleReconnect/,"Android reconnects after a Realtime interruption");
+assert.match(androidGatewayRealtime,/sha256Hex/,"the Android channel topic is derived from the gateway bearer token hash");
+assert.match(androidSimGateway,/ServerGatewayRealtimeClient/,"the foreground SIM gateway starts the Realtime listener");
+assert.match(androidSimGateway,/PRESENCE_HEARTBEAT_SECONDS = 60L/,"the gateway refreshes its online timestamp every 60 seconds");
+assert.match(androidSimGateway,/FALLBACK_POLL_INTERVAL_SECONDS = 15L/,"the SIM Gateway retries the queue every 15 seconds if Realtime is unavailable");
+assert.match(androidSimGateway,/put\("action", "health"\)/,"the gateway health heartbeat refreshes server-side reachability");
+assert.match(gatewayGradle,/com\.squareup\.okhttp3:okhttp:4\.12\.0/,"the Realtime WebSocket client uses a pinned OkHttp version");
+assert.match(calls,/guest_invite_sms_pair/);
+assert.match(calls,/guest_invite_sms_sender/);
+assert.match(calls,/guest_invite_id:created\.invite_id/);
+assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
+  "Android reports when the first-contact SMS invitation is queued through an active Server SIM Gateway");
+assert.doesNotMatch(androidMain,/textbee/i,"Android caller UI has no third-party SMS provider states");
+assert.doesNotMatch(iosModel,/textbee/i,"iOS caller UI has no third-party SMS provider states");
+assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
+  "system disconnect must stop any active Telecom ringback");
 assert.match(androidTests,/preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice/);
-assert.match(androidTests,/ContactsContract\.Contacts\.CONTENT_URI/,"outgoing-call acceptance uses the Android Contacts UI");
+assert.match(androidTests,/Intent\(Intent\.ACTION_DIAL\)/,
+  "outgoing-call acceptance opens Android's real Phone dialer");
+assert.match(androidTests,/By\.res\(resolvedDialerPackage, "digits"\)/,
+  "the test locates the Phone dialer's destination EditText");
+assert.match(androidTests,/digitsField!!\.setText\(dialledNumber\)/,
+  "the test enters an explicit E.164 destination into the real dialer EditText without keycode assumptions");
+assert.match(androidTests,/displayedDestinationDigits/,
+  "dialer acceptance tolerates visual grouping while checking every E.164 digit");
+assert.match(androidTests,/debug_last_telecom_request_target_length/,
+  "outgoing-call acceptance verifies the full E.164 target reaches Android Telecom");
+assert.doesNotMatch(androidTests,/Hiding the keyboard must leave the entered destination in the dialpad|device\.pressBack\(\).*dialpad/,
+  "the Phone picker must not press Back and accidentally close Android's dialpad");
+assert.match(androidTests,/input_method_nav_back/,
+  "the Phone picker uses the system IME navigation control rather than Android Phone Back");
+assert.match(androidTests,/guestCallInvitationNotificationOffersInternetShareOnly/,
+  "the no-install guest route has an executable native notification/share test without carrier fallback");
+assert.match(androidTests,/must never expose a carrier\/SIM fallback action/,
+  "the guest notification instrumentation test verifies that no SIM action is available");
+assert.match(androidTests,/createShareChooserIntent/,
+  "the guest share chooser is unit-testable without sending a text");
+assert.match(androidTests,/enablePhoneAccountWithTestShell\(context, serverHandle\)/,
+  "Telecom test setup enables the account without depending on OEM-specific Settings layouts");
+assert.match(androidTests,/telecom\.defaultDialerPackage/,
+  "the Phone-picker test resolves the installed default dialer instead of assuming a package name");
+assert.match(html,/Ask every time/,
+  "website explains the Android outgoing-account preference needed by some dialers");
+assert.match(html,/id="download-android-connector"/,
+  "public website provides a direct Android connector installation action");
+assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-arm64.apk"), "the primary onboarding download is the ARM64 phone build");
+assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-armv7.apk"), "onboarding offers the separate ARMv7 phone build");
+assert.match(html,/emulator-only x86 packages are not offered here/);
+assert.match(html,/I'?ve installed Server — continue setup/,
+  "website offers the return-to-this-page hand-off after connector installation");
+assert.match(app,/androidDownload && androidDownload\.addEventListener/,
+  "website explains that the user should return after the APK download");
+assert.ok(app.includes("androidDownloadArmv7 && androidDownloadArmv7.addEventListener"));
+
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
 assert.match(androidTelecom,/PhoneAccount.SCHEME_TEL/);
 assert.doesNotMatch(androidTelecom,/PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION/);
+assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/,
+  "SIM-backed fallback uses Android's subscription mapping API rather than requesting line-number permission");
 assert.match(iosView,/model.handleAppHandoff/);
 assert.match(iosView,/Set up Server on this iPhone/);
 assert.match(iosView,/How iPhone calling works/);
@@ -155,38 +825,481 @@ assert.match(hook,/SMS_HOOK_NOT_CONFIGURED/);
 assert.match(hook,/SMS_GATEWAY_OFFLINE/);
 assert.doesNotMatch(hook,/console\.(log|error)\([^)]*otp/i);
 assert.match(gateway,/create_pairing_code/);
+assert.match(gateway,/p_key_hash:await sha\(session\.user_id\)/,"SIM gateway pairing is rate-limited against the signed-in Server session");
+assert.doesNotMatch(gateway,/VERIFIED_PROFILE_REQUIRED|phone_verified_at/,"SIM gateway pairing must not depend on phone verification");
+assert.match(liveGuestTransitionContract,/action: "create_pairing_code"/,"the live contract validates the first gateway pairing step without phone verification");
+assert.match(html,/id="sms-gateway-setup"/,"the SIM gateway setup is a separate optional onboarding step");
+assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the SIM gateway can be paired before optional phone-number linking");
+assert.match(app,/showGatewayPairingStatus/,"gateway pairing feedback is visible outside the phone-number linking panel");
 assert.match(gateway,/server_claim_sms_jobs/);
 assert.match(gateway,/PAIRING_RATE_LIMITED/);
 assert.match(gateway,/body:null/);
 assert.match(calls,/action==="incoming"/);
+assert.match(calls,/phone_verified_at/,"incoming calls only share verified caller numbers");
+assert.match(calls,/allow_number_based_server_calls===true/,"incoming calls only share caller numbers after explicit consent");
+assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"\)/,
+  "Android uses only the backend's shared verified caller number for contact matching");
+
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
-assert.match(calls,/GUEST_INVITE_RATE_LIMITED/);
-assert.match(calls,/delivery_mode:"manual_sms"/);
-assert.match(calls,/sms_body:smsBody/);
-assert.match(calls,/No live Server SMS gateway is connected/);
+assert.match(calls,/server_rate_limit_allow/,
+  "call starts have a bounded per-caller abuse limit");
+assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
+  "guest invites do not impose a separate recipient quota beyond the caller-wide safety limit");
+assert.match(atomicCallMigration,/token_hash/,
+  "guest invite links remain stored as token hashes inside the database transaction");
+assert.match(atomicCallMigration,/p_invite_expires_at/,
+  "guest invite links remain time-limited inside the database transaction");
+assert.match(calls,/delivery_mode:deliveryMode/);
+assert.match(calls,/stun:stun\.cloudflare\.com:3478/,
+  "authenticated Server calls offer a second free STUN discovery path");
+assert.match(guest,/stun:stun\.cloudflare\.com:3478/,
+  "guest invitations use the same additional STUN discovery path");
+assert.match(guestWeb,/stun:stun\.cloudflare\.com:3478/,
+  "browser guest peer has both STUN endpoints as a safe fallback");
+assert.match(calls,/SERVER_TURN_URLS/,"authenticated calls can receive configured TURN relay endpoints");
+assert.match(calls,/SERVER_TURN_SHARED_SECRET/,"TURN credentials are signed server-side and never embedded in the APK");
+assert.match(calls,/crypto\.subtle\.sign\("HMAC"/,"TURN credentials use coturn REST HMAC authentication");
+assert.ok(calls.includes("CLOUDFLARE_TURN_KEY_ID"),"managed Cloudflare TURN credentials are fetched only inside the call backend");
+assert.ok(calls.includes("CLOUDFLARE_TURN_API_TOKEN"),"Cloudflare API tokens remain server-side secrets");
+assert.ok(calls.includes("generate-ice-servers"),"Cloudflare TURN credentials use the official credential-generation endpoint");
+assert.ok(calls.includes('ice_server_mode:"cloudflare-turn"'),"call responses identify Cloudflare TURN mode");
+assert.ok(calls.includes('ice_server_mode:"coturn-turn"'),"call responses identify coturn TURN mode");
+assert.ok(calls.includes('ice_server_mode:"stun-only"'),"call responses identify STUN-only fallback");
+assert.ok(guest.includes("CLOUDFLARE_TURN_KEY_ID"),"no-install guest calls can use Cloudflare TURN");
+assert.ok(guest.includes("generate-ice-servers"),"guest TURN credentials are generated by the backend");
+assert.ok(guest.includes("ice_server_mode:iceConfig.ice_server_mode"),"guest join responses expose the selected ICE mode");
+assert.ok(androidSessionManager.includes('put("action", "register_device")'),"persistent sessions restore the existing installation after refresh expiry");
+assert.ok(androidSessionManager.includes("device_secret"),"persistent recovery uses the installation device secret");
+assert.ok(androidSessionManager.includes("forceRefresh: Boolean"),"an authoritative HTTP 401 can force immediate session recovery");
+assert.ok(androidTests.includes("expiredSessionRecoversSameServerIdentityFromPersistedDeviceCredentials"),"Android instrumentation tests persistent identity recovery");
+assert.ok(androidTests.includes("import org.json.JSONObject"),"session recovery instrumentation test imports its JSON payload type");
+assert.match(guest,/SERVER_TURN_URLS/,"guest calls use the same optional TURN relay configuration");
+assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches Android and browser STUN discovery");
+assert.match(androidTelecom,/ServerTelecomCallEngine/,
+  "the Android caller uses the Telecom-bound native WebRTC engine");
+assert.match(calls,/shared_guest_sms_enabled/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
+assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
+assert.match(calls,/category:"guest_invite"/);
+assert.match(calls,/source_event_id:"server-guest-invite:"/);
+assert.match(calls,/guest_invite_sms_pair/);
+assert.match(calls,/guest_invite_sms_sender/);
+assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
+assert.match(gateway,/owner_user_id:pair\.owner_user_id/,"claimed SIM gateways inherit the pairing owner's identity");
+assert.match(gatewayOwnerMigration,/add column if not exists owner_user_id uuid references auth\.users\(id\)/,"existing SIM gateway rows can be migrated to account ownership");
+assert.equal((gatewayCustomIdentityMigration.match(/REFERENCES public\.server_profiles\(user_id\)/g)||[]).length,2,
+  "SIM Gateway pairings and devices reference the custom Server profile identity");
+assert.doesNotMatch(gatewayCustomIdentityMigration,/REFERENCES auth\.users/,
+  "SIM Gateway ownership no longer requires Supabase Auth user rows");
+assert.match(gatewayGuestClaimMigration,/c\.caller_user_id=d\.owner_user_id/,"only the caller-owned SIM gateway can claim a guest invitation SMS job");
+assert.match(guestInviteSmsGuardMigration,/c\.state in \('ringing','connecting'\)/,
+  "SIM gateways can only claim guest invitations for calls that are still ringing or connecting");
+assert.match(guestInviteSmsGuardMigration,/gi\.joined_at is null/);
+assert.match(guestInviteSmsGuardMigration,/gi\.revoked_at is null/);
+assert.match(guestInviteSmsGuardMigration,/c\.expires_at>now\(\)/);
+
+assert.match(calls,/invitation_text:invitationText/,"the backend returns a secure shareable caller-identifying guest preview invitation");
 assert.match(androidMain,/normalizePhoneForServer/);
-assert.ok(androidMain.includes("Intent(Intent.ACTION_SENDTO"),"Android opens a user-confirmed SMS composer for manual guest invites");
-assert.ok(androidMain.includes("private fun notifyCarrierFallback"),"Android exposes a carrier-call fallback notification");
-assert.ok(androidMain.includes("30_000"),"Android offers the carrier fallback after an unanswered ring");
-assert.ok(androidMain.includes("EXTRA_PHONE_ACCOUNT_HANDLE"),"Android tries to preserve the selected SIM for carrier fallback");
+assert.match(calls,/caller_display_name:caller\.display_name\|\|"SERVER CALLER"/,"the backend sends the caller's chosen display name to incoming devices");
+assert.match(androidMain,/call\.optString\("caller_display_name"\)/,"the open Android app uses the caller's chosen display name for incoming calls");
+assert.match(androidIncoming,/row\.optString\("caller_display_name"\)/,"the background Android listener uses the caller's chosen display name");
+assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve\(this, phone, callerFallback\)/,"the Telecom callback preserves the caller's chosen name when no local contact match exists");
+assert.match(androidIdentityResolver,/chooseDisplayName\(\s*localContactName:\s*String\?,\s*serverDisplayName:\s*String\?,\s*sharedPhone:\s*String\?\s*\)/,"caller identity resolution prefers local contacts, then Server display name, then a permitted number");
+assert.match(androidTests,/incomingCallerIdentityPrefersSavedContactThenCallerChosenServerName/,"Android tests saved-contact priority and caller display-name fallback");
+assert.doesNotMatch(androidMain,/SIM selection is optional: choose a preferred line only if you want carrier fallback|carrier fallback uses your own mobile line/i,"Android setup must not invite SIM selection for Server calling");
+assert.ok(androidMain.includes("private fun shareGuestInvitation"),"Android shares guest invitations through apps the caller already uses");
+assert.match(androidMain,/Intent\(Intent\.ACTION_SEND\)/,"guest invitations retain a system share-sheet fallback when the paired gateway is unavailable");
+assert.doesNotMatch(androidMain,/Call using selected SIM|Standard call charges may apply|handoffToCarrierDialer/,
+  "the caller UI never offers or initiates mobile-operator fallback for Server calls");
+assert.doesNotMatch(androidCarrierDialer,/Intent\\.ACTION_CALL/,"the carrier fallback never silently places the call");
+assert.match(androidFirebase,/maxAttempts = 4/,"transient FCM registration failures receive bounded retries");
+assert.match(androidMain,/REACHABLE · SERVER \/ WEBRTC/,"the caller sees the reachable Server/WebRTC state");
+assert.match(androidMain,/GUEST INVITATION · INTERNET STATUS UNKNOWN/,"a non-Server number is shown as a guest with unknown internet status, not as offline");
+assert.doesNotMatch(androidMain,/PeerConnection\.IceConnectionState\.FAILED[\s\S]*handoffToCarrierDialer/,
+  "a failed WebRTC path is reported as unreachable and never converted into a carrier call");
+assert.match(androidMain,/waiting for the recipient to (?:open and )?answer/,
+  "a guest Web Push alert or shared link is not misrepresented as a connected call before the recipient answers");
+assert.match(androidEngine,/Recipient has a fresh Server presence heartbeat/,"Android Telecom logs the live-presence path");
+assert.match(androidEngine,/throw ServerCallApiException\(status, result, reason\)/,
+  "the Telecom HTTP client preserves structured recipient-offline responses for SIM fallback");
+assert.match(androidEngine,/apiError\.errorCode == "RECIPIENT_OFFLINE"/,
+  "the Telecom call engine recognises a Server-offline recipient before creating a call");
+assert.doesNotMatch(androidEngine,/automaticCarrierFallback|carrierFallbackPhone|ServerCarrierDialer|placeAutomatically/,
+  "the Telecom engine contains no selected-SIM fallback path");
+assert.match(androidReachability,/fun isFresh\(status: String\): Boolean = status == "online"/,
+  "only a fresh authenticated Server heartbeat is eligible for WebRTC");
+assert.match(androidReachability,/status == "background_reachable" && pushQueued/,
+  "a background push token requires confirmation from the recipient app before WebRTC");
+assert.match(androidEngine,/waitForRecipientServerHeartbeat\(target\)/,
+  "Android waits for a fresh presence heartbeat after a background wake before continuing WebRTC");
+assert.match(androidEngine,/delay\(700L\)/,
+  "the background wake confirmation uses bounded heartbeat retries");
+assert.doesNotMatch(androidEngine,/if \(route == "guest"\)[\s\S]{0,500}automaticCarrierFallback = true/,
+  "a non-Server number must not be treated as a confirmed-offline Server user or auto-switched to the SIM");
+assert.match(androidEngine,/Guest invitation · recipient internet status unknown/,
+  "the Telecom guest route preserves the invitation and does not claim to know the recipient's mobile-data state");
+assert.doesNotMatch(androidMain,/currentRoute == "guest"[\s\S]{0,350}handoffToCarrierDialer/,
+  "the in-app guest route must not bypass the browser invitation with automatic carrier fallback");
+assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity|Call using selected SIM/,
+  "the guest invitation notification offers only the browser invitation action");
+assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity|carrierPending|Call using selected SIM/,
+  "the guest invitation notification has no selected-SIM PendingIntent");
+assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity/,
+  "the guest notification cannot launch the legacy carrier handoff Activity");
+assert.doesNotMatch(androidMain,/button\("Call using selected SIM"\)|handoffToCarrierDialer/,
+  "the main caller app cannot silently or manually convert the Server route to a SIM call");
+assert.match(html,/download-server-sim-gateway/,"the onboarding page provides a direct download for the one-time shared SIM Gateway operator");
+assert.match(html,/releases\/download\/server-android-connector-preview\/app-debug\.apk/,"the SIM Gateway link points to the actual published release asset filename");
+assert.match(html,/Regular members do not install the Gateway app/,"regular Server members are not burdened with installing the operator-only SIM Gateway");
+assert.match(html,/Every call is registered in Server/,"onboarding explains that every call is recorded in the Server call history");
+assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
+assert.match(androidEngine,/waiting for the recipient app to confirm its internet connection/,"a registered background push token is not treated as proof of internet reachability");
+assert.doesNotMatch(androidEngine,/carrierFallbackPhone|automaticCarrierFallback|placeAutomatically/,
+  "the native Telecom engine keeps the destination on the internet/WebRTC route after network failures");
+
+assert.doesNotMatch(androidMain,/SMS may incur your carrier's charge/,"Server does not label an SMS invitation as a supported default guest-call route");
+assert.match(androidMain,/push provider accepted an incoming-call alert request/,"the caller is told when a push provider accepted the alert request without claiming delivery");
+assert.match(androidFirebase,/fcm_registered_server_id/,"push-token registration is scoped to the signed-in Server identity");
+assert.match(androidFirebase,/fun unregister\(context: Context\)/,"FCM endpoint cleanup is attempted when a user signs out");
+assert.match(androidMain,/ServerPushRegistration\.unregister\(this\)/,"Android unregisters its push endpoint before clearing the local session");
+assert.match(androidMain,/override fun onResume\(\)/,"Android retries push registration when the user returns to the app");
+assert.match(androidMain,/override fun onResume\(\)[\s\S]*?ServerIncomingCallService\.start\(this\)/,"Android keeps the incoming-call listener alive after returning from system settings without querying protected phone-state APIs");
+assert.match(androidMain,/20-minute invitation window/);
+assert.doesNotMatch(androidMain,/30_000/,"Android does not end guest or Server calls after a local 30-second timer");
+assert.match(androidCarrierDialer,/TelecomManager\.EXTRA_PHONE_ACCOUNT_HANDLE/,
+  "the saved SIM is preselected through Android's documented dialler account extra when still active");
 assert.ok(iosModel.includes("normalizePhoneForServer"),"iOS normalizes national-format contact numbers");
-assert.match(androidMain,/deliveryMode == "manual_sms"/);
+assert.match(iosModel,/import PhoneNumberKit/,"iOS uses maintained global numbering metadata instead of country-specific digit heuristics");
+assert.match(iosModel,/PhoneNumberUtility\(\)/,"iOS reuses one parsed numbering metadata utility");
+assert.match(iosModel,/Locale\.current\.region\?\.identifier/,"iOS national-format numbers use the actual device region and fail closed when it is unavailable");
+assert.match(iosModel,/phoneNumberUtility\.format\(parsed, toType: \.e164\)/,"iOS sends canonical E.164 destinations to the global call backend");
+assert.doesNotMatch(iosModel,/digits\.count == 11 && digits\.hasPrefix\("0"\) \{ candidate = "\\+234"/,"iOS no longer hardcodes Nigerian national-number lengths or prefixes");
+
+assert.match(androidMain,/deliveryMode == "manual_share"/);
+assert.match(androidMain,/api\("availability"/,"Android checks recipient availability before the caller presses Call");
+assert.match(androidFirebase,/if \(!ServerCallNotifications\.canPostNotifications\(context\)\)/,
+  "FCM tokens are not advertised as background-call receivers when Android notification permission is disabled");
+assert.match(androidCallNotifications,/areNotificationsEnabled\(\)/,
+  "background call availability checks Android app-wide notification enablement");
+assert.match(androidCallNotifications,/channel\.importance != NotificationManager\.IMPORTANCE_NONE/,
+  "a disabled incoming-call notification channel prevents the device being advertised as background-reachable");
+assert.match(androidFirebase,/unregister\(context\)/,
+  "Server removes a previously registered push receiver when app entry detects notification permission is revoked");
+assert.match(androidMain,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegistration\.syncFcmToken/,
+  "Server refreshes Android push registration after returning from notification settings");
+assert.equal((androidMain.match(/override fun onResume\(\)/g) || []).length, 1,
+  "the Android caller must have one lifecycle onResume implementation");
+assert.match(androidSetup,/override fun onResume\(\)[\s\S]{0,420}ServerPushRegistration\.syncFcmToken/,
+  "the website-hosted Android onboarding also refreshes push eligibility when resumed");
+assert.match(app,/background incoming-call alerts may not appear/,
+  "onboarding explains that denied Android notifications disable reliable background incoming-call alerts");
+assert.match(androidMain,/recipientAvailabilityText/,"Android displays a distinct recipient reachability state beside the dialled destination");
+assert.match(androidMain,/A push registration exists, but a live internet heartbeat is not confirmed/,"a background push token is displayed as unconfirmed rather than WebRTC reachable");
+assert.match(androidMain,/val reachable = ServerRecipientReachability\.isFresh\(status\)/,
+  "the pre-call screen uses the same heartbeat-only reachability rule as Telecom");
+assert.doesNotMatch(androidMain,/status == "online" \|\| status == "background_reachable"/,
+  "a push token alone is never classified as reachable for WebRTC");
+assert.match(androidMain,/started\.optString\("invitation_text"/,"Android prefers the explicit manual-share invitation field from the backend");
 assert.match(iosModel,/guestInviteMessage/);
 assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
+ assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server/,"the SMS identifies the caller and tells the recipient to turn on internet");
+assert.match(calls,/This invitation expires in 2 minutes/,"the SMS advertises the two-minute invitation expiry");
+ assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
+assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
+assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
+assert.match(calls,/p_scope:"recipient_availability"/,"recipient availability checks are rate-limited per authenticated caller");
+assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
+  "only a browser heartbeat can classify a non-Server recipient as currently online");
+assert.match(calls,/guestPushRegistered/,
+  "a number with no live browser heartbeat can still be classified as background-reachable when a guest push receiver is enrolled");
+assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
+assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
+assert.match(html,/you do not need to link or verify your own phone number first/,
+  "onboarding makes SIM gateway pairing independent from optional phone-number verification");
+assert.match(html,/Server never switches automatically to a cellular SIM/,"onboarding must not promise an automatic carrier fallback");
+assert.match(html,/Server does not request SIM-reading or phone-state permission/,"onboarding permissions must match the current Android manifest");
+assert.doesNotMatch(html,/Phone-state and notification permissions|automatically hands the call to the SIM|selected cellular SIM is used automatically/i,"stale SIM-fallback and phone-state instructions must not return");
+assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
+assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
+  "Android instrumentation covers fresh heartbeat and background wake classification");
+
+assert.match(guestBrowserE2e,/server-guest-preview/,"the browser E2E accepts the caller-identifying Open Graph preview URL");
+assert.match(guestBrowserE2e,/SERVER_GUEST_OG_CARD_PASS/,"browser E2E verifies caller identity in Open Graph metadata and the PNG bytes");
+assert.match(guestBrowserE2e,/new URL\(invitationCandidate\)/,"the browser E2E parses and opens the exact shared preview link");
+assert.match(guestPreview,/og:title/,"the guest preview publishes a social-card caller title for messaging apps");
+
+assert.match(guestWebPushMigration,/create table if not exists public\.server_guest_push_devices/,
+  "guest browser subscriptions are stored against the called E.164 number");
+assert.match(guestWebPushMigration,/create table if not exists public\.server_guest_push_config/,
+  "the server-only VAPID keypair has a private service-role storage location");
+assert.match(guestWebPushMigration,/revoke all on public\.server_guest_push_devices from anon, authenticated/,
+  "browser push endpoints and encryption keys are not exposed to public clients");
+assert.match(guestWebPushSender,/buildPushPayload/,
+  "guest notifications use RFC-compliant encrypted Web Push rather than a custom unencrypted payload");
+assert.match(guestWebPushSender,/options: \{ ttl: 120, urgency: "high" \}/,
+  "guest call alerts use a bounded high-urgency push lifetime");
+assert.match(guest,/action==="push_config"/,
+  "the invitation page can obtain the public VAPID key without exposing its private key");
+assert.match(guest,/action==="push_subscribe"/,
+  "a guest can bind an explicitly approved browser subscription to the invitation's phone number");
+assert.ok(guest.includes('!/^\\+[1-9][0-9]{7,14}$/.test(invite.phone_e164)'),
+  "guest browser push enrollment accepts canonical E.164 numbers instead of rejecting every plus-prefixed phone number");
+assert.match(guest,/action==="push_presence"/,
+  "an open guest browser can refresh its internet-reachability heartbeat");
+assert.match(guestWeb,/Notification\.requestPermission\(\)/,
+  "guest browser push permission is requested from the explicit enable-alerts button");
+assert.match(guestWeb,/pushManager\.subscribe/,
+  "the guest page enrolls a real browser Push API endpoint");
+assert.match(guestWeb,/api\("push_presence"/,
+  "the guest page reports fresh browser reachability while it is visible");
+assert.match(guestBrowserHtml,/id="enable-guest-alerts"/,
+  "non-Server recipients can enable call alerts on the browser invitation page");
+assert.ok(guestBrowserHtml.includes('rel="manifest" href="/manifest.webmanifest'),
+  "the guest invitation declares a web app manifest for iOS Home Screen push");
+assert.match(guestBrowserHtml,/apple-mobile-web-app-capable/,
+  "iOS can launch the guest receiver as a Home Screen web app");
+assert.equal(guestManifest.display,"standalone",
+  "the iOS guest receiver is configured for standalone web-app launch");
+assert.equal(guestManifest.scope,"/",
+  "the guest PWA scope includes its incoming-call deep links");
+assert.equal("start_url" in guestManifest,false,
+  "iOS installation defaults to the invitation page URL so its recipient-bound token survives enrolment");
+assert.match(guestPwaIcon,/viewBox="0 0 512 512"/,
+  "the guest PWA includes a scalable square home-screen icon");
+assert.match(guestWeb,/isIOSDevice/);
+assert.ok(guestWeb.includes("navigator.standalone"));
+assert.match(guestWeb,/Add Server to Home Screen for call alerts/,
+  "iPhone guests are guided through Home Screen enrolment before background push is offered");
+assert.match(guestWeb,/This invitation stays attached/,
+  "the first-contact invitation token is retained until the iOS PWA can enrol the recipient");
+assert.ok(guestWeb.includes('if(!isIOSDevice||isIOSHomeScreen)history.replaceState'));
+assert.ok(guestServiceWorker.includes("/manifest.webmanifest"));
+assert.ok(guestServiceWorker.includes("/images/server-app-icon.svg"));
+assert.match(guestServiceWorker,/addEventListener\("push"/,
+  "the service worker can display incoming guest-call notifications while the page is closed");
+assert.match(guestServiceWorker,/addEventListener\("notificationclick"/,
+  "tapping a guest notification opens the caller-identified WebRTC invitation");
+assert.match(calls,/sendGuestBrowserPush/,
+  "call creation looks up the recipient's number-bound guest browser receivers");
+assert.match(calls,/accepted_by_push_service/,
+  "the caller sees push-provider acceptance separately from confirmed device delivery");
+assert.match(calls,/delivery_mode:deliveryMode/,
+  "guest call creation selects browser push when enrolled and manual share for first-contact activation");
+assert.match(guestPreview,/og:image/,"the guest preview publishes incoming-call artwork for rich link cards");
+assert.match(guestPreview,/og:image:alt/,"the preview image alt text names the actual caller identity");
+assert.match(guestPreview,/content-type.*image[\\/]png/,"caller-specific Open Graph artwork is served as PNG rather than SVG");
+assert.match(guestPreview,/image=1&invite_id=/,"each call preview links to a private caller-specific image");
+assert.ok((vercelConfig.rewrites||[]).some(route=>route.source==="/c/:token"&&route.destination.includes("/server-guest-preview?token=:token")),"the compact /c/:token route is rewritten to the server-rendered guest preview");
+assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"first-contact SMS uses the short caller-preview URL");
+assert.match(guestPreview,/og:url.*canonicalUrl/,"the preview declares the compact URL as its Open Graph canonical URL");
+assert.match(guestPreview,/CALLER IDENTIFICATION/,"the image visibly labels the caller identity");
+assert.match(guestPreview,/pngChunk\("tEXt",callerMetadata\)/,"the PNG embeds inspectable caller identity metadata for production acceptance tests");
+assert.match(guestPreview,/allow_number_based_server_calls/,"the OG card only displays a verified phone when the caller opted into number-based calling");
+assert.match(guest,/allow_number_based_server_calls/,"the full-screen guest page observes the caller's phone-sharing consent");
+assert.match(calls,/profile\.allow_number_based_server_calls===true/,"caller phone numbers are not included in invitations without explicit number-calling consent");
+assert.match(guest,/caller\?\.display_name/,"the no-install guest page uses the caller's profile display name");
+assert.match(guest,/caller_display_name:callerLabel/,"the guest API returns the caller's display name explicitly");
+assert.match(androidIdentityResolver,/ContactsContract\.PhoneLookup\.CONTENT_FILTER_URI/,
+  "Android resolves the verified caller number against the recipient's local Contacts database");
+assert.match(androidIncoming,/ServerCallerIdentityResolver\.resolve/,
+  "background incoming-call notifications use the recipient's local contact-name lookup");
+assert.match(androidIncoming,/reportIncoming\(this, callId, callerDisplayName, callerPhone\)/,
+  "background Telecom handoff preserves the verified caller number instead of passing the resolved display name");
+assert.match(androidTelecom,/ServerCallerIdentityResolver\.resolve/,
+  "Android supplies the recipient-local contact name to its native incoming-call surfaces");
+assert.match(androidTelecom,/setCallerDisplayName\(callerIdentity, TelecomManager\.PRESENTATION_ALLOWED\)/,
+  "Android presents the locally saved contact name or caller's chosen Server display name on native incoming-call surfaces");
+assert.match(html,/show it as my caller ID/,
+  "phone-number consent explains that a verified number is also used as outgoing caller ID");
+assert.match(androidTests,/Habib TNC/,
+  "Android Telecom instrumentation covers a recipient-saved contact name");
+assert.match(androidTests,/An unsaved caller must display the caller's chosen Server name/,
+  "Android Telecom instrumentation covers an unsaved number fallback");
+assert.match(iosModel,/reportIncoming\(id: id, callerName: caller\)/,
+  "iOS passes the actual Server caller display identity to CallKit");
+assert.match(iosModel,/update\.localizedCallerName = displayName/,
+  "CallKit presents the Server caller's display name instead of treating it as a phone number");
+assert.match(iosModel,/CXHandle\(type: \.generic, value: "Server"\)/,
+  "the caller display label uses a generic CallKit handle and does not impersonate a cellular number");
+assert.match(iosModel,/phoneNumber: String\? = nil, callerName: String\? = nil/,
+  "iOS supports consented phone-number handles and display-name-only PushKit handles through one CallKit adapter");
+assert.match(iosModel,/rawPhone\.range\(of:/,
+  "CallKit validates consented phone numbers before constructing a telephone handle");
+assert.match(iosModel,/if let safePhone[\s\S]*?CXHandle\(type: \.phoneNumber, value: safePhone\)/,
+  "the iOS CallKit telephone handle is only used for the number returned by the consent-gated backend");
+assert.match(androidIncoming,/caller_phone_e164/,
+  "incoming Android notifications prefer the verified phone number over a Server ID");
+assert.match(guestPreview,/location\.replace/,"opening the preview forwards the recipient to the secure full-screen guest call page");
+assert.match(guestPreviewImage,/INCOMING INTERNET CALL/,"the link-preview artwork is visibly branded as an incoming call");
+
+ assert.match(guestWeb,/iceTransportPolicy:joined\.ice_server_mode&&joined\.ice_server_mode!=="stun-only"\?"relay":"all"/,"guest browser forces TURN relay when valid TURN credentials are provisioned");
+assert.match(androidEngine,/"outbound-rtp"/,"Android does not call audio ready from inbound RTP alone");
+assert.match(androidEngine,/totalAudioEnergy/,"Android requires non-zero inbound and outbound audio energy");
+assert.match(androidEngine,/"media-source"/,"Android reads local microphone energy from WebRTC media-source statistics, not outbound-rtp");
+assert.match(guestWeb,/stat\.type==="media-source"/,"guest browser reads local microphone energy from media-source statistics");
+assert.match(guestBrowserE2e,/stat\.type === "media-source"/,"browser E2E validates local audio energy using the WebRTC media-source report");
+
+assert.match(guestWeb,/outbound-rtp/,"guest browser verifies browser microphone RTP is sent to Android");
+assert.match(guestWeb,/totalAudioEnergy/,"guest browser requires non-zero audio energy in both directions");
+assert.match(guestBrowserE2e,/guest-audio-stats\.json/,"browser E2E persists bidirectional audio statistics");
+assert.match(guestBrowserE2eShell,/module-null-sink/,"browser E2E injects a deterministic audio pilot into the Android emulator microphone path");
+assert.match(guestBrowserE2eShell,/server-android-mic-tone\.wav/,"Android microphone pilot is a generated test WAV rather than ambient host silence");
+assert.match(androidTests,/debug_last_outbound_audio_rtp_packets/,"Android E2E asserts locally transmitted microphone packets");
+assert.match(androidTests,/debug_last_outbound_audio_rtp_energy/,"Android E2E asserts non-zero microphone audio energy");
+
+ assert.match(androidEngine,/iceTransportsType = PeerConnection\.IceTransportsType\.RELAY/,"Android forces TURN relay when valid TURN credentials are provisioned");
+assert.match(androidMain,/callIceServerMode == "cloudflare-turn" \|\| callIceServerMode == "coturn-turn"/,
+  "the standalone Android caller also forces TURN relay when backend mode requires it");
+
+
 const configCode=config.split("\n").filter(line=>!line.trim().startsWith("//")).join("\n");
 assert.doesNotMatch(configCode,/service[_-]?role|sb_secret/i,"browser config contains no privileged key");
 assert.match(config,/hzuovekqsjtpvmbuybxs\.supabase\.co/);
 assert.doesNotMatch(app,/request_otp|verify_otp/);
 assert.doesNotMatch(app,/server-handoff|server-auth/);
 assert.doesNotMatch(app,/signInWithOtp|verifyOtp\(/);
-assert.match(app,/server:\/\/sim-setup/);
+assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
+assert.match(calls,/callerDisplayName=.*profile\.server_id/,"a caller without a display name remains callable through the stable Server ID fallback");
+assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server\. Turn on mobile data or Wi-Fi, then tap to answer: "/,
+  "non-Server SMS invitation identifies the caller, asks for internet and includes the answer link");
+assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview prefers the caller profile name");
+assert.match(guestPreview,/profile\?\.server_id/,"the Open Graph preview falls back to the stable Server ID when no display name exists");
+assert.match(guestPreview,/"SERVER CALLER"/,"legacy invitations without a stored name use a neutral label instead of PRIVATE CALLER");
+assert.match(guest,/caller_server_id:callerLabel/,
+  "guest invitation verification returns a human-facing label rather than a Server ID");
+assert.match(guestWeb,/loadInvitation/);
+assert.match(guestWeb,/You do not need to install Server/,
+  "browser invitation tells a non-Server recipient no install is required");
+
+assert.ok(androidTestCountCheck.includes("if total < 1"),
+  "Android CI must fail when an instrumentation selector executes zero tests");
+assert.ok(nativeWorkflow.includes("scripts/assert-android-test-count.py"),
+  "Android compatibility jobs must verify that tests actually ran");
+for (const method of [
+  "internationalNumberingMetadataCoversEverySupportedRegion",
+  "destinationCountryFromSavedContactMetadataBeatsCallerRegion",
+  "explicitInternationalNumbersAndCallerRegionFallbackRemainSupported",
+  "launcherShowsInternetOnlyOnboardingWithoutSimFallback",
+  "guestCallInvitationNotificationOffersInternetShareOnly",
+  "serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives",
+  "preinstalledPhoneDialerOffersServerAsAnOutgoingCallChoice",
+  "enabledServerAccountRingsThroughAndroidTelecomForIncomingCalls",
+  "phoneAccountCanReceiveIncomingCallThroughTelecom",
+  "serverRegistersAsSystemManagedPhoneAccountAndUsesOnlyExplicitlyLinkedNumberMetadata",
+  "incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings",
+  "missedServerCallNotificationOffersQuietCallbackAction",
+  "vanishedUnansweredIncomingCallIsDisconnectedFromSystemTelecom",
+  "telecomHangupUsesCallIdFromSystemIntentWhenActivityHasNoCallState"
+]) {
+  assert.ok(androidTests.includes(`fun ${method}(`), `Android instrumentation method ${method} must exist`);
+}
+
+assert.ok(!nativeWorkflow.includes("android12PhoneAccountCanReceiveServerCallThroughTelecom"),
+  "Android 12 must not use the old nonexistent test method selector");
+assert.ok(androidVersionMatrix.includes("-Pandroid.testInstrumentationRunnerArguments.class=com.server.caller.CallerSmokeTest"),
+  "Android 12 and Android 16 run the complete shared instrumentation suite");
+assert.ok(androidTests.includes("fun incomingServerCallPostsNativeCallStyleAlertWithRingtoneAndDndSettings"));
+assert.ok(androidTests.includes("fun missedServerCallNotificationOffersQuietCallbackAction"));
+assert.ok(androidEmulatorSmoke.includes("scripts/assert-android-test-count.py --expected-tests 23"),
+  "the main API 34 emulator must execute all 23 acceptance tests without skips or failures");
+
 for (const p of ["web/index.html","web/styles.css","web/terms.html","web/privacy.html","supabase/config.toml","supabase/functions/server-auth/index.ts","supabase/functions/server-handoff/index.ts","supabase/migrations/20261021124332_server_custom_phone_auth.sql","supabase/migrations/20261021195856_server_app_handoff.sql","supabase/migrations/20261022100500_server_device_first_identity.sql"]) assert.ok(existsSync(resolve(root,p)),"expected file "+p);
+assert.match(offlineMissedCallMigration,/server_create_missed_call_atomic/);
+assert.match(calls,/server_create_missed_call_atomic/);
+assert.match(callStateTransitionMigration,/server_guest_transition_atomic/);
+assert.match(callStateTransitionMigration,/server_call_transition_atomic/);
+assert.match(guestSingleClaimMigration,/v_invite\.joined_at is not null/);
+assert.match(guestSingleClaimMigration,/GUEST_ALREADY_JOINED/);
+assert.match(guest,/GUEST_ALREADY_JOINED/);
+assert.match(guestWeb,/details\.joined===true/);
+assert.match(liveGuestTransitionContract,/one-time guest join claim serialized/);
+
+assert.ok(activeRenegotiationMigration.includes("and v_call.state in ('ringing','connecting')"),
+  "atomic transitions preserve the locked call row if offer/answer signalling arrives after ACTIVE");
+assert.match(guestPreview,/GUEST_PREVIEW_INVITE_LOOKUP_FAILED/);
+assert.match(guestPreview,/GUEST_PREVIEW_CALL_LOOKUP_FAILED/);
+assert.match(guestPreview,/GUEST_PREVIEW_CALLER_PROFILE_LOOKUP_FAILED/);
+
+assert.match(liveGuestTransitionContract,/"join"/);
+assert.match(liveGuestTransitionContract,/og:title/);
+assert.match(liveGuestTransitionContract,/Caller=/,"live guest integration inspects caller identity metadata");
+assert.doesNotMatch(liveGuestTransitionContract,/PRIVATE CALLER/);
+assert.ok(liveGuestTransitionContract.includes("server-terms-1.0"));
+assert.doesNotMatch(liveGuestTransitionContract,/request_otp|verify_otp|server-send-sms/,
+  "the live guest lifecycle test must never queue SMS or contact a real carrier number");
+
+assert.match(callStateTransitionMigration,/revoke all on function public\.server_guest_transition_atomic/);
+assert.match(callStateTransitionMigration,/grant execute on function public\.server_call_transition_atomic/);
+assert.ok(keepAliveMigration.includes("create or replace function public.server_keepalive_probe()"));
+assert.ok(keepAliveMigration.includes("grant execute on function public.server_keepalive_probe() to anon"));
+assert.ok(keepAliveMigration.includes("notify pgrst, 'reload schema'"));
+assert.ok(activeCallLeaseMigration.includes("server_calls_active_expiry_idx"),"active call expiry is indexed for the minute maintenance worker");
+assert.ok(activeCallLeaseMigration.includes("v_now+interval '10 minutes'"),"answered and guest-joined calls receive a bounded setup-negotiation lease");
+assert.ok(activeCallLeaseMigration.includes("v_now+interval '24 hours'"),"active Server and guest calls receive a 24-hour renewable-by-transition lease");
+assert.ok(activeCallLeaseMigration.includes("state='active'") && activeCallLeaseMigration.includes("v_active_timed_out"),"maintenance fails orphaned active calls after their lease expires");
+assert.ok(activeCallLeaseMigration.includes("GUEST_ALREADY_JOINED"),"guest single-claim protection remains in the replacement transition function");
+assert.match(guestAnswerGraceMigration,/expires_at>v_now or joined_at is not null/,"a guest who joined within two minutes can finish WebRTC after the link expiry");
+assert.ok(activeCallLeaseMigration.includes("revoke all on function public.server_call_transition_atomic") && activeCallLeaseMigration.includes("grant execute on function public.server_call_transition_atomic") && activeCallLeaseMigration.includes("to service_role"),"call transition RPC remains service-role-only");
+
+assert.ok(keepAliveMigration.includes("security invoker"));
+assert.ok(keepAliveWorkflow.includes("13 */8 * * *"));
+assert.ok(keepAliveWorkflow.includes("/rest/v1/rpc/server_keepalive_probe"));
+assert.ok(keepAliveWorkflow.includes("SERVER_SUPABASE_PUBLISHABLE_KEY"));
+assert.doesNotMatch(keepAliveWorkflow,/SERVICE_ROLE|SUPABASE_SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY/);
+assert.match(guest,/db\.rpc\("server_guest_transition_atomic"/,
+  "guest join, decline, signal and leave use atomic database state transitions");
+assert.match(calls,/db\.rpc\("server_call_transition_atomic"/,
+  "Server answer, end, active state and signalling use atomic database transitions");
+assert.match(calls,/CALL_ACCESS_LOOKUP_FAILED/,
+  "TURN credentials are only issued after verifying membership in the target call");
+assert.match(guest,/CALLER_PROFILE_LOOKUP_FAILED/,
+  "guest caller-profile database errors are surfaced as service failures, not hidden");
+
+assert.match(calls,/missed_call_saved:true/);
+assert.match(calls,/GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
+assert.match(offlineInbox,/replicateRxCollection/);
+assert.match(offlineInbox,/getRxStorageDexie/);
+assert.match(offlineInbox,/rxdb@17\.6\.0/);
+assert.match(guestWeb,/syncGuestInvite/);
+assert.match(guestWeb,/server\.guest\.inbox\.v1/);
+assert.match(guestServiceWorker,/server-guest-shell-v2/);
+assert.match(guestWeb,/state==="missed"/);
+assert.match(androidMain,/call\.optString\("state"\) == "missed"/);
+assert.match(androidMain,/missed_call_saved/);
+assert.match(androidEngine,/missed_call_saved/);
+assert.match(offlineArchitecture,/private inbox per Server identity/i);
+assert.match(offlineArchitecture,/contact-wide room/i);
+assert.ok(androidUnlock.includes('am get-started-user-state 0') &&
+  androidUnlock.includes('RUNNING_UNLOCKED') &&
+  androidUnlock.includes('instrumentation then verifies the app'),
+  "the emulator unlock gate uses Android's supported unlocked-user state and leaves app-private storage verification to instrumentation");
+assert.ok(androidPackageManagerWait.includes("service check activity"),
+  "emulator readiness waits for both activity and package services before installing apps");
+assert.ok(androidEmulatorSmoke.includes("adb install -r artifacts/server-caller-debug-for-reinstall.apk"),
+  "the main API 34 emulator installs Server before proving CE storage access");
+assert.ok(nativeWorkflow.includes("adb install -r apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"),
+  "the API 29–36 matrix installs the app before the credential-encrypted storage check");
+assert.ok(android17InstallScript.includes('find "$ANDROID_HOME/build-tools"'),
+  "Android 17 validation selects a zipalign executable from the Build Tools installed in that job");
+assert.ok(android17InstallScript.includes("app_compat.enabled fatal") && android17InstallScript.includes("pm.16kb.app_compat.disabled true"),
+  "Android 17 tests disable the 16 KB back-compat fallback and fail immediately on incompatible ELF binaries");
+assert.ok(android17Preview.includes("runs-on: macos-15") && android17Preview.includes("system-images;android-37.0;google_apis_ps16k;arm64-v8a") && android17Preview.includes("arch: arm64-v8a"),
+  "Android 17 has a native ARM64 16 KB emulator job, not only an x86_64 simulation");
+assert.ok(android17Preview.includes("brew install coreutils llvm") && android17Preview.includes("brew --prefix llvm") && elfAlignmentScript.includes("llvm-readelf"),
+  "the Apple Silicon Android 17 job uses native Homebrew LLVM tools to validate native library alignment");
+assert.ok(android17InstallScript.includes("ANDROID17_DATA_AVAILABLE_KB") && android17InstallScript.includes("1048576"),
+  "Android 17 installation fails early when the emulator data partition has less than 1 GiB free");
+assert.ok(elfAlignmentScript.includes("PT_LOAD") && elfAlignmentScript.includes("0x4000"),
+  "real-device ARM64 packages receive a native ELF PT_LOAD 16 KB alignment check");
+assert.ok(nativeWorkflow.includes("check-16kb-elf-alignment.py arm64-v8a"),
+  "CI validates both physical ARM64 debug and release package native libraries");
+assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.includes("disk-size: 8G"),
+  "Android 17 ARM64 preview reserves 4 GB guest RAM and an 8 GB userdata disk on Apple Silicon");
 console.log("Server backend/web contract checks: PASS");
-console.log("Checks include device-first identity, native SIM selection, consent, Server-ID routing, legacy OTP safeguards, guest WebRTC and public-key hygiene.");
+console.log("Checks include hybrid WebRTC/SIM fallback, SIM metadata minimisation, recipient reachability, previewable guest calls, device permissions and public-key hygiene.");
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");

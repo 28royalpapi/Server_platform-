@@ -1,8 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
-const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
+const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type,x-server-session-token","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
 const out=(d:unknown,s=200)=>new Response(JSON.stringify(d),{status:s,headers:cors});
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 const phone=(v:unknown)=>typeof v==="string"&&/^\+[1-9][0-9]{7,14}$/.test(v.trim())?v.trim():null;
+function normalizeDisplayName(value:unknown):string|null {
+ if(typeof value!=="string")return null;
+ const name=value.normalize("NFKC").trim().replace(/\s+/g," ");
+ if([...name].length<2||[...name].length>60||/[<>\u0000-\u001f\u007f]/u.test(name))return null;
+ return name;
+}
 const newToken=()=>Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
 const expiry=()=>new Date(Date.now()+30*24*60*60*1000).toISOString();
 function client(){
@@ -14,7 +20,7 @@ function client(){
 }
 function ipHash(req:Request){const ip=(req.headers.get("cf-connecting-ip")||req.headers.get("x-real-ip")||(req.headers.get("x-forwarded-for")||"unknown").split(",")[0].trim()||"unknown").slice(0,160);return sha("server-auth-ip:"+ip);}
 async function bearer(req:Request,db:any,allowExpiredForRefresh=false){
- const token=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"";
+ const token=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
  if(!/^[0-9a-f]{64}$/.test(token))return null;
  const hash=await sha(token);
  // A client may be offline when its session expires. Permit a short grace window
@@ -43,6 +49,8 @@ Deno.serve(async(req:Request)=>{
    if(b.accepted_terms!==true||b.terms_version!=="server-terms-1.0"||b.privacy_version!=="server-privacy-1.0"){
     return out({error:"LEGAL_ACCEPTANCE_REQUIRED"},400);
    }
+   const requestedDisplayName=normalizeDisplayName(b.display_name);
+   if(typeof b.display_name==="string"&&!requestedDisplayName)return out({error:"INVALID_DISPLAY_NAME"},400);
    const secretHash=await sha(deviceSecret);
    let identity:any=null;
    const {data:existing,error:existingError}=await db.from("server_device_identities").select("installation_id,secret_hash,user_id,revoked_at").eq("installation_id",installationId).maybeSingle();
@@ -57,6 +65,7 @@ Deno.serve(async(req:Request)=>{
     }).eq("installation_id",installationId);
     if(updateError)return out({error:"DEVICE_UPDATE_FAILED"},503);
    }else{
+    if(!requestedDisplayName)return out({error:"DISPLAY_NAME_REQUIRED"},400);
     const {data:limitData,error:limitError}=await db.rpc("server_rate_limit_allow",{
       p_scope:"device-bootstrap",
       p_key_hash:await ipHash(req),
@@ -66,8 +75,8 @@ Deno.serve(async(req:Request)=>{
     if(limitError)return out({error:"DEVICE_REGISTRATION_UNAVAILABLE"},503);
     if(limitData!==true)return out({error:"DEVICE_REGISTRATION_RATE_LIMITED"},429);
     const {data:profile,error:profileError}=await db.from("server_profiles")
-      .insert({phone_e164:null})
-      .select("user_id,server_id,phone_e164,phone_verified_at")
+      .insert({phone_e164:null,display_name:requestedDisplayName})
+      .select("user_id,server_id,phone_e164,phone_verified_at,display_name")
       .single();
     if(profileError||!profile)return out({error:"DEVICE_PROFILE_CREATE_FAILED"},503);
     const {data:created,error:createError}=await db.from("server_device_identities").insert({
@@ -84,9 +93,15 @@ Deno.serve(async(req:Request)=>{
     identity=created;
    }
    const {data:profile,error:profileError}=await db.from("server_profiles")
-    .select("user_id,server_id,phone_e164,phone_verified_at")
+    .select("user_id,server_id,phone_e164,phone_verified_at,display_name")
     .eq("user_id",identity.user_id).maybeSingle();
    if(profileError||!profile)return out({error:"DEVICE_PROFILE_LOOKUP_FAILED"},503);
+   if(requestedDisplayName&&requestedDisplayName!==profile.display_name){
+    const {error:nameError}=await db.from("server_profiles").update({display_name:requestedDisplayName,updated_at:new Date().toISOString()}).eq("user_id",identity.user_id);
+    if(nameError)return out({error:"DISPLAY_NAME_SAVE_FAILED"},503);
+    profile.display_name=requestedDisplayName;
+   }
+   if(!profile.display_name)return out({error:"DISPLAY_NAME_REQUIRED"},409);
    const {error:legalError}=await db.from("server_profiles").update({
     accepted_terms_version:"server-terms-1.0",
     accepted_privacy_version:"server-privacy-1.0",
@@ -102,7 +117,7 @@ Deno.serve(async(req:Request)=>{
    if(sessionError)return out({error:"SESSION_CREATE_FAILED"},503);
    return out({
     ok:true,access_token:access,token_type:"Bearer",expires_at:validUntil,
-    user:{id:profile.user_id,server_id:profile.server_id,phone:profile.phone_e164,phone_verified_at:profile.phone_verified_at}
+    user:{id:profile.user_id,server_id:profile.server_id,display_name:profile.display_name,phone:profile.phone_e164,phone_verified_at:profile.phone_verified_at}
    });
   }
   if(action==="request_otp"){
@@ -213,7 +228,7 @@ Deno.serve(async(req:Request)=>{
    return out({ok:true,access_token:session.token,token_type:"Bearer",expires_at:validUntil});
   }
   if(action==="me"){
-   const {data:profile,error}=await db.from("server_profiles").select("user_id,server_id,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
+   const {data:profile,error}=await db.from("server_profiles").select("user_id,server_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls,accepted_terms_version,accepted_privacy_version,accepted_legal_at,notifications_enabled,contacts_access_requested").eq("user_id",session.user_id).maybeSingle();
    if(error||!profile)return out({error:"PROFILE_LOOKUP_FAILED"},503);
    await db.from("server_sessions").update({last_seen_at:new Date().toISOString()}).eq("id",session.id);
    return out({ok:true,user:profile});

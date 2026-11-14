@@ -10,15 +10,16 @@ import android.app.PendingIntent
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.widget.Toast
+import android.text.Editable
+import android.text.TextWatcher
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Bundle
-import java.util.UUID
-import java.security.SecureRandom
-import android.widget.CheckBox
-import android.telephony.SubscriptionManager
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -57,6 +58,22 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
+/** Server voice calls require an internet-capable route; the authenticated API verifies reachability. */
+@Suppress("UNUSED_PARAMETER")
+internal fun isServerInternetUsable(hasInternetCapability: Boolean, isValidated: Boolean): Boolean {
+  // NET_CAPABILITY_VALIDATED depends on Android's captive-portal probe. Some carrier
+  // networks and OEM builds leave it false even when app traffic can reach the internet.
+  // INTERNET is a better admission check; the authenticated Server request below is
+  // the real end-to-end connectivity test and reports failures explicitly.
+  return hasInternetCapability
+}
+
+internal fun isServerInternetUsable(capabilities: NetworkCapabilities?): Boolean =
+  isServerInternetUsable(
+    capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+    capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+  )
+
 /** Native Server client. Auth and signalling are genuine Supabase endpoints; no demo OTP is generated here. */
 class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private val prefs by lazy { getSharedPreferences("server-session", Context.MODE_PRIVATE) }
@@ -65,26 +82,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var accessExpiry: Long = 0
   private var currentPhone = ""
 
-  private lateinit var simChoices: LinearLayout
-  private lateinit var termsCheck: CheckBox
-  private lateinit var continueSetupButton: Button
-  private lateinit var simSetupHint: TextView
   private var currentServerId = ""
-  private var selectedSimSubscriptionId = -1
-  private var selectedSimSlot: Int? = null
-  private var selectedSimCarrier = ""
-  private var selectedSimPhone = ""
-  private var hasActiveSimChoices = false
-
-  private val askSimPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-    renderSimChoices()
-  }
   private var callId: String? = null
-  private var callStartedAt = 0L
-  private var carrierFallbackPhone: String? = null
-  private var carrierFallbackOfferedFor: String? = null
   private var activeStateSyncedFor: String? = null
   private var pendingDialedNumber: String? = null
+  // A system Phone-app call must not background this Activity until the actual
+  // Server request/media offer has been prepared. Guest invitations need the
+  // foreground Activity to show Android's share chooser.
+  private var pendingSystemDialerReturn = false
   private var currentRoute = "server"
   private var lastSeq = 0L
   private var peer: PeerConnection? = null
@@ -96,22 +101,32 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var incomingJob: Job? = null
   private val shownIncoming = mutableSetOf<String>()
   private var callIceServers = JSONArray()
+  private var callIceServerMode = "stun-only"
   private val pendingIce = mutableListOf<IceCandidate>()
 
   private lateinit var root: LinearLayout
-  private lateinit var phoneInput: EditText
-  private lateinit var otpInput: EditText
   private lateinit var targetInput: EditText
+  private lateinit var recipientAvailabilityText: TextView
+  private var availabilityCheckJob: Job? = null
   private lateinit var statusText: TextView
   private lateinit var authPanel: LinearLayout
   private lateinit var callPanel: LinearLayout
-  private lateinit var sendOtpButton: Button
-  private lateinit var verifyButton: Button
   private lateinit var callButton: Button
   private lateinit var hangupButton: Button
 
+  private val guestShareLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+    // Return to Android's Phone app only after the foreground share chooser has
+    // completed. Launching the chooser from a background Activity is blocked on
+    // modern Android and some OEM builds.
+    returnToSystemPhoneUi()
+  }
+
   private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
     if (!granted) {
+      if (pendingSystemDialerReturn) {
+        pendingSystemDialerReturn = false
+        ServerTelecomRegistry.markEnded()
+      }
       setStatus("Microphone permission is required to place or answer calls.", true)
     } else if (::targetInput.isInitialized && targetInput.text.toString().isNotBlank() && callId == null) {
       // Continue the call action that triggered the permission prompt instead of
@@ -121,27 +136,41 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    // Android Telecom enters this Activity only as a call-routing bridge. The
+    // visible call surface belongs to Android Phone, not Server's internal form.
+    val systemCallEntry = intent?.getStringExtra("server_action") in
+      setOf("dial", "incoming", "answer", "decline", "hangup", "missed_callback")
+    if (systemCallEntry) setTheme(R.style.ServerCallRouterTheme)
     super.onCreate(savedInstanceState)
     accessToken = prefs.getString("access_token", null)
     refreshToken = prefs.getString("refresh_token", null)
     accessExpiry = prefs.getLong("access_expiry", 0L)
     currentPhone = prefs.getString("phone", "") ?: ""
     currentServerId = prefs.getString("server_id", "") ?: ""
-    selectedSimSlot = prefs.getInt("selected_sim_slot", -1).takeIf { it >= 0 }
-    selectedSimCarrier = prefs.getString("selected_sim_carrier", "") ?: ""
-    selectedSimPhone = prefs.getString("selected_sim_phone", "") ?: ""
-    selectedSimSubscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
+    // Refresh push registration on each app entry. This registers the receiver
+    // after notifications are enabled, and removes it after permission is revoked.
+    if (!accessToken.isNullOrBlank()) ServerPushRegistration.syncFcmToken(this)
     buildUi()
+    if (systemCallEntry) {
+      // Never replace the user's Phone app with the internal "Server call engine"
+      // page or show the dialled contact number in a second, app-owned screen.
+      root.visibility = View.GONE
+      window.setBackgroundDrawableResource(android.R.color.transparent)
+      window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+      window.setDimAmount(0f)
+      prefs.edit().putBoolean("debug_telecom_router_hidden", true).apply()
+    } else {
+      prefs.edit().putBoolean("debug_telecom_router_hidden", false).apply()
+    }
     if (!configured()) setStatus("Add the Server Supabase URL and publishable key to the build configuration.", true)
     else if (!accessToken.isNullOrBlank()) showSignedIn()
-    else renderSimChoices()
+    else showSetupRequired()
     handleTelecomIntent(intent)
     handleAppLink(intent)
     // When Android's Phone app launches us as a Telecom call provider, process the
     // call command and immediately yield the visible surface back to the system dialer.
     // The native caller must not replace the user's normal phone/call UI.
     yieldToSystemPhoneUi(intent)
-    // Ask for SIM and microphone permissions only after an explicit user action.
   }
 
   private fun configured(): Boolean = BuildConfig.SUPABASE_URL.startsWith("https://") &&
@@ -159,55 +188,68 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     setContentView(scroll)
     root.addView(TextView(this).apply { text = "SERVER"; textSize = 12f; setTextColor(0xFF18C879.toInt()); letterSpacing = .18f })
     root.addView(TextView(this).apply { text = "Calling, made natural"; textSize = 30f; setTextColor(0xFFF3F7FB.toInt()); setPadding(0, dp(6), 0, dp(4)) })
-    root.addView(TextView(this).apply { text = "Choose a carrier SIM for setup. Server itself makes calls over the internet."; textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20)) })
+    root.addView(TextView(this).apply {
+      text = "Server works with your phone’s calling system. Your existing SIMs and mobile data remain yours."
+      textSize = 14f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(20))
+    })
 
     statusText = TextView(this).apply { textSize = 13f; setTextColor(0xFFFFDFA3.toInt()); setPadding(dp(13), dp(12), dp(13), dp(12)); visibility = View.GONE }
     root.addView(statusText, matchWrap())
 
     authPanel = panel()
     root.addView(authPanel, matchWrap())
-    authPanel.addView(label("Choose the SIM to associate with this device"))
+    authPanel.addView(label("Complete setup on the Server website"))
     authPanel.addView(TextView(this).apply {
-      text = "Server reads SIM details only inside this Android app, with your permission. Selecting a SIM does not clone its number or create a cellular line; Server creates a separate internet-calling identity."
+      text = "Create your Server ID on the website. No SIM selection or phone-number reading is required. Server calls use mobile data or Wi-Fi; if the recipient cannot be reached, Server reports the attempt as unreachable and never switches it to a cellular SIM."
       textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(12))
     }, matchWrap())
-    simSetupHint = TextView(this).apply {
-      text = "Checking SIM options…"; textSize = 13f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, 0, 0, dp(10))
-    }
-    authPanel.addView(simSetupHint, matchWrap())
-    simChoices = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-    authPanel.addView(simChoices, matchWrap())
-    authPanel.addView(button("Detect SIM cards / grant permission") { ensureSimPermissions() }, matchWrap())
-    termsCheck = CheckBox(this).apply {
-      text = "I accept Server's Terms of Service and acknowledge its Privacy Notice."
-      setTextColor(0xFFE6EDF5.toInt())
-      buttonTintList = android.content.res.ColorStateList.valueOf(0xFF18C879.toInt())
-    }
-    authPanel.addView(termsCheck, matchWrap())
-    continueSetupButton = button("Continue with selected SIM — no SMS OTP") { registerDevice() }.apply {
-      isEnabled = false
-    }
-    authPanel.addView(continueSetupButton, matchWrap())
-    authPanel.addView(button("Read Terms and Privacy Notice") {
-      startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://server-onboarding-ochre.vercel.app/terms.html")))
+    authPanel.addView(button("Open Server setup") {
+      startActivity(Intent(this, ServerSetupWebActivity::class.java))
     }, matchWrap())
-    termsCheck.setOnCheckedChangeListener { _, checked ->
-      continueSetupButton.isEnabled = checked && selectedSimSubscriptionId >= 0
-      continueSetupButton.text = if (selectedSimSubscriptionId >= 0) "Continue with selected SIM — no SMS OTP" else "SIM required — cannot continue"
-    }
 
     callPanel = panel().apply { visibility = View.GONE }
     root.addView(callPanel, matchWrap())
-    callPanel.addView(label("Call a number"))
-    targetInput = field("SVR-XXXXXXXXXX or +234...", "", false).apply { id = R.id.server_target }
+    callPanel.addView(label("Server call engine"))
+    targetInput = field("Server ID or phone number", "", false).apply { id = R.id.server_target }
     callPanel.addView(targetInput, matchWrap())
+    recipientAvailabilityText = TextView(this).apply {
+      text = "Recipient availability will be checked as you enter a Server ID or phone number."
+      textSize = 12f
+      setTextColor(0xFF9AABBC.toInt())
+      setPadding(dp(13), dp(11), dp(13), dp(11))
+      setBackgroundColor(0xFF152334.toInt())
+      accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    }
+    callPanel.addView(recipientAvailabilityText, matchWrap())
+    targetInput.addTextChangedListener(object : TextWatcher {
+      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+      override fun afterTextChanged(s: Editable?) {
+        availabilityCheckJob?.cancel()
+        val target = s?.toString()?.trim().orEmpty()
+        if (target.isBlank()) {
+          renderRecipientAvailability(null, "Enter a destination to check whether Server can currently reach it.")
+          return
+        }
+        // The system Phone app owns the visible dialling UI for Telecom-originated
+        // calls. Never start an extra availability Activity/request from that path.
+        if (root.visibility != View.VISIBLE || callId != null || accessToken.isNullOrBlank()) return
+        availabilityCheckJob = lifecycleScope.launch {
+          delay(650)
+          checkRecipientAvailability(target)
+        }
+      }
+    })
     callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
-    callPanel.addView(button("Enable Server in phone app") { enableCallingAccount() }, matchWrap())
+callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
     callPanel.addView(button("Sign out") { signOut() }, matchWrap())
-    callPanel.addView(TextView(this).apply { text = "Server-to-Server calls use a Server ID. Calling a non-Server number still needs a guest link and internet, and SMS invitations need an active gateway. Server is an internet-calling account, not a SIM/eSIM."; textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0) })
+    callPanel.addView(TextView(this).apply {
+      text = "Server calls use the internet only. Online recipients are reached through WebRTC over mobile data or Wi-Fi; recipients without a live Server or guest-browser receiver are shown as unreachable. Guest invitations are shared as secure browser links—Server does not switch calls to a mobile operator."
+      textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0)
+    })
   }
 
   // Avoid relying on a UI framework; all UI widgets are native Android views.
@@ -230,6 +272,73 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private fun matchWrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
   private fun dp(x: Int) = (x * resources.displayMetrics.density).toInt()
 
+  private fun renderRecipientAvailability(
+    availability: JSONObject?,
+    fallbackMessage: String? = null
+  ) {
+    if (!::recipientAvailabilityText.isInitialized) return
+    val status = availability?.optString("status").orEmpty()
+    val reachable = ServerRecipientReachability.isFresh(status)
+    val wakeCandidate = status == "background_reachable"
+    val unknownGuest = ServerRecipientReachability.isUnknownGuest(status)
+    val message = when {
+      status.isBlank() -> fallbackMessage ?: "Checking Server reachability…"
+      reachable -> "REACHABLE · SERVER / WEBRTC"
+      wakeCandidate -> "NOT CONFIRMED · SERVER WAKE"
+      unknownGuest -> "GUEST INVITATION · INTERNET STATUS UNKNOWN"
+      else -> "UNREACHABLE · SERVER RECEIVER"
+    }
+    val detail = when (status) {
+      "online" -> "A fresh authenticated Server internet heartbeat is available; WebRTC can be attempted."
+      "background_reachable" -> "A push registration exists, but a live internet heartbeat is not confirmed. Server will wait for the recipient to confirm its internet connection before treating it as reachable."
+      "offline" -> "This Server user has no fresh authenticated internet heartbeat and is currently unreachable on Server."
+      "unknown_guest" -> "This number has no active guest-browser receiver yet. Share the secure browser invitation; when the recipient opens it, enables call alerts and remains connected to the internet, Server can reach that browser through WebRTC."
+      else -> ""
+    }
+    val colour = when {
+      status.isBlank() -> 0xFF9AABBC.toInt()
+      reachable -> 0xFF8DE9B9.toInt()
+      unknownGuest -> 0xFF9AABBC.toInt()
+      else -> 0xFFFFDFA3.toInt()
+    }
+    recipientAvailabilityText.text = if (detail.isBlank()) message else "$message\n$detail"
+    recipientAvailabilityText.setTextColor(colour)
+  }
+
+  private suspend fun checkRecipientAvailability(rawTarget: String) {
+    val target = rawTarget.trim()
+    if (target.isBlank()) return
+    val serverId = target.uppercase()
+    val isServerId = Regex("^SVR-[0-9A-F]{10}$").matches(serverId)
+    val normalizedPhone = if (isServerId) null else normalizePhoneForServer(target)
+    if (!isServerId && normalizedPhone == null) {
+      renderRecipientAvailability(
+        null,
+        "Enter a valid Server ID or phone number with its country code to check availability."
+      )
+      return
+    }
+    renderRecipientAvailability(null, "Checking the recipient's Server receiver…")
+    try {
+      val payload = if (isServerId) {
+        JSONObject().put("to_server_id", serverId)
+      } else {
+        JSONObject().put("to_phone", normalizedPhone)
+      }
+      val result = api("availability", payload)
+      // Ignore a slower response if the caller has already changed the destination.
+      if (targetInput.text.toString().trim() != target) return
+      renderRecipientAvailability(result.optJSONObject("recipient_availability"))
+    } catch (error: Exception) {
+      if (targetInput.text.toString().trim() == target) {
+        renderRecipientAvailability(
+          null,
+          "Could not confirm availability. Server will check again when you press Call."
+        )
+      }
+    }
+  }
+
   private fun setStatus(message: String, error: Boolean = false) {
     runOnUiThread {
       statusText.text = message
@@ -239,17 +348,25 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
   }
 
+  private fun showSetupRequired() {
+    authPanel.visibility = View.VISIBLE
+    callPanel.visibility = View.GONE
+    setStatus("This phone has no active Server session yet. Finish identity setup on the Server website; no SIM selection or SMS OTP is required.", true)
+  }
+
   private fun showSignedIn() {
     authPanel.visibility = View.GONE
     callPanel.visibility = View.VISIBLE
     targetInput.setText("")
-    if (ServerTelecomRegistry.isEnabled(this)) {
-      ServerIncomingCallService.start(this)
-    } else if (incomingJob?.isActive != true) {
-      incomingJob = lifecycleScope.launch { incomingLoop() }
-    }
+    ServerPushRegistration.syncFcmToken(this)
+    // Keep the signed-in incoming listener alive without querying protected
+    // SIM/phone-state APIs. Telecom itself confirms whether the account is enabled
+    // when an incoming call is reported; rejected calls use Server's CallStyle alert.
+    incomingJob?.cancel()
+    incomingJob = null
+    ServerIncomingCallService.start(this)
     val id = currentServerId.ifBlank { "Server ID loading" }
-    setStatus("Your Server ID is $id. This is your Server internet-calling identity; the selected mobile number remains on your carrier SIM.")
+    setStatus("Your Server ID is $id. This is your internet-calling identity; your existing mobile subscriptions remain unchanged.")
     lifecycleScope.launch {
       try {
         val result = api("me")
@@ -262,7 +379,10 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         }
       } catch (_: Exception) {}
       try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
-      if (ServerTelecomRegistry.isEnabled(this@MainActivity)) ServerIncomingCallService.start(this@MainActivity)
+      ServerIncomingCallService.start(this@MainActivity)
+      // Re-sync after the authenticated /me request in case it refreshed the
+      // Server session while the first token-registration attempt was running.
+      ServerPushRegistration.syncFcmToken(this@MainActivity)
     }
     pendingDialedNumber?.let { number ->
       pendingDialedNumber = null
@@ -279,45 +399,68 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     } catch (e: Exception) { setStatus("Could not register the Server calling account: ${e.message}", true) }
   }
 
+  override fun onResume() {
+    super.onResume()
+    // A transient registration failure is retried when the user returns to Server.
+    if (accessToken.isNullOrBlank()) return
+    ServerPushRegistration.syncFcmToken(this)
+
+    // The user may have just returned from Android's Calling accounts settings.
+    // Re-read the OS-owned PhoneAccount state and start the persistent incoming
+    // listener only after Server has actually been enabled there.
+    incomingJob?.cancel()
+    incomingJob = null
+    ServerIncomingCallService.start(this)
+  }
+
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
+    if (intent.getStringExtra("server_action") in setOf("dial", "incoming", "answer", "decline", "hangup", "missed_callback")) {
+      root.visibility = View.GONE
+      window.setBackgroundDrawableResource(android.R.color.transparent)
+      window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+      window.setDimAmount(0f)
+      prefs.edit().putBoolean("debug_telecom_router_hidden", true).apply()
+    }
     handleTelecomIntent(intent)
     handleAppLink(intent)
-    if (ServerTelecomRegistry.isEnabled(this)) {
-      incomingJob?.cancel()
-      incomingJob = null
-      ServerIncomingCallService.start(this)
-    }
+    incomingJob?.cancel()
+    incomingJob = null
+    ServerIncomingCallService.start(this)
     yieldToSystemPhoneUi(intent)
   }
 
   private fun yieldToSystemPhoneUi(incoming: Intent?) {
     // A call selected inside Server's own dialer must leave the call engine visible.
-    // Only calls launched from Android's external Telecom UI should background this activity.
     if (incoming?.getBooleanExtra("sava_dialer_launch", false) == true) return
     val action = incoming?.getStringExtra("server_action") ?: return
     if (action !in setOf("dial", "incoming", "answer", "decline", "hangup")) return
-    // The system-owned call UI is already foreground. For an outgoing dial request,
-    // give the queued engine coroutine time to reload the session and enter startCall
-    // before backgrounding this Activity; immediate task-backgrounding can race the
-    // Telecom handoff on Android 14 and OEM task schedulers.
-    val delayMillis = if (action == "dial") 1_500L else 300L
+    if (action == "dial" || action == "answer") {
+      // Do not race a fixed timer against DNS, mobile-network validation, auth refresh,
+      // permission UI, WebRTC initialisation or SDP creation. The matching call flow
+      // returns to the Phone app only after its setup succeeds.
+      pendingSystemDialerReturn = true
+      recordTelecomDebugStage("telecom_ui_return_deferred")
+      return
+    }
     root.postDelayed({
       if (!isFinishing && !isDestroyed) moveTaskToBack(true)
-    }, delayMillis)
+    }, 300L)
+  }
+
+  private fun returnToSystemPhoneUi() {
+    if (!pendingSystemDialerReturn) return
+    pendingSystemDialerReturn = false
+    recordTelecomDebugStage("telecom_ui_return_after_call_setup")
+    root.post {
+      if (!isFinishing && !isDestroyed) moveTaskToBack(true)
+    }
   }
 
   private fun handleAppLink(incoming: Intent?) {
     val uri = incoming?.data ?: return
     if (uri.scheme != "server") return
-    if (uri.host == "sim-setup") {
-      authPanel.visibility = View.VISIBLE
-      callPanel.visibility = View.GONE
-      renderSimChoices()
-      setStatus("Tap Detect SIM cards / grant permission to choose a mobile SIM. Server setup does not require SMS OTP.")
-      return
-    }
     if (uri.host != "setup") return
     val code = uri.getQueryParameter("handoff").orEmpty()
     if (!Regex("^[0-9a-f]{64}$").matches(code)) {
@@ -401,163 +544,42 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
         val id = intent.getStringExtra("server_call_id").orEmpty()
         if (id.isNotBlank()) lifecycleScope.launch { declineCall(id) }
       }
-      "hangup" -> lifecycleScope.launch { endCall() }
+      "missed_callback" -> {
+        val target = intent.getStringExtra("server_caller_id").orEmpty()
+        if (target.isNotBlank() && target != "Server caller") {
+          targetInput.setText(target)
+          lifecycleScope.launch { delay(150); startCall() }
+        } else {
+          setStatus("The caller's Server ID is unavailable. Open Server to choose a contact.", true)
+        }
+      }
+      "hangup" -> lifecycleScope.launch { endCall(intent.getStringExtra("server_call_id")) }
     }
   }
 
   private fun mask(value: String) = if (value.length > 6) value.take(4) + "••••" + value.takeLast(3) else value
 
-  private fun ensureSimPermissions() {
-    val needed = mutableListOf<String>()
-    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
-    if (checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_NUMBERS)
-    if (needed.isNotEmpty()) askSimPermissions.launch(needed.toTypedArray()) else renderSimChoices()
-  }
-
-  @Suppress("MissingPermission", "DEPRECATION")
-  private fun renderSimChoices() {
-    if (!::simChoices.isInitialized) return
-    simChoices.removeAllViews()
-    val savedSubscriptionId = selectedSimSubscriptionId
-    val savedSlot = selectedSimSlot
-    val savedCarrier = selectedSimCarrier
-    val savedPhone = selectedSimPhone
-    selectedSimSubscriptionId = -1
-    selectedSimSlot = null
-    selectedSimCarrier = ""
-    selectedSimPhone = ""
-    hasActiveSimChoices = false
-    val permissions = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
-      checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
-    if (!permissions) {
-      simSetupHint.text = "SIM access has not been granted yet. Tap Detect SIM cards / grant permission to see your SIM slots, carriers and any number Android exposes."
-      continueSetupButton.text = "SIM required — cannot continue"
-      continueSetupButton.isEnabled = false
-      return
-    }
-    val manager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-    val subscriptions = try { manager.activeSubscriptionInfoList.orEmpty() } catch (_: SecurityException) { emptyList() }
-    hasActiveSimChoices = subscriptions.isNotEmpty()
-    if (subscriptions.any { it.subscriptionId == savedSubscriptionId } && savedSlot != null) {
-      selectedSimSubscriptionId = savedSubscriptionId
-      selectedSimSlot = savedSlot
-      selectedSimCarrier = savedCarrier
-      selectedSimPhone = savedPhone
-    }
-    if (subscriptions.isEmpty()) {
-      simSetupHint.text = "No active SIM was exposed by Android. Insert or activate a SIM, then detect SIMs again. Server setup cannot continue without selecting one."
-      continueSetupButton.text = "SIM required — cannot continue"
-      continueSetupButton.isEnabled = false
-      return
-    }
-    simSetupHint.text = "Choose one SIM explicitly. The number may be hidden by Android or your carrier; Server does not use it as proof of ownership."
-    for (info in subscriptions.sortedBy { it.simSlotIndex }) {
-      val carrier = info.carrierName?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "Unknown carrier"
-      val number = try {
-        if (Build.VERSION.SDK_INT >= 33) manager.getPhoneNumber(info.subscriptionId) else info.number
-      } catch (_: Exception) { "" }?.trim().orEmpty()
-      val slot = info.simSlotIndex
-      val labelText = "SIM ${slot + 1} · $carrier" + if (number.isNotBlank()) "\n$number" else "\nNumber not exposed by Android"
-      val choice = button(labelText) {
-        selectedSimSubscriptionId = info.subscriptionId
-        selectedSimSlot = slot
-        selectedSimCarrier = carrier
-        selectedSimPhone = number
-        prefs.edit().putInt("selected_sim_subscription_id", info.subscriptionId)
-          .putInt("selected_sim_slot", slot).putString("selected_sim_carrier", carrier)
-          .putString("selected_sim_phone", number).apply()
-        continueSetupButton.text = "Continue with SIM ${slot + 1} — no SMS OTP"
-        continueSetupButton.isEnabled = termsCheck.isChecked
-        setStatus("Selected SIM ${slot + 1} ($carrier). Server will not clone or claim its number.")
-      }
-      choice.setBackgroundTintList(android.content.res.ColorStateList.valueOf(if (slot == selectedSimSlot) 0xFF0DAA62.toInt() else 0xFF18C879.toInt()))
-      simChoices.addView(choice, matchWrap())
-    }
-    continueSetupButton.text = if (selectedSimSlot != null) "Continue with selected SIM — no SMS OTP" else "Select a SIM to continue"
-    continueSetupButton.isEnabled = termsCheck.isChecked && selectedSimSlot != null
-  }
-
-  private fun deviceCredential(): Pair<String, String> {
-    val existingId = prefs.getString("installation_id", null)
-    val existingSecret = prefs.getString("device_secret", null)
-    if (!existingId.isNullOrBlank() && !existingSecret.isNullOrBlank()) return existingId to existingSecret
-    val id = UUID.randomUUID().toString()
-    val bytes = ByteArray(32)
-    SecureRandom().nextBytes(bytes)
-    val secret = bytes.joinToString("") { "%02x".format(it) }
-    prefs.edit().putString("installation_id", id).putString("device_secret", secret).apply()
-    return id to secret
-  }
-
-  private fun registerDevice() = lifecycleScope.launch {
-    if (!termsCheck.isChecked) { setStatus("Please accept the Terms and acknowledge the Privacy Notice.", true); return@launch }
-    if (selectedSimSubscriptionId < 0) { setStatus("Select an active SIM before creating your Server identity.", true); return@launch }
-    continueSetupButton.isEnabled = false
-    try {
-      val (installationId, deviceSecret) = deviceCredential()
-      val payload = JSONObject()
-        .put("action", "register_device")
-        .put("installation_id", installationId)
-        .put("device_secret", deviceSecret)
-        .put("accepted_terms", true)
-        .put("terms_version", "server-terms-1.0")
-        .put("privacy_version", "server-privacy-1.0")
-      selectedSimSlot?.let { payload.put("selected_sim_slot", it) }
-      if (selectedSimCarrier.isNotBlank()) payload.put("selected_sim_carrier", selectedSimCarrier)
-      val result = authRequest("/functions/v1/server-auth", payload, false)
-      accessToken = result.optString("access_token").takeIf { it.isNotBlank() }
-        ?: throw IllegalStateException("Server did not create a device session.")
-      val user = result.optJSONObject("user") ?: throw IllegalStateException("Server did not return your Server identity.")
-      currentServerId = user.optString("server_id")
-      if (!Regex("^SVR-[0-9A-F]{10}$").matches(currentServerId)) throw IllegalStateException("Server returned an invalid Server ID.")
-      currentPhone = ""
-      accessExpiry = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond }
-        catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
-      prefs.edit().putString("access_token", accessToken).remove("refresh_token")
-        .putLong("access_expiry", accessExpiry).putString("server_id", currentServerId).remove("phone").apply()
-      showSignedIn()
-      try { ServerTelecomRegistry.register(this@MainActivity) } catch (_: Exception) {}
-      setStatus("Setup complete. Your Server ID is $currentServerId. Server is registered as an internet-calling account, not a copied SIM line.")
-    } catch (e: Exception) {
-      setStatus(e.message ?: "Device-first setup failed.", true)
-      continueSetupButton.isEnabled = termsCheck.isChecked && selectedSimSubscriptionId >= 0
-    }
-  }
-
-  private fun requestOtp() = lifecycleScope.launch {
-    val phone = phoneInput.text.toString().trim().replace(" ", "")
-    if (!configured()) { setStatus("Supabase is not configured for this build.", true); return@launch }
-    if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(phone)) { setStatus("Enter the full phone number with country code, e.g. +2348012345678.", true); return@launch }
-    sendOtpButton.isEnabled = false
-    try {
-      authRequest("/functions/v1/server-auth", JSONObject().put("action", "request_otp").put("phone", phone), false)
-      currentPhone = phone; prefs.edit().putString("phone", phone).apply()
-      setStatus("A real SMS OTP has been queued through the paired SIM gateway. Check this handset; if the gateway is offline, the request fails instead.")
-    } catch (e: Exception) { setStatus(e.message ?: "OTP request failed.", true) }
-    finally { sendOtpButton.isEnabled = true }
-  }
-
-  private fun verifyOtp() = lifecycleScope.launch {
-    val phone = currentPhone.ifBlank { phoneInput.text.toString().trim().replace(" ", "") }
-    val token = otpInput.text.toString().trim()
-    if (token.length != 6 || !token.all(Char::isDigit)) { setStatus("Enter the digits received by SMS.", true); return@launch }
-    verifyButton.isEnabled = false
-    try {
-      val result = authRequest("/functions/v1/server-auth", JSONObject().put("action", "verify_otp").put("phone", phone).put("code", token), false)
-      accessToken = result.optString("access_token").takeIf { it.isNotBlank() }
-      refreshToken = result.optString("refresh_token").takeIf { it.isNotBlank() }
-      accessExpiry = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond } catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
-      if (accessToken.isNullOrBlank()) throw IllegalStateException("OTP verification did not return a Server session.")
-      prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).putString("phone", phone).apply()
-      otpInput.setText(""); showSignedIn()
-    } catch (e: Exception) { setStatus(e.message ?: "OTP verification failed.", true) }
-    finally { verifyButton.isEnabled = true }
-  }
-
   private suspend fun authRequest(path: String, body: JSONObject, bearer: Boolean = false): JSONObject = http(path, body, bearer)
   private suspend fun api(action: String, payload: JSONObject = JSONObject()): JSONObject {
     ensureFreshSession()
-    return http("/functions/v1/server-calls", payload.put("action", action), true)
+    val requestBody = JSONObject(payload.toString()).put("action", action)
+    return try {
+      http("/functions/v1/server-calls", requestBody, true)
+    } catch (error: ServerCallApiException) {
+      if (error.httpStatus != 401) throw error
+      // A server-side session revocation or long-offline expiry can happen before
+      // the locally cached expiry. Revalidate the device identity once, then retry
+      // the original authenticated operation exactly once.
+      val recovered = withContext(Dispatchers.IO) {
+        ServerDeviceSessionManager.ensureFresh(
+          this@MainActivity, accessToken, accessExpiry, prefs, forceRefresh = true
+        )
+      }
+      accessToken = recovered.accessToken
+      accessExpiry = recovered.expiresAtEpochSeconds
+      recovered.serverId?.let { currentServerId = it }
+      http("/functions/v1/server-calls", requestBody, true)
+    }
   }
   private suspend fun http(path: String, body: JSONObject, bearer: Boolean): JSONObject = withContext(Dispatchers.IO) {
     val project = BuildConfig.SUPABASE_URL.trimEnd('/')
@@ -565,7 +587,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       requestMethod = "POST"; connectTimeout = 15000; readTimeout = 20000; doOutput = true
       setRequestProperty("content-type", "application/json")
       setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-      if (bearer && !accessToken.isNullOrBlank()) setRequestProperty("authorization", "Bearer $accessToken")
+      if (bearer && !accessToken.isNullOrBlank()) setRequestProperty("x-server-session-token", accessToken)
     }
     try {
       connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
@@ -575,119 +597,113 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
       if (code !in 200..299) {
         val reason = result.optString("msg", result.optString("message", result.optString("error", "HTTP $code")))
-        throw IllegalStateException("$reason (HTTP $code)")
+        throw ServerCallApiException(code, result, reason)
       }
       result
     } finally { connection.disconnect() }
   }
 
   private suspend fun ensureFreshSession() {
-    if (accessToken.isNullOrBlank()) throw IllegalStateException("Verify your phone first.")
-    if (accessExpiry > System.currentTimeMillis() / 1000 + 90) return
-    val res = http("/functions/v1/server-auth", JSONObject().put("action", "refresh"), true)
-    accessToken = res.optString("access_token")
+    val session = withContext(Dispatchers.IO) {
+      ServerDeviceSessionManager.ensureFresh(this@MainActivity, accessToken, accessExpiry, prefs)
+    }
+    accessToken = session.accessToken
     refreshToken = null
-    accessExpiry = try { java.time.Instant.parse(res.optString("expires_at")).epochSecond } catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
-    prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).putLong("access_expiry", accessExpiry).apply()
+    accessExpiry = session.expiresAtEpochSeconds
+    session.serverId?.let {
+      currentServerId = it
+      prefs.edit().putString("server_id", it).apply()
+    }
+    prefs.edit().remove("refresh_token").apply()
   }
 
-  private fun normalizePhoneForServer(raw: String): String? {
-    val value = raw.trim()
-    val digits = value.filter { it.isDigit() }
-    val candidate = when {
-      value.startsWith("+") -> "+$digits"
-      value.startsWith("00") -> "+" + digits.drop(2)
-      digits.startsWith("234") && digits.length == 13 -> "+$digits"
-      digits.length == 11 && digits.startsWith("0") -> "+234" + digits.drop(1)
-      digits.length == 10 && digits.firstOrNull() in '7'..'9' -> "+234$digits"
-      else -> return null
-    }
-    return candidate.takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
-  }
+  private fun normalizePhoneForServer(raw: String): String? =
+    ServerPhoneNumberNormalizer.toE164FromDevice(this, raw)
 
-  /** Opens the user's SMS composer; Server never sends a paid or unsolicited SMS silently. */
-  private fun openGuestInviteComposer(number: String, body: String) {
-    val smsIntent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$number")).apply {
-      putExtra("sms_body", body)
+  /**
+   * Shares a guest invitation through an app the caller already has.
+   * Server does not silently send paid SMS or place a carrier voice call.
+   */
+  private fun shareGuestInvitation(body: String, recipientPhone: String) {
+    val share = Intent(Intent.ACTION_SEND).apply {
+      type = "text/plain"
+      putExtra(Intent.EXTRA_TEXT, body)
     }
-    try {
-      startActivity(smsIntent)
-      setStatus("Guest invitation prepared in your SMS app. Tap Send there; then return to the call. The recipient must open it with internet and microphone access.")
-    } catch (_: Exception) {
+    // Use Android's general Sharesheet. Server does not preselect or promote
+    // SMS as a guest-call invitation route; the caller chooses WhatsApp or
+    // another sharing app they already use.
+    val chooser = Intent.createChooser(share, "Share Server invitation to " + mask(recipientPhone))
+
+    if (pendingSystemDialerReturn) {
       try {
-        val share = Intent(Intent.ACTION_SEND).apply {
-          type = "text/plain"
-          putExtra(Intent.EXTRA_TEXT, body)
-        }
-        startActivity(Intent.createChooser(share, "Share Server guest-call invitation"))
-        setStatus("Choose Messages or another app to share the invitation. The recipient needs internet and microphone access.")
-      } catch (e: Exception) {
-        setStatus("The guest invitation is ready, but no messaging app could open it. Copy and share this link manually: " + body, true)
+        guestShareLauncher.launch(chooser)
+        setStatus("This recipient isn't on Server yet. Share the secure invitation; they must open it with internet access and tap Answer.")
+      } catch (_: Exception) {
+        setStatus("The secure invitation is ready, but Android could not open a sharing app.", true)
       }
+      return
     }
-  }
 
-  private fun selectedCellularAccount(): PhoneAccountHandle? {
-    val subscriptionId = prefs.getInt("selected_sim_subscription_id", -1)
-    if (subscriptionId < 0) return null
-    return try {
-      val telecom = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-      telecom.callCapablePhoneAccounts.firstOrNull { handle ->
-        handle != ServerTelecomRegistry.handle(this) &&
-          (handle.id == subscriptionId.toString() || handle.id.endsWith(":$subscriptionId"))
-      }
-    } catch (_: Exception) { null }
-  }
-
-  /** Presents a user-confirmed route into the normal carrier dialer; it never silently places a paid call. */
-  private fun notifyCarrierFallback(number: String, reason: String) {
-    if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(number)) return
-    try {
-      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      val channelId = "server-carrier-fallback"
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        manager.createNotificationChannel(NotificationChannel(
-          channelId, "Server carrier-call fallback", NotificationManager.IMPORTANCE_HIGH
-        ).apply { description = "Lets you switch to a normal carrier call when Server cannot reach a user." })
-      }
-      val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).apply {
-        selectedCellularAccount()?.let { putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      }
-      val pending = PendingIntent.getActivity(
-        this, number.hashCode(), dialIntent,
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    AlertDialog.Builder(this)
+      .setTitle("This recipient isn't on Server")
+      .setMessage(
+        "This number is not linked to a Server account yet. Share the secure browser invitation. The recipient opens it, enables Server guest-call alerts and answers in the browser; the call then connects through WebRTC over mobile data or Wi-Fi. Server does not place or hand off a mobile-operator call."
       )
-      val notification = Notification.Builder(this, channelId)
-        .setSmallIcon(android.R.drawable.sym_action_call)
-        .setContentTitle("Try a normal carrier call")
-        .setContentText(reason)
-        .setStyle(Notification.BigTextStyle().bigText("$reason Tap to open the phone dialer and place a regular call. Your mobile operator may charge you."))
-        .setCategory(Notification.CATEGORY_CALL)
-        .setAutoCancel(true)
-        .setContentIntent(pending)
-        .build()
-      manager.notify(7341, notification)
-    } catch (_: Exception) {
-      Toast.makeText(this, "$reason Open your normal phone dialer to place a carrier call; charges may apply.", Toast.LENGTH_LONG).show()
+      .setPositiveButton("Share invitation") { _, _ ->
+        try {
+          startActivity(chooser)
+          setStatus("Invitation ready. Share the preview link through an app you use; the recipient opens it and taps Answer.")
+        } catch (_: Exception) {
+          setStatus("The invitation is ready, but Android could not open a sharing app.", true)
+        }
+      }
+.setNegativeButton("Cancel") { _, _ ->
+        abandonPendingGuestCall(callId)
+      }
+      .show()
+  }
+
+  private fun abandonPendingGuestCall(pendingCallId: String?) {
+    lifecycleScope.launch {
+      if (!pendingCallId.isNullOrBlank()) {
+        try { api("end", JSONObject().put("call_id", pendingCallId)) } catch (_: Exception) {}
+        ServerGuestInviteNotifications.cancel(this@MainActivity, pendingCallId)
+      }
+      cleanPeer()
+      callId = null
+      activeStateSyncedFor = null
+      currentRoute = ""
+      callButton.visibility = View.VISIBLE
+      hangupButton.visibility = View.GONE
+      setStatus("The guest invitation was cancelled. No carrier call was placed.")
     }
   }
 
   private fun startCall(): Job = lifecycleScope.launch {
     recordTelecomDebugStage("start_call_entered")
-    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-      recordTelecomDebugStage("start_call_microphone_permission_missing")
-      askMic.launch(Manifest.permission.RECORD_AUDIO)
-      setStatus("Allow microphone access and tap Call with Server again.", true)
-      return@launch
-    }
     val typedTarget = targetInput.text.toString().trim()
     val serverId = typedTarget.uppercase()
     val isServerId = Regex("^SVR-[0-9A-F]{10}$").matches(serverId)
     val normalizedPhone = if (isServerId) null else normalizePhoneForServer(typedTarget)
     if (!isServerId && normalizedPhone == null) {
       recordTelecomDebugStage("start_call_target_invalid")
-      setStatus("Enter a Server ID (SVR- plus 10 characters) or a valid phone number, e.g. 08012345678 or +2348012345678.", true)
+      ServerTelecomRegistry.markEnded()
+      setStatus("The destination country could not be resolved from this contact. Allow Contacts access or use an international number with its country code. No carrier call was placed.", true)
+      return@launch
+    }
+    val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val activeNetwork = connectivity.activeNetwork
+    val networkCapabilities = activeNetwork?.let { connectivity.getNetworkCapabilities(activeNetwork) }
+    if (!isServerInternetUsable(networkCapabilities)) {
+      recordTelecomDebugStage("start_call_no_internet_capability")
+      ServerTelecomRegistry.markEnded()
+      setStatus("UNREACHABLE · this phone has no active internet connection. Server calls require mobile data or Wi-Fi.", true)
+      return@launch
+    }
+    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      recordTelecomDebugStage("start_call_microphone_permission_missing")
+      askMic.launch(Manifest.permission.RECORD_AUDIO)
+      setStatus("Allow microphone access and tap Call with Server again.", true)
       return@launch
     }
     // Debug builds record that Telecom's system-originated tel: request reached
@@ -702,37 +718,132 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     }
     val payload = JSONObject()
     if (isServerId) payload.put("to_server_id", serverId) else payload.put("to_phone", normalizedPhone)
+    // Both Telecom's bound ConnectionService and this legacy OS-intent bridge
+    // must identify a Phone-originated request so the backend never converts
+    // an Android system call into a guest invitation/share page.
+    if (pendingSystemDialerReturn) payload.put("source", "android_telecom")
     callButton.isEnabled = false
     try {
+      recordTelecomDebugStage("backend_start_requested")
       val started = api("start", payload)
+      recordTelecomDebugStage("backend_call_created")
+      renderRecipientAvailability(started.optJSONObject("recipient_availability"))
       callId = started.getString("call_id"); ServerTelecomRegistry.setCurrentCallId(callId)
       activeStateSyncedFor = null; currentRoute = started.optString("route", "server"); lastSeq = 0
-      callStartedAt = System.currentTimeMillis()
-      carrierFallbackOfferedFor = null
-      val mappedPhone = started.optJSONObject("call")?.optString("callee_phone_e164").orEmpty()
-      carrierFallbackPhone = (normalizedPhone ?: mappedPhone).takeIf { Regex("^\\+[1-9][0-9]{7,14}$").matches(it) }
+      // "guest" means the destination must be reached through its guest browser
+      // receiver. It is not an instruction to use a mobile-operator call.
+      val initialAvailability = started.optJSONObject("recipient_availability")
+      val initialStatus = initialAvailability?.optString("status").orEmpty()
+      val pushQueued = started.optJSONObject("push_delivery")?.optBoolean("queued", false) == true
+      if (currentRoute == "server" && initialStatus == "background_reachable") {
+        var confirmed = false
+        if (pushQueued) {
+          setStatus("Checking Server reachability before choosing the call route…")
+          val targetPayload = if (isServerId) JSONObject().put("to_server_id", serverId)
+            else JSONObject().put("to_phone", normalizedPhone)
+          val deadline = System.currentTimeMillis() + 8_000L
+          while (System.currentTimeMillis() < deadline && !confirmed) {
+            delay(700L)
+            try {
+              val check = api("availability", targetPayload)
+              val status = check.optJSONObject("recipient_availability")?.optString("status").orEmpty()
+              confirmed = ServerRecipientReachability.isFresh(status)
+            } catch (_: Exception) {
+              // An API failure is not evidence of an online receiver.
+            }
+          }
+        }
+        if (!confirmed) {
+          // A stale Server-app heartbeat is not evidence that mobile data and
+          // Wi-Fi are both unavailable. Keep the WebRTC offer alive and do not
+          // place a paid carrier call based on missing application presence.
+          setStatus("Waiting for the recipient's Server app to respond. Their internet status is not confirmed; they may still have Wi-Fi or mobile data. No carrier call has been placed.")
+        } else {
+          renderRecipientAvailability(JSONObject().put("status", "online"))
+        }
+      }
       callIceServers = started.optJSONArray("ice_servers") ?: JSONArray()
+      callIceServerMode = started.optString("ice_server_mode", "stun-only")
       preparePeer(callIceServers)
       val offer = createLocalDescription(true)
       api("signal", JSONObject().put("call_id", callId).put("kind", "offer").put("payload", offer))
       callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       beginCallPolling()
+      recordTelecomDebugStage("call_offer_submitted")
       val deliveryMode = started.optString("delivery_mode", "")
-      val invitationBody = started.optString("sms_body", "")
-      if (currentRoute == "guest" && deliveryMode == "manual_sms" && invitationBody.isNotBlank() && normalizedPhone != null) {
-        openGuestInviteComposer(normalizedPhone, invitationBody)
+      val invitationBody = started.optString("invitation_text")
+      if (currentRoute == "guest" && deliveryMode == "manual_share" && invitationBody.isNotBlank()) {
+        shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
+      } else if (currentRoute == "guest") {
+        val guestPush = started.optJSONObject("push_delivery")
+        val accepted = guestPush?.optInt("accepted_by_push_service", 0) ?: 0
+        val guestStatus = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
+        val message = when {
+          deliveryMode == "sim_sms_queued" ->
+            "The caller-identified invitation is queued on your linked Server SIM Gateway. Your mobile operator may charge for SMS. Waiting for the gateway's send and delivery receipts."
+          accepted > 0 && guestStatus == "online" ->
+            "Guest browser is online. Server submitted the caller-identified alert; waiting for the recipient to answer over WebRTC."
+          accepted > 0 ->
+            "Server submitted the caller-identified alert to an enrolled guest browser. Delivery is not confirmed; waiting for the recipient to open and answer."
+          else ->
+            "No enrolled browser alert receiver or active Server SIM Gateway accepted the invitation. Share the secure invitation manually."
+        }
+        setStatus(message, accepted == 0 && deliveryMode != "sim_sms_queued")
+        if (pendingSystemDialerReturn) returnToSystemPhoneUi()
       } else {
-        setStatus(if (currentRoute == "guest") "Guest invitation queued for SMS delivery. The recipient must open it with internet and microphone access." else "Calling another Server user… waiting for answer.")
+        val pushDelivery = started.optJSONObject("push_delivery")
+        val reachability = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
+        val queued = pushDelivery?.optBoolean("queued", false) ?: false
+        val submitted = pushDelivery?.optInt("sent", 0) ?: 0
+        if (queued && reachability == "online") {
+          setStatus("Available on Server: a recent Server connection is active. The WebRTC call and background wake job are created; a queued alert is not proof that the phone has rung.")
+        } else if (queued && reachability == "background_reachable") {
+          setStatus("Not active in Server right now, but a background push endpoint is registered. Server has queued a wake alert; delivery and ringing are not confirmed. This is not proof that mobile data is off.")
+        } else if (queued) {
+          setStatus("Call created and its background wake job is queued. Delivery is not confirmed; the recipient still needs internet access and a working Server listener or push endpoint.")
+        } else if (submitted > 0) {
+          setStatus("The push provider accepted an incoming-call alert request. Delivery is not confirmed; waiting for the recipient to answer.")
+        } else {
+          setStatus("Not currently reachable on Server. The recipient's mobile-data state is unknown; an already-active listener may still receive the call, otherwise they must reconnect or open Server.", true)
+        }
+        returnToSystemPhoneUi()
       }
     } catch (e: Exception) {
-      recordTelecomDebugStage("call_backend_start_failed")
+      val apiError = e as? ServerCallApiException
+      if (apiError?.httpStatus == 409 && apiError.errorCode == "RECIPIENT_OFFLINE") {
+        renderRecipientAvailability(apiError.payload.optJSONObject("recipient_availability"))
+        val missedSaved = apiError.payload.optBoolean("missed_call_saved", false)
+        recordTelecomDebugStage(if (missedSaved) "recipient_offline_missed_call_saved" else "recipient_offline_no_call_created")
+        val missedCallId = apiError.payload.optString("call_id")
+          .takeIf { it.matches(Regex("^[0-9a-fA-F-]{36}$")) }
+        if (missedCallId != null) {
+          callId = missedCallId
+          ServerTelecomRegistry.setCurrentCallId(missedCallId)
+        }
+        ServerTelecomRegistry.markEnded(missedCallId)
+        cleanPeer()
+        activeStateSyncedFor = null
+        val message = if (missedSaved) {
+          "UNREACHABLE · the recipient's Server receiver did not confirm an internet connection. A missed-call entry was saved; no mobile-operator call was placed."
+        } else {
+          "UNREACHABLE · the recipient's Server receiver is not online. No mobile-operator call was placed."
+        }
+        setStatus(message, true)
+        if (pendingSystemDialerReturn) {
+          ServerCallEngineStatusNotifications.showFailure(this@MainActivity, message)
+          Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+          returnToSystemPhoneUi()
+        }
+        return@launch
+      }
+      recordTelecomDebugStage("call_setup_failed")
       // If Telecom launched this engine, tell the system dialer that the internet
       // route failed instead of leaving an endless "Dialing via Server" call.
       ServerTelecomRegistry.markEnded(callId)
-      val fallbackPhone = normalizedPhone
-      cleanPeer(); callId = null; carrierFallbackPhone = null
-      setStatus(e.message ?: "Could not start call.", true)
-      if (fallbackPhone != null) notifyCarrierFallback(fallbackPhone, "Server could not reach its call service.")
+      cleanPeer(); callId = null
+      val userMessage = "The Server internet call could not be established: " + (e.message ?: "Unknown error") + ". No mobile-operator fallback was attempted."
+      setStatus(userMessage, true)
+      if (pendingSystemDialerReturn) Toast.makeText(this@MainActivity, userMessage, Toast.LENGTH_LONG).show()
     } finally { callButton.isEnabled = true }
   }
   private suspend fun incomingLoop() {
@@ -745,11 +856,36 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           val id = call.optString("id")
           if (id.isNotBlank() && id !in shownIncoming && id != callId) {
             shownIncoming.add(id)
-            val caller = call.optString("caller_server_id").takeIf { it.isNotBlank() }
-              ?: call.optString("caller_phone_e164", "Server caller")
-            if (ServerTelecomRegistry.isEnabled(this)) {
-              try { ServerTelecomRegistry.reportIncoming(this, id, caller) }
-              catch (_: Exception) { runOnUiThread { showIncomingDialog(id, caller) } }
+            val sharedPhone = call.optString("caller_phone_e164").takeIf {
+              Regex("^\\+[1-9][0-9]{1,14}$").matches(it)
+            }
+            val callerDisplayName = call.optString("caller_display_name")
+              .ifBlank { call.optString("caller_label") }.trim().take(80)
+            // A locally saved contact name wins; otherwise show the caller's
+            // chosen Server name. Never reveal an unshared phone number or Server ID.
+            val caller = sharedPhone?.let {
+              ServerCallerIdentityResolver.resolve(this@MainActivity, it, callerDisplayName)
+            } ?: ServerCallerIdentityResolver.chooseDisplayName(null, callerDisplayName, null)
+            if (call.optString("state") == "missed") {
+              if (!ServerCallNotifications.showMissed(this@MainActivity, id, caller)) shownIncoming.remove(id)
+              continue
+            }
+            if (ServerTelecomRegistry.canAttemptTelecom(this)) {
+              try {
+                ServerTelecomRegistry.reportIncoming(this, id, callerDisplayName, sharedPhone)
+                lifecycleScope.launch {
+                  delay(1800)
+                  if (ServerTelecomRegistry.incomingConnectionState(id) == null) {
+                    ServerCallNotifications.show(this@MainActivity, id, caller)
+                  }
+                }
+              } catch (_: Exception) {
+                if (ServerCallNotifications.canPostNotifications(this@MainActivity)) {
+                  ServerCallNotifications.show(this@MainActivity, id, caller)
+                } else runOnUiThread { showIncomingDialog(id, caller) }
+              }
+            } else if (ServerCallNotifications.canPostNotifications(this)) {
+              ServerCallNotifications.show(this, id, caller)
             } else runOnUiThread { showIncomingDialog(id, caller) }
           }
         }
@@ -772,13 +908,14 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private suspend fun acceptCall(id: String) {
     try {
       callId = id; activeStateSyncedFor = null; currentRoute = "server"; lastSeq = 0
-      carrierFallbackPhone = null
       val accepted = api("accept", JSONObject().put("call_id", id))
       callIceServers = accepted.optJSONArray("ice_servers") ?: JSONArray()
+      callIceServerMode = accepted.optString("ice_server_mode", "stun-only")
       preparePeer(callIceServers)
       callButton.visibility = View.GONE; hangupButton.visibility = View.VISIBLE
       setStatus("Incoming call accepted. Connecting audio…")
       beginCallPolling()
+      returnToSystemPhoneUi()
     } catch (e: Exception) { callId = null; cleanPeer(); setStatus(e.message ?: "Could not answer call.", true) }
   }
 
@@ -806,7 +943,12 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       servers.add(builder.createIceServer())
     }
     if (servers.isEmpty()) servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
-    val cfg = PeerConnection.RTCConfiguration(servers).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN }
+    val cfg = PeerConnection.RTCConfiguration(servers).apply {
+      sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+      if (callIceServerMode == "cloudflare-turn" || callIceServerMode == "coturn-turn") {
+        iceTransportsType = PeerConnection.IceTransportsType.RELAY
+      }
+    }
     peer = peerFactory?.createPeerConnection(cfg, this) ?: throw IllegalStateException("WebRTC peer could not be created.")
     audioSource = peerFactory?.createAudioSource(MediaConstraints())
     audioTrack = peerFactory?.createAudioTrack("server-audio", audioSource)
@@ -814,7 +956,6 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     audioTrack?.let { peer?.addTrack(it, listOf("server-audio-stream")) }
     val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
     am.mode = AudioManager.MODE_IN_COMMUNICATION
-    am.isSpeakerphoneOn = true
   }
 
   private suspend fun createLocalDescription(offer: Boolean): JSONObject = suspendCancellableCoroutine { cont ->
@@ -895,45 +1036,45 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
           }
           lastSeq = maxOf(lastSeq, result.optLong("next_after_seq", lastSeq))
           val state = result.optJSONObject("call")?.optString("state") ?: ""
-          val fallbackPhone = carrierFallbackPhone
-          // A non-Server recipient cannot receive WebRTC while offline. If the
-          // call remains in ringing state, offer a user-confirmed carrier fallback
-          // for both Server users and guest invitees; never place it automatically.
-          if (state == "ringing" && fallbackPhone != null &&
-              System.currentTimeMillis() - callStartedAt >= 30_000 && carrierFallbackOfferedFor != id) {
-            carrierFallbackOfferedFor = id
-            val guestRecipient = currentRoute == "guest"
-            val reason = if (guestRecipient) {
-              "The guest recipient has not joined the internet call."
-            } else {
-              "The Server user has not connected. They may be offline."
-            }
-            notifyCarrierFallback(fallbackPhone, reason)
-            try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
-            callId = null
-            cleanPeer()
-            showCallIdle()
-            setStatus(
-              if (guestRecipient) {
-                "Guest has not joined. A notification offers a regular carrier call instead; no carrier call was placed automatically."
-              } else {
-                "Server did not connect. A notification offers a regular carrier call instead; no carrier call was placed automatically."
-              },
-              true
-            )
-            break
-          }
-          if (state in listOf("ended", "failed", "missed")) { cleanPeer(); callId = null; carrierFallbackPhone = null; showCallIdle(); setStatus("Call ended."); break }
+          // Do not time out a call locally after 30 seconds. Server-to-Server calls
+          // stay pending while the recipient restores mobile data; guest invitations
+          // remain live for the full 20-minute invitation window. Expiry is enforced
+          // by the backend so the caller and recipient see the same final state.
+          if (state in listOf("ended", "failed", "missed")) { cleanPeer(); callId = null; showCallIdle(); setStatus("Call ended."); break }
         } catch (e: Exception) { setStatus(e.message ?: "Call connection interrupted.", true) }
         delay(700)
       }
     }
   }
 
-  private fun endCall() = lifecycleScope.launch {
-    val id = callId
+  /**
+   * Telecom can recreate MainActivity before delivering a system hang-up action.
+   * In that case there is no in-memory callId, so always honour the call ID carried
+   * by the ConnectionService intent. Do not tear down a different active call if
+   * Android delivers a late disconnect for an older Telecom connection.
+   */
+  private fun endCall(telecomCallId: String? = null) = lifecycleScope.launch {
+    val activeCallId = callId
+    val id = telecomCallId?.takeIf { it.isNotBlank() } ?: activeCallId
+    if (BuildConfig.DEBUG && !telecomCallId.isNullOrBlank()) {
+      prefs.edit().putString("debug_last_telecom_hangup_call_id", telecomCallId).apply()
+    }
     if (id != null) try { api("end", JSONObject().put("call_id", id)) } catch (_: Exception) {}
-    cleanPeer(); callId = null; carrierFallbackPhone = null; showCallIdle(); setStatus("Call ended.")
+    if (activeCallId == null || activeCallId == id) {
+      if (activeCallId == id) {
+        cleanPeer()
+      } else if (id != null) {
+        ServerTelecomRegistry.markEnded(id)
+      } else {
+        cleanPeer()
+      }
+      callId = null
+      showCallIdle()
+      setStatus("Call ended.")
+    } else if (id != null) {
+      // This was a late Telecom event for a different call. Clear only that call.
+      ServerTelecomRegistry.markEnded(id)
+    }
   }
   private fun showCallIdle() { runOnUiThread { callButton.visibility = View.VISIBLE; hangupButton.visibility = View.GONE } }
   private fun cleanPeer() {
@@ -949,14 +1090,16 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     try { audioModule?.release() } catch (_: Exception) {}
     audioModule = null
     val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    am.isSpeakerphoneOn = false; am.mode = AudioManager.MODE_NORMAL
+    am.mode = AudioManager.MODE_NORMAL
   }
   private fun signOut() {
+    // Best-effort server-side token removal; local sign-out still proceeds offline.
+    ServerPushRegistration.unregister(this)
     cleanPeer(); callId = null; incomingJob?.cancel(); incomingJob = null
     accessToken = null; refreshToken = null; accessExpiry = 0
     prefs.edit().remove("access_token").remove("refresh_token").remove("access_expiry").apply()
     authPanel.visibility = View.VISIBLE; callPanel.visibility = View.GONE
-    ensureSimPermissions()
+    showSetupRequired()
     setStatus("Server session cleared on this device.")
   }
 
@@ -984,7 +1127,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
             }
           }
         }
-        PeerConnection.IceConnectionState.FAILED -> setStatus("ICE failed. A TURN relay may be required on this network.", true)
+        PeerConnection.IceConnectionState.FAILED -> {
+          val message = "UNREACHABLE · Server could not establish the internet voice path. No mobile-operator call was attempted."
+          setStatus(message, true)
+          lifecycleScope.launch { endCall() }
+        }
         PeerConnection.IceConnectionState.DISCONNECTED -> setStatus("Connection lost. Trying to recover…", true)
         else -> Unit
       }

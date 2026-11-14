@@ -28,6 +28,24 @@ const record = (name, ok, detail) => {
   console.log((ok ? "PASS" : "FAIL") + " " + name + " — " + detail);
 };
 
+
+// Read-only anonymous REST probe: no user table is read or changed.
+{
+  const response = await fetch(url + "/rest/v1/rpc/server_keepalive_probe", {
+    method: "POST",
+    headers: { apikey: key, "content-type": "application/json" },
+    body: "{}",
+    signal: AbortSignal.timeout(15000)
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch {}
+  const databaseTime = Date.parse(data.database_time || "");
+  const ok = response.status === 200 && data.ok === true && Number.isFinite(databaseTime);
+  record("server Supabase read-only activity probe", ok,
+    "HTTP " + response.status + ", database_time " + (data.database_time || text.slice(0, 100)));
+}
+
 // Device-first signup must reject missing legal acceptance before touching the database.
 {
   const r = await request("server-auth", "POST", {

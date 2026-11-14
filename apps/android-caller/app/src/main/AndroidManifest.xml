@@ -1,9 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
-  <uses-permission android:name="android.permission.CALL_PHONE" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- Read only the selected contact match locally to resolve its E.164 number/country. -->
+  <uses-permission android:name="android.permission.READ_CONTACTS" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
-  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-  <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -11,6 +11,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
   <application
+    android:name="com.server.caller.ServerApplication"
     android:allowBackup="false"
     android:label="Server"
     android:theme="@style/ServerTheme"
@@ -38,11 +39,23 @@
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="server" android:host="sim-setup" />
+        <data android:scheme="server" android:host="device-setup" />
       </intent-filter>
     </activity>
     <service android:name="com.server.caller.ServerIncomingCallService"
       android:exported="false" android:foregroundServiceType="phoneCall" />
+    <service android:name="com.server.caller.ServerIncomingCallAlertService"
+      android:exported="false" android:foregroundServiceType="phoneCall" />
+    <service android:name="com.server.caller.ServerFirebaseMessagingService" android:exported="false">
+      <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+    </service>
+    <receiver android:name="com.server.caller.ServerCallActionReceiver" android:exported="false" />
+    <activity
+      android:name="com.server.caller.ServerGuestInviteShareActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:theme="@style/ServerCallRouterTheme" />
     <service
       android:name="com.server.caller.ServerConnectionService"
       android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
