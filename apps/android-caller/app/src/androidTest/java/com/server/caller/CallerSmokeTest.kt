@@ -441,6 +441,15 @@ class CallerSmokeTest {
     assertFalse("Server IDs must bypass E.164 phone normalisation", phoneNormalizationAttempted)
   }
 
+  @Test fun outgoingServerAndGuestCallsRequestFrameworkRingbackUntilAnswered() {
+    assertTrue("Server-to-Server calls should request Android framework ringback",
+      shouldRequestTelecomRingback("server"))
+    assertTrue("SMS/browser guest calls should also ring while awaiting the recipient",
+      shouldRequestTelecomRingback("guest"))
+    assertFalse("Unknown routes must not request a ringing tone",
+      shouldRequestTelecomRingback("unknown"))
+  }
+
   @Test fun serverCallUsesInternetCapabilityWithoutCarrierValidationFalseNegatives() {
     assertFalse("No active network must block Server internet calling",
       isServerInternetUsable(false, false))
@@ -1150,7 +1159,7 @@ class CallerSmokeTest {
         val failureReason = prefs.getString("debug_last_call_failure", null).orEmpty()
         assertTrue("The real Server backend did not return a secure caller-preview invitation (stage=" +
           prefs.getString("debug_last_telecom_stage", "unknown") + "; failure=" + failureReason + ")",
-          invitation.contains("/server-guest-preview?token=") &&
+          Regex("https://server-onboarding-ochre\\.vercel\\.app/c/[0-9a-f]{64}").containsMatchIn(invitation) ||
             Regex("server-guest-preview[?]token=[0-9a-f]{64}").containsMatchIn(invitation))
         assertTrue("The guest call did not produce a backend call ID", callId.isNotBlank())
         val outputDir = context.getExternalFilesDir(null) ?: context.cacheDir
