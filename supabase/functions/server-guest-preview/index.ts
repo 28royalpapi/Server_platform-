@@ -187,7 +187,9 @@ Deno.serve(async (req: Request) => {
     typeof profile.phone_e164 === "string" && /^\+[1-9][0-9]{7,14}$/.test(profile.phone_e164);
   const caller = typeof profile?.display_name === "string" && profile.display_name.trim()
     ? profile.display_name.trim()
-    : phoneMayBeShown ? profile.phone_e164 : "SERVER CALLER";
+    : (typeof profile?.server_id === "string" && profile.server_id.trim())
+      ? profile.server_id.trim()
+      : phoneMayBeShown ? profile.phone_e164 : "SERVER CALLER";
 
   if (imageRequest) {
     if (req.method === "HEAD") return new Response(null,{status:200,headers:{
