@@ -948,8 +948,9 @@ assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest notification cannot launch the legacy carrier handoff Activity");
 assert.doesNotMatch(androidMain,/button\("Call using selected SIM"\)|handoffToCarrierDialer/,
   "the main caller app cannot silently or manually convert the Server route to a SIM call");
-assert.match(html,/download-server-sim-gateway/,"the onboarding page provides a direct download for the optional caller-owned SIM Gateway");
-assert.match(html,/server-sim-gateway\.apk/,"the SIM Gateway link points to the published companion APK asset");
+assert.match(html,/download-server-sim-gateway/,"the onboarding page provides a direct download for the one-time shared SIM Gateway operator");
+assert.match(html,/releases\/download\/server-android-connector-preview\/app-debug\.apk/,"the SIM Gateway link points to the actual published release asset filename");
+assert.match(html,/Regular members do not install the Gateway app/,"regular Server members are not burdened with installing the operator-only SIM Gateway");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that every call is recorded in the Server call history");
 assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
 assert.match(androidEngine,/waiting for the recipient app to confirm its internet connection/,"a registered background push token is not treated as proof of internet reachability");
