@@ -233,40 +233,54 @@ class ServerConnectionService : ConnectionService() {
   internal fun releaseEngine(engine: ServerTelecomCallEngine) { activeEngines.remove(engine) }
 
   override fun onCreateOutgoingConnection(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest): Connection {
-    val phone = request.address?.schemeSpecificPart.orEmpty()
-    val requestedAccount = request.accountHandle
-    val serverAccountMatches = requestedAccount == ServerTelecomRegistry.handle(this)
-    if (BuildConfig.DEBUG) {
-      getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
-        .putLong("debug_last_telecom_connection_service_entered_at", System.currentTimeMillis())
-        .putString("debug_last_telecom_request_scheme", request.address?.scheme.orEmpty())
-        .putInt("debug_last_telecom_request_target_length", phone.length)
-        .putBoolean("debug_last_telecom_request_account_matches", serverAccountMatches)
-        .putBoolean("debug_last_telecom_manager_account_present", connectionManagerPhoneAccount != null)
-        .apply()
+    // OEM diallers may send a malformed or incomplete ConnectionRequest when
+    // multiple SIM accounts and third-party call providers coexist. A provider
+    // error must become a rejected call, never an uncaught system-service crash.
+    return try {
+      val phone = request.address?.schemeSpecificPart.orEmpty()
+      val requestedAccount = request.accountHandle
+      val serverAccountMatches = requestedAccount == ServerTelecomRegistry.handle(this)
+      if (BuildConfig.DEBUG) {
+        getSharedPreferences("server-session", Context.MODE_PRIVATE).edit()
+          .putLong("debug_last_telecom_connection_service_entered_at", System.currentTimeMillis())
+          .putString("debug_last_telecom_request_scheme", request.address?.scheme.orEmpty())
+          .putInt("debug_last_telecom_request_target_length", phone.length)
+          .putBoolean("debug_last_telecom_request_account_matches", serverAccountMatches)
+          .putBoolean("debug_last_telecom_manager_account_present", connectionManagerPhoneAccount != null)
+          .apply()
+      }
+      android.util.Log.i(
+        "ServerTelecom",
+        "Outgoing provider selected; accountMatches=$serverAccountMatches, managerAccountPresent=${connectionManagerPhoneAccount != null}, hasTelAddress=${request.address?.scheme == PhoneAccount.SCHEME_TEL}"
+      )
+      if (request.address?.scheme != PhoneAccount.SCHEME_TEL || phone.isBlank()) {
+        android.util.Log.w("ServerTelecom", "Rejected outgoing request with a missing or unsupported telephone address.")
+        Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
+      } else {
+        val connection = ServerTelecomConnection(this).apply {
+          setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
+          setCallerDisplayName("Server internet call", TelecomManager.PRESENTATION_ALLOWED)
+          setAudioModeIsVoip(true)
+          setExtras(Bundle().apply { putString("server_remote_phone", phone) })
+          setDialing()
+        }
+        ServerTelecomRegistry.attach(connection)
+        // Telecom owns the Connection for its lifetime. The WebRTC engine stays
+        // bound to the ConnectionService and does not launch an Activity.
+        val engine = ServerTelecomCallEngine(this, connection)
+        connection.attachEngine(engine)
+        retainEngine(engine)
+        engine.startOutgoing(phone)
+        connection
+      }
+    } catch (error: Exception) {
+      android.util.Log.e(
+        "ServerTelecom",
+        "Could not initialise the selected Server calling account; rejecting this call without crashing the dialler.",
+        error
+      )
+      Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
     }
-    // The account chooser and the system-wide default must resolve to the same
-    // registered Server provider. Keep a privacy-safe trace for OEM-specific
-    // one-time chooser failures; do not store the recipient's phone number.
-    android.util.Log.i(
-      "ServerTelecom",
-      "Outgoing provider selected; accountMatches=$serverAccountMatches, managerAccountPresent=${connectionManagerPhoneAccount != null}, hasTelAddress=${request.address?.scheme == PhoneAccount.SCHEME_TEL}"
-    )
-    val connection = ServerTelecomConnection(this).apply {
-      setAddress(request.address, TelecomManager.PRESENTATION_ALLOWED)
-      setCallerDisplayName("Server internet call", TelecomManager.PRESENTATION_ALLOWED)
-      setAudioModeIsVoip(true)
-      setExtras(Bundle().apply { putString("server_remote_phone", phone) })
-      setDialing()
-    }
-    ServerTelecomRegistry.attach(connection)
-    // Telecom binds this ConnectionService for the lifetime of the call. The
-    // WebRTC engine runs here; it must not launch a background Activity or service.
-    val engine = ServerTelecomCallEngine(this, connection)
-    connection.attachEngine(engine)
-    retainEngine(engine)
-    engine.startOutgoing(phone)
-    return connection
   }
 
   override fun onCreateOutgoingConnectionFailed(connectionManagerPhoneAccount: PhoneAccountHandle, request: ConnectionRequest) {
