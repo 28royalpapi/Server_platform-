@@ -48,11 +48,12 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const showPhoneLinkButton = document.querySelector("#show-phone-link");
   const skipPhoneLinkButton = document.querySelector("#skip-phone-link");
   const allowNumberCalls = document.querySelector("#allow-number-calls");
-  const createGatewayPairingButton = document.querySelector("#create-sms-gateway-pairing-code");
-  const gatewayPairingResult = document.querySelector("#sms-gateway-pairing-result");
-  const gatewayPairingCode = document.querySelector("#sms-gateway-pairing-code");
-  const gatewayPairingExpiry = document.querySelector("#sms-gateway-pairing-expiry");
-  const gatewayPairingStatus = document.querySelector("#sms-gateway-pairing-status");
+  const smsGatewaySimSelect = document.querySelector("#sms-gateway-sim");
+  const smsGatewaySimLabel = document.querySelector("#sms-gateway-sim-label");
+  const connectSmsGatewayButton = document.querySelector("#connect-sms-gateway");
+  const disconnectSmsGatewayButton = document.querySelector("#disconnect-sms-gateway");
+  const smsGatewayStatus = document.querySelector("#sms-gateway-status");
+  let smsGatewayOptionsReady = false;
   let pendingPhoneNumber = "";
   let pendingCallerDisplayName = "";
   let phoneLinkVerified = false;
@@ -78,11 +79,11 @@ if (isNativeSetup && nativeSetup && stepForm) {
     phoneLinkStatus.classList.remove("hidden", "ok");
     if (ok) phoneLinkStatus.classList.add("ok");
   };
-  const showGatewayPairingStatus = (message, ok = false) => {
-    if (!gatewayPairingStatus) return;
-    gatewayPairingStatus.textContent = message;
-    gatewayPairingStatus.classList.remove("hidden", "ok");
-    if (ok) gatewayPairingStatus.classList.add("ok");
+  const showSmsGatewayStatus = (message, ok = false) => {
+    if (!smsGatewayStatus) return;
+    smsGatewayStatus.textContent = message;
+    smsGatewayStatus.classList.remove("hidden", "ok");
+    if (ok) smsGatewayStatus.classList.add("ok");
   };
   showPhoneLinkButton && showPhoneLinkButton.addEventListener("click", () => {
     phoneLinkStep && phoneLinkStep.classList.remove("hidden");
@@ -161,7 +162,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
       }
     } catch { /* First-time number linking remains available. */ }
     const contactCountryNote = destinationCountryContactsGranted ? "" : " Contacts access was not granted. For safety, use an international number beginning with +; Server will not guess a country for a national-format number.";
-    showStatus("Server identity created. Phone-number linking is optional; enable Server under Android Calling accounts to finish setup." + contactCountryNote, true);
+    showStatus("Server identity created. You can connect a SIM for SMS invitations now or continue with your Server ID. Enable Server under Android Calling accounts to finish setup." + contactCountryNote, true);
+    if (window.ServerAndroid && typeof window.ServerAndroid.refreshSmsGatewayStatus === "function") {
+      window.ServerAndroid.refreshSmsGatewayStatus();
+    }
   };
 
   requestPhoneCodeButton && requestPhoneCodeButton.addEventListener("click", () => {
@@ -181,36 +185,115 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.requestPhoneLinkOtp(number);
   });
 
-  createGatewayPairingButton && createGatewayPairingButton.addEventListener("click", () => {
-    if (!(window.ServerAndroid && window.ServerAndroid.createSmsGatewayPairingCode)) {
-      showGatewayPairingStatus("Open Server onboarding from the Android integration before pairing an SMS gateway.");
+  const populateSmsGatewaySims = (options) => {
+    if (!smsGatewaySimSelect) return;
+    smsGatewaySimSelect.innerHTML = '<option value="">Choose a SIM</option>';
+    options.forEach((sim) => {
+      const option = document.createElement("option");
+      option.value = String(sim.subscription_id);
+      option.textContent = sim.label || ("SIM " + (Number(sim.slot_index) + 1) + " · " + (sim.carrier || "Mobile network"));
+      smsGatewaySimSelect.appendChild(option);
+    });
+    smsGatewayOptionsReady = true;
+    if (options.length > 1) {
+      smsGatewaySimSelect.classList.remove("hidden");
+      smsGatewaySimLabel && smsGatewaySimLabel.classList.remove("hidden");
+      connectSmsGatewayButton.textContent = "Connect selected SIM";
+      showSmsGatewayStatus("Choose the SIM Server should use, then tap Connect.");
       return;
     }
-    createGatewayPairingButton.disabled = true;
-    createGatewayPairingButton.textContent = "Generating one-time code…";
-    showGatewayPairingStatus("Generating a secure pairing code. It is valid for 10 minutes.");
-    window.ServerAndroid.createSmsGatewayPairingCode();
+    if (options.length === 1) {
+      smsGatewaySimSelect.value = String(options[0].subscription_id);
+      window.ServerAndroid.connectSmsGateway(Number(options[0].subscription_id));
+      return;
+    }
+    showSmsGatewayStatus("No active SIM with SMS capability was found on this device.");
+    connectSmsGatewayButton.disabled = false;
+    connectSmsGatewayButton.textContent = "Try again";
+  };
+
+  connectSmsGatewayButton && connectSmsGatewayButton.addEventListener("click", () => {
+    if (!window.ServerAndroid || typeof window.ServerAndroid.requestSmsGatewaySimOptions !== "function") {
+      showSmsGatewayStatus("Open Server from its Android app to connect a SIM.");
+      return;
+    }
+    if (smsGatewayOptionsReady && smsGatewaySimSelect && smsGatewaySimSelect.options.length > 1) {
+      const selected = Number(smsGatewaySimSelect.value);
+      if (!Number.isInteger(selected) || selected < 0) {
+        showSmsGatewayStatus("Choose the SIM you want Server to use.");
+        return;
+      }
+      connectSmsGatewayButton.disabled = true;
+      showSmsGatewayStatus("Connecting your selected SIM to Server…");
+      window.ServerAndroid.connectSmsGateway(selected);
+      return;
+    }
+    connectSmsGatewayButton.disabled = true;
+    connectSmsGatewayButton.textContent = "Checking SIMs…";
+    showSmsGatewayStatus("Checking the active SIMs on this phone…");
+    smsGatewayOptionsReady = false;
+    window.ServerAndroid.requestSmsGatewaySimOptions();
   });
 
-  window.onServerGatewayPairingCode = (result) => {
-    createGatewayPairingButton.disabled = false;
-    createGatewayPairingButton.textContent = "Generate a new SMS gateway pairing code";
-    if (!result || !result.ok || !/^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/.test(String((result && result.pairing_code) || ""))) {
-      const reason = (result && result.error) || "GATEWAY_PAIRING_UNAVAILABLE";
-      const message = {
-        SESSION_REQUIRED: "Create your Server identity again to establish a fresh authenticated session.",
-        PAIRING_RATE_LIMITED: "Too many pairing codes were requested. Wait before trying again."
-      }[reason] || "Could not create a gateway pairing code (" + reason + ").";
-      showGatewayPairingStatus(message);
+  disconnectSmsGatewayButton && disconnectSmsGatewayButton.addEventListener("click", () => {
+    if (!window.ServerAndroid) return;
+    disconnectSmsGatewayButton.disabled = true;
+    showSmsGatewayStatus("Disconnecting this SIM from Server…");
+    window.ServerAndroid.disconnectSmsGateway();
+  });
+
+  window.onServerSmsGatewaySimOptions = (result) => {
+    connectSmsGatewayButton.disabled = false;
+    connectSmsGatewayButton.textContent = "Connect my SIM";
+    if (!result || !result.ok) {
+      const reason = (result && result.error) || "SIM_LOOKUP_FAILED";
+      const messages = {
+        SIM_PERMISSION_DENIED: "Allow SIM access so Server can show your active SIM slots.",
+        SIM_PERMISSION_REQUIRED: "Allow SIM access, then try again."
+      };
+      showSmsGatewayStatus(messages[reason] || "Server could not read the active SIMs (" + reason + ").");
       return;
     }
-    gatewayPairingCode.textContent = result.pairing_code;
-    const expiry = Date.parse(result.expires_at || "");
-    gatewayPairingExpiry.textContent = Number.isFinite(expiry)
-      ? "Expires at " + new Date(expiry).toLocaleTimeString() + ". Open the Server SIM Gateway app now and claim this code."
-      : "This code expires in 10 minutes. Open the Server SIM Gateway app now and claim it.";
-    gatewayPairingResult.classList.remove("hidden");
-    showGatewayPairingStatus("Pairing code created. Claim it in the Server SIM Gateway app, then grant SMS permission and start the gateway.", true);
+    const options = Array.isArray(result.options) ? result.options : [];
+    if (!options.length) {
+      showSmsGatewayStatus("This phone has no active SIM that supports SMS, or it is a Wi-Fi-only device.");
+      return;
+    }
+    populateSmsGatewaySims(options);
+  };
+
+  window.onServerSmsGatewayResult = (result) => {
+    connectSmsGatewayButton.disabled = false;
+    disconnectSmsGatewayButton.disabled = false;
+    if (!result || !result.ok) {
+      showSmsGatewayStatus("Server could not connect this SIM (" + ((result && result.error) || "unknown error") + ").");
+      connectSmsGatewayButton.textContent = "Try connecting again";
+      return;
+    }
+    if (result.connected === false) {
+      disconnectSmsGatewayButton.classList.add("hidden");
+      connectSmsGatewayButton.classList.remove("hidden");
+      connectSmsGatewayButton.textContent = "Connect my SIM";
+      showSmsGatewayStatus(result.message || "Your SIM is disconnected from Server.", true);
+      return;
+    }
+    connectSmsGatewayButton.classList.add("hidden");
+    disconnectSmsGatewayButton.classList.remove("hidden");
+    showSmsGatewayStatus("Connected: " + (result.label || result.carrier || "selected SIM") + ". Server has registered this SIM with your account.", true);
+  };
+
+  window.onServerSmsGatewayStatus = (result) => {
+    if (!result || !result.connected) {
+      connectSmsGatewayButton && connectSmsGatewayButton.classList.remove("hidden");
+      disconnectSmsGatewayButton && disconnectSmsGatewayButton.classList.add("hidden");
+      if (result && result.ok === false && result.error !== "GATEWAY_NOT_REGISTERED") {
+        showSmsGatewayStatus("Server cannot confirm the SIM connection. Open Server to reconnect.");
+      }
+      return;
+    }
+    connectSmsGatewayButton && connectSmsGatewayButton.classList.add("hidden");
+    disconnectSmsGatewayButton && disconnectSmsGatewayButton.classList.remove("hidden");
+    showSmsGatewayStatus("Connected: " + (result.label || "selected SIM") + ". SMS delivery is active while this phone stays online.", true);
   };
 
   window.onServerPhoneOtpRequested = (result) => {
