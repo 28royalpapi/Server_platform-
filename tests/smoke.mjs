@@ -87,11 +87,14 @@ const androidFirebase=read("apps/android-caller/app/src/main/java/com/server/cal
 const androidProguard=read("apps/android-caller/app/proguard-rules.pro");
 const hook=read("supabase/functions/server-send-sms/index.ts");
 const gateway=read("supabase/functions/server-gateway/index.ts");
-const androidGatewayMain=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/MainActivity.kt");
-const androidSimGateway=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/SmsGatewayService.kt");
-const androidGatewayRealtime=read("apps/android-sim-gateway/app/src/main/java/com/server/gateway/ServerGatewayRealtimeClient.kt");
+const androidSmsGatewayManager=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayManager.kt");
+const androidSmsGatewayService=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayService.kt");
+const androidSmsGatewayRealtime=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayRealtimeClient.kt");
+const androidSmsGatewayApi=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayApi.kt");
+const androidSmsGatewayStore=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewaySecureStore.kt");
+const integratedGatewayMigration=read("supabase/migrations/20261115120000_server_integrated_sim_gateway.sql");
 const gatewayWake=read("supabase/functions/_shared/server_gateway_wake.ts");
-const gatewayGradle=read("apps/android-sim-gateway/app/build.gradle.kts");
+const gatewayGradle=androidBuild;
 const calls=read("supabase/functions/server-calls/index.ts");
 const guest=read("supabase/functions/server-guest/index.ts");
 const guestPreview=read("supabase/functions/server-guest-preview/index.ts");
@@ -308,8 +311,26 @@ assert.doesNotMatch(androidMain,/ServerFallbackSimManager|recordCarrierFallbackH
   "the Android call activity never reads carrier-fallback consent or records/initiates a SIM handoff");
 assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
   "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
-assert.doesNotMatch(androidSetup,/ServerFallbackSimManager|READ_PHONE_STATE|CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
-  "the Android setup bridge does not enumerate SIMs or request carrier-call permissions");
+assert.doesNotMatch(androidSetup,/ServerFallbackSimManager|READ_PHONE_NUMBERS|CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
+  "the Android setup bridge only reads SIM slot/carrier metadata and never reads the subscriber line number or places carrier calls");
+assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,"the Android setup bridge requests SIM-list permission only when the user connects a SIM");
+assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/,"SMS send permission is requested only for the optional SIM gateway");
+assert.match(androidSetup,/requestSmsGatewaySimOptions/);
+assert.match(androidSetup,/connectSmsGateway/);
+assert.match(androidSetup,/disconnectSmsGateway/);
+assert.match(androidSetup,/GATEWAY_HEARTBEAT_NOT_CONFIRMED/,"the app must prove a live gateway heartbeat before saying Connected");
+assert.match(androidSmsGatewayManager,/activeSubscriptionInfoList/);
+assert.match(androidSmsGatewayManager,/carrierName/);
+assert.doesNotMatch(androidSmsGatewayManager,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
+  "the SMS gateway does not read a SIM phone number, IMSI, ICCID or SIM serial");
+assert.match(androidSmsGatewayService,/createForSubscriptionId\(subscriptionId\)/);
+assert.match(androidSmsGatewayService,/SmsManager\.getSmsManagerForSubscriptionId\(subscriptionId\)/);
+assert.match(androidSmsGatewayService,/ACTION_STOP/);
+assert.match(androidSmsGatewayApi,/server-gateway/);
+assert.match(androidSmsGatewayApi,/x-server-session-token/);
+assert.match(androidSmsGatewayApi,/x-server-gateway-token/);
+assert.match(androidSmsGatewayStore,/AndroidKeyStore/);
+assert.match(androidSmsGatewayStore,/AES\/GCM/);
 assert.match(androidFallbackSim,/getSubscriptionId\(handle\)/);
 assert.match(androidFallbackSim,/resolveActiveSubscriptionId/);
 assert.doesNotMatch(androidFallbackSim,/getPhoneAccount\(handle\)/,
@@ -323,8 +344,10 @@ assert.match(androidSetup,/registerDevice\(displayName: String, acceptedTerms: B
   "Server ID registration saves the caller-chosen name through the website's native permission bridge");
 assert.match(androidSetup,/put\("display_name", normalizedDisplayName\)/,
   "Android passes the caller display name to the authenticated Server profile endpoint");
-assert.doesNotMatch(androidSetup,/Manifest\.permission\.READ_PHONE_STATE|Manifest\.permission\.CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
-  "Android onboarding requests no SIM-state or carrier-call permissions");
+assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/);
+assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/);
+assert.doesNotMatch(androidSetup,/Manifest\.permission\.READ_PHONE_NUMBERS|Manifest\.permission\.CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
+  "Android onboarding never reads the SIM phone number or requests carrier-call permission");
 assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
   "Server must not request permission to read SIM phone numbers");
 assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
@@ -607,17 +630,24 @@ assert.match(androidSetup,/onPageFinished/);
 assert.match(androidSetup,/Register before opening system settings/);
 assert.match(androidSetup,/server-native-bridge/);
 assert.match(androidSetup,/set_number_call_consent/);
-assert.match(androidSetup,/createSmsGatewayPairingCode/,"native bridge issues gateway pairing codes from the authenticated Server session");
-assert.match(androidSetup,/server-gateway/,"gateway pairing calls the dedicated backend function");
-assert.match(app,/create-sms-gateway-pairing-code/,"onboarding website exposes the pairing flow");
-assert.match(app,/onServerGatewayPairingCode/,"website handles pairing-code results");
-assert.match(html,/sms-gateway-pairing-code/,"onboarding UI can display the one-time gateway code");
+assert.match(androidSetup,/requestSmsGatewaySimOptions/,"the connector asks Android for real SIM subscriptions");
+assert.match(androidSetup,/connectSmsGateway/,"the selected SIM is connected through the native bridge");
+assert.match(androidSetup,/disconnectSmsGateway/,"users can disconnect the selected SIM");
+assert.match(app,/connect-sms-gateway/,"the website exposes one SIM connect action");
+assert.match(app,/disconnect-sms-gateway/,"the website exposes an explicit disconnect action");
+assert.match(app,/onServerSmsGatewaySimOptions/,"the website receives actual native SIM metadata");
+assert.match(app,/onServerSmsGatewayStatus/,"the website renders backend-confirmed gateway state");
+assert.match(html,/sms-gateway-sim/,"the onboarding page has a real carrier/slot picker");
+assert.doesNotMatch(html,/sms-gateway-pairing-code|create-sms-gateway-pairing-code|download-server-sim-gateway/,
+  "onboarding does not expose project URLs, pairing codes or a second APK download");
+assert.doesNotMatch(app,/createSmsGatewayPairingCode|onServerGatewayPairingCode/);
 assert.doesNotMatch(androidManifest,/DialerActivity/);
 assert.match(androidManifest,/android:name="android.intent.action.MAIN"/);
 assert.doesNotMatch(androidSetup,/SubscriptionManager|activeSubscriptionInfoList|selectSim/,
   "Android setup must not inspect or select a SIM subscription");
 assert.match(androidSetup,/requestCallPermissions/);
-assert.doesNotMatch(androidSetup,/READ_PHONE_STATE|CALL_PHONE/);
+assert.match(androidSetup,/READ_PHONE_STATE/);
+assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|CALL_PHONE/);
 assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidEngine,/connection\.setRingbackRequested\(shouldRequestTelecomRingback\(route\)\)/,
   "Telecom ringback is requested for Server and guest-browser calls until answered");
@@ -711,7 +741,15 @@ assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
 assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
 assert.match(auth,/x-server-session-token/,"Server auth reads its opaque Server session from a dedicated header");
 assert.match(calls,/x-server-session-token/,"Server calls read the opaque Server session from a dedicated header");
-assert.match(gateway,/x-server-session-token/,"Gateway pairing reads the Server account session from a dedicated header");
+assert.match(gateway,/x-server-session-token/,"SIM registration reads the Server account session from a dedicated header");
+assert.match(gateway,/server_register_gateway_device/,"SIM registration uses an atomic owner-bound database operation");
+assert.match(gateway,/selected_sim/,"registration returns the selected SIM metadata");
+assert.match(gateway,/action==="status"/,"the gateway exposes a backend status check");
+assert.match(auth,/p_user_id:session.user_id/,"SMS verification jobs are created for the authenticated Server identity");
+assert.match(integratedGatewayMigration,/server_issue_otp\(p_user_id uuid/,"OTP issuance binds the job to the requesting identity");
+assert.match(integratedGatewayMigration,/j\.auth_user_id=d\.owner_user_id/,"private OTP jobs can only be claimed by the account's own SIM gateway");
+assert.match(integratedGatewayMigration,/sim_subscription_id/);
+assert.match(integratedGatewayMigration,/sim_slot_index/);
 assert.match(gateway,/x-server-gateway-token/,"Gateway polling reads a separate paired-device token header");
 assert.match(handoff,/x-server-session-token/,"App handoff creation reads the Server session from a dedicated header");
 assert.match(androidMain,/setRequestProperty\("x-server-session-token", accessToken\)/);
@@ -724,8 +762,9 @@ assert.match(androidFirebase,/setRequestProperty\("x-server-session-token", acce
 assert.doesNotMatch(androidFirebase,/setRequestProperty\("authorization"/);
 assert.match(iosModel,/forHTTPHeaderField: "x-server-session-token"/);
 assert.doesNotMatch(iosModel,/forHTTPHeaderField: "authorization"/);
-assert.match(androidGatewayMain,/setRequestProperty\("x-server-gateway-token", token\)/);
-assert.doesNotMatch(androidGatewayMain,/setRequestProperty\("authorization"/);
+assert.match(androidSmsGatewayApi,/setRequestProperty\("x-server-gateway-token", gatewayToken\)/);
+assert.match(androidSmsGatewayApi,/setRequestProperty\("x-server-session-token", sessionToken\)/);
+assert.doesNotMatch(androidSmsGatewayApi,/setRequestProperty\("authorization"/);
 assert.match(e2eIdentityScript,/"x-server-session-token": result\.access_token/);
 assert.doesNotMatch(e2eIdentityScript,/authorization: "Bearer "/);
 assert.match(calls,/guestInternetReachable=guestPush\.recent_online>0/);
@@ -747,16 +786,16 @@ assert.match(calls,/sendServerGatewayWake\(gateway\.token_hash\)/,"a queued call
 assert.ok(gatewayWake.includes("/realtime/v1/api/broadcast/") && gatewayWake.includes("/events/gateway_wake?private=false"),"gateway wake-ups use the verified direct public Realtime REST endpoint");
 assert.ok(gatewayWake.includes("/events/gateway_wake?private=false"),"the wake-up event is explicitly named in the Realtime endpoint");
 assert.doesNotMatch(gatewayWake,/recipient_e164|invitation_text|sms_body|guest_invite_url/,"Realtime wake-up payloads contain no recipient, SMS body or invitation URL");
-assert.match(androidGatewayRealtime,/phx_join/,"Android joins a Supabase Realtime broadcast channel");
-assert.match(androidGatewayRealtime,/gateway_wake/,"Android listens for the gateway wake-up event");
-assert.match(androidGatewayRealtime,/heartbeat/,"Android sends Phoenix heartbeats to keep its WebSocket alive");
-assert.match(androidGatewayRealtime,/scheduleReconnect/,"Android reconnects after a Realtime interruption");
-assert.match(androidGatewayRealtime,/sha256Hex/,"the Android channel topic is derived from the gateway bearer token hash");
-assert.match(androidSimGateway,/ServerGatewayRealtimeClient/,"the foreground SIM gateway starts the Realtime listener");
-assert.match(androidSimGateway,/PRESENCE_HEARTBEAT_SECONDS = 60L/,"the gateway refreshes its online timestamp every 60 seconds");
-assert.match(androidSimGateway,/FALLBACK_POLL_INTERVAL_SECONDS = 15L/,"the SIM Gateway retries the queue every 15 seconds if Realtime is unavailable");
-assert.match(androidSimGateway,/put\("action", "health"\)/,"the gateway health heartbeat refreshes server-side reachability");
-assert.match(gatewayGradle,/com\.squareup\.okhttp3:okhttp:4\.12\.0/,"the Realtime WebSocket client uses a pinned OkHttp version");
+assert.match(androidSmsGatewayRealtime,/phx_join/,"the integrated connector joins a Supabase Realtime broadcast channel");
+assert.match(androidSmsGatewayRealtime,/gateway_wake/,"the integrated connector listens for gateway wake-ups");
+assert.match(androidSmsGatewayRealtime,/heartbeat/,"the integrated connector sends Phoenix heartbeats");
+assert.match(androidSmsGatewayRealtime,/scheduleReconnect/,"the integrated connector reconnects after Realtime interruption");
+assert.match(androidSmsGatewayRealtime,/sha256Hex/,"the Realtime channel topic is derived from the gateway token hash");
+assert.match(androidSmsGatewayService,/ServerSmsGatewayRealtimeClient/,"the Server connector starts its own SMS gateway listener");
+assert.match(androidSmsGatewayService,/PRESENCE_HEARTBEAT_SECONDS = 45L/,"the integrated gateway refreshes its backend presence every 45 seconds");
+assert.match(androidSmsGatewayService,/FALLBACK_POLL_INTERVAL_SECONDS = 15L/,"the gateway retries the queue every 15 seconds if Realtime is unavailable");
+assert.match(androidSmsGatewayService,/put\("action", "health"\)/,"the gateway health heartbeat refreshes backend reachability");
+assert.match(androidBuild,/com\.squareup\.okhttp3:okhttp:4\.12\.0/,"the integrated Realtime WebSocket client uses pinned OkHttp");
 assert.match(calls,/guest_invite_sms_pair/);
 assert.match(calls,/guest_invite_sms_sender/);
 assert.match(calls,/guest_invite_id:created\.invite_id/);
@@ -948,9 +987,13 @@ assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest notification cannot launch the legacy carrier handoff Activity");
 assert.doesNotMatch(androidMain,/button\("Call using selected SIM"\)|handoffToCarrierDialer/,
   "the main caller app cannot silently or manually convert the Server route to a SIM call");
-assert.match(html,/download-server-sim-gateway/,"the onboarding page provides a direct download for the one-time shared SIM Gateway operator");
-assert.match(html,/releases\/download\/server-android-connector-preview\/app-debug\.apk/,"the SIM Gateway link points to the actual published release asset filename");
-assert.match(html,/Regular members do not install the Gateway app/,"regular Server members are not burdened with installing the operator-only SIM Gateway");
+assert.match(html,/Connect your SIM for Server SMS/);
+assert.match(html,/No project URL, pairing code, or second app is required/);
+assert.match(html,/Connect my SIM/);
+assert.match(html,/Disconnect SIM/);
+assert.doesNotMatch(html,/download-server-sim-gateway|server-sim-gateway\.apk|create-sms-gateway-pairing-code/);
+assert.doesNotMatch(nativeWorkflow,/apps\/android-sim-gateway/, "the native build no longer creates a separate Gateway APK");
+assert.doesNotMatch(gatewayReleaseWorkflow,/apps\/android-sim-gateway/, "the gateway launch workflow tests the integrated app, not a second package");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that every call is recorded in the Server call history");
 assert.match(nativeWorkflow,/ANDROID17_CREDENTIAL_STORAGE_READY/,"Android 17 instrumentation starts only after app credential-encrypted storage is verified accessible");
 assert.match(androidEngine,/waiting for the recipient app to confirm its internet connection/,"a registered background push token is not treated as proof of internet reachability");
