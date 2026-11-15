@@ -705,6 +705,10 @@ if (ServerRecipientReachability.isFresh(availability)) {
     PeerConnectionFactory.initialize(init)
     audioModule = JavaAudioDeviceModule.builder(context)
       .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+      // Prefer WebRTC's software AEC/NS over vendor effects. Android OEM
+      // audio-effect implementations vary by device and can break call audio.
+      .setUseHardwareAcousticEchoCanceler(false)
+      .setUseHardwareNoiseSuppressor(false)
       .createAudioDeviceModule()
     peerFactory = PeerConnectionFactory.builder().setAudioDeviceModule(audioModule).createPeerConnectionFactory()
     val servers = mutableListOf<PeerConnection.IceServer>()
