@@ -848,5 +848,6 @@ jobs:
           sha256sum server-android-arm64.apk server-android-armv7.apk
           gh release upload server-android-connector-preview server-android-arm64.apk server-android-armv7.apk --repo "$GITHUB_REPOSITORY" --clobber
           gh release delete-asset server-android-connector-preview app-universal-release.apk --repo "$GITHUB_REPOSITORY" --yes || true
+          gh release delete-asset server-android-connector-preview app-debug.apk --repo "$GITHUB_REPOSITORY" --yes || true
           gh release delete-asset server-android-connector-preview Server-Android-Connector-preview.apk --repo "$GITHUB_REPOSITORY" --yes || true
           echo "ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"
