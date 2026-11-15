@@ -926,6 +926,8 @@ if (ServerRecipientReachability.isFresh(availability)) {
     peerFactory = null
     try { audioModule?.release() } catch (_: Exception) {}
     audioModule = null
+    // endAudioSession restores the exact AudioManager mode captured at call start.
+    // Do not overwrite it with MODE_NORMAL: another Telecom call may own audio now.
     endAudioSession()
     activeStateSyncedFor = null
     iceConnected = false
@@ -933,7 +935,6 @@ if (ServerRecipientReachability.isFresh(availability)) {
     lastMediaSyncAttemptAt = 0L
     inboundAudioRtpPacketsReceived = 0L
     lastAudioStatsCheckAt = 0L
-    try { (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode = AudioManager.MODE_NORMAL } catch (_: Exception) {}
   }
 
   private fun release() {
