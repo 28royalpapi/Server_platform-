@@ -61,6 +61,8 @@ internal class ServerSmsStatusReceiver : BroadcastReceiver() {
     }
 
     private const val PREFS = "server-session"
-    // Multipart carrier callbacks for one message share a counter in preferences.\n    // Serialize all sent/delivered callbacks so simultaneous segments cannot lose increments.\n    private val EXECUTOR = Executors.newSingleThreadExecutor()
+    // Multipart carrier callbacks for one message share a counter in preferences.
+    // Serialize all sent/delivered callbacks so simultaneous segments cannot lose increments.
+    private val EXECUTOR = Executors.newSingleThreadExecutor()
   }
 }
