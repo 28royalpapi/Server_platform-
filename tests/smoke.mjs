@@ -656,6 +656,9 @@ assert.match(androidEngine,/shouldRequestTelecomRingback\(route: String\): Boole
 assert.match(androidEngine,/toStartPayload\("android_telecom"\)/,
   "system Phone calls use the explicit native source payload when creating a backend call");
 assert.match(androidEngine,/two_way_audio_media_ready/);
+assert.match(androidEngine,/beginAudioSession/,"Android requests voice-call audio focus before WebRTC capture");
+assert.match(androidEngine,/MediaRecorder\.AudioSource\.VOICE_COMMUNICATION/,"the Android WebRTC microphone uses the communication audio source");
+assert.match(androidEngine,/endAudioSession/,"Android restores audio mode and mute state at call teardown");
 assert.match(androidEngine,/remote_audio_track_received/);
 assert.match(androidEngine,/audio_rtp_packets_both_directions/);
 assert.match(androidEngine,/outboundAudioRtpPacketsSent/);
@@ -873,7 +876,7 @@ assert.doesNotMatch(gateway,/VERIFIED_PROFILE_REQUIRED|phone_verified_at/,"SIM g
 assert.match(liveGuestTransitionContract,/action: "create_pairing_code"/,"the live contract validates the first gateway pairing step without phone verification");
 assert.match(html,/id="sms-gateway-setup"/,"the SIM gateway setup is a separate optional onboarding step");
 assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the SIM gateway can be paired before optional phone-number linking");
-assert.match(app,/showGatewayPairingStatus/,"gateway pairing feedback is visible outside the phone-number linking panel");
+assert.match(app,/showSmsGatewayStatus/,"integrated SIM connection feedback is visible in onboarding without a pairing-code screen");
 assert.match(gateway,/server_claim_sms_jobs/);
 assert.match(gateway,/PAIRING_RATE_LIMITED/);
 assert.match(gateway,/body:null/);
