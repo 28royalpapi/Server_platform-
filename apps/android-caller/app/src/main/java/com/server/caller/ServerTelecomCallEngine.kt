@@ -778,7 +778,7 @@ if (ServerRecipientReachability.isFresh(availability)) {
       Log.w(TAG, "Could not restore the previous microphone mute state: " + error.javaClass.simpleName)
     }
     try {
-      manager.mode = previousAudioMode ?: AudioManager.MODE_NORMAL
+      previousAudioMode?.let { manager.mode = it }
     } catch (error: Exception) {
       Log.w(TAG, "Could not restore the previous Android audio mode: " + error.javaClass.simpleName)
     }
