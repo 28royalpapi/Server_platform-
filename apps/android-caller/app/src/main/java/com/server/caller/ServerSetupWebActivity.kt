@@ -148,15 +148,93 @@ class ServerSetupWebActivity : Activity() {
     web.loadDataWithBaseURL("https://$HOST/", page, "text/html", "UTF-8", null)
   }
 
+  private var pendingSmsGatewayOption: ServerSmsGatewaySim? = null
+
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-    if (requestCode == REQUEST_CALL) {
-      val micGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-      val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
-        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-      val contactsGranted = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-      runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, false, $contactsGranted)")
+    when (requestCode) {
+      REQUEST_CALL -> {
+        val micGranted = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val notificationsGranted = Build.VERSION.SDK_INT < 33 ||
+          checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val contactsGranted = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+        runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, false, $contactsGranted)")
+      }
+      REQUEST_SMS_SIM_OPTIONS -> {
+        val result = if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+          ServerSmsGatewayManager.optionsJson(this)
+        } else JSONObject().put("ok", false).put("error", "SIM_PERMISSION_DENIED")
+        callbackToWebsite("onServerSmsGatewaySimOptions", result)
+      }
+      REQUEST_SMS_GATEWAY_CONNECT -> {
+        val option = pendingSmsGatewayOption
+        pendingSmsGatewayOption = null
+        if (option == null) {
+          callbackToWebsite("onServerSmsGatewayResult", JSONObject().put("ok", false).put("error", "SIM_SELECTION_EXPIRED"))
+        } else if (checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+          completeSmsGatewayConnect(option)
+        } else {
+          callbackToWebsite("onServerSmsGatewayResult", JSONObject().put("ok", false).put("error", "SMS_PERMISSION_DENIED"))
+        }
+      }
     }
+  }
+
+  private fun completeSmsGatewayConnect(option: ServerSmsGatewaySim) {
+    Thread {
+      val access = prefs.getString("access_token", null).orEmpty()
+      val result = if (!Regex("^[0-9a-f]{64}$").matches(access)) {
+        JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+      } else {
+        try { ServerSmsGatewayApi.registerDevice(this, access, option.subscriptionId, option.slotIndex, option.carrier) }
+        catch (_: Exception) { JSONObject().put("ok", false).put("error", "GATEWAY_REGISTRATION_FAILED") }
+      }
+      if (!result.optBoolean("ok")) {
+        callbackToWebsite("onServerSmsGatewayResult", result)
+        return@Thread
+      }
+      val token = result.optString("gateway_token")
+      val deviceId = result.optString("device_id")
+      if (!token.matches(Regex("^[0-9a-f]{64}$")) || deviceId.isBlank()) {
+        callbackToWebsite("onServerSmsGatewayResult", JSONObject().put("ok", false).put("error", "GATEWAY_REGISTRATION_INVALID"))
+        return@Thread
+      }
+      try {
+        ServerSmsGatewaySecureStore.save(this, token, deviceId, option.subscriptionId, option.label)
+        startForegroundService(Intent(this, ServerSmsGatewayService::class.java).setAction(ServerSmsGatewayService.ACTION_START))
+        callbackToWebsite("onServerSmsGatewayResult", JSONObject()
+          .put("ok", true).put("connected", true).put("device_id", deviceId)
+          .put("subscription_id", option.subscriptionId).put("slot_index", option.slotIndex)
+          .put("carrier", option.carrier).put("label", option.label)
+          .put("message", "Your selected SIM is registered with Server. The visible background service is starting."))
+      } catch (_: Exception) {
+        try { ServerSmsGatewayApi.disconnect(this, access, deviceId) } catch (_: Exception) {}
+        ServerSmsGatewaySecureStore.clear(this)
+        callbackToWebsite("onServerSmsGatewayResult", JSONObject().put("ok", false).put("error", "GATEWAY_START_FAILED"))
+      }
+    }.start()
+  }
+
+  private fun refreshSmsGatewayStatus() {
+    Thread {
+      val token = ServerSmsGatewaySecureStore.token(this)
+      if (token.isNullOrBlank()) {
+        callbackToWebsite("onServerSmsGatewayStatus", JSONObject().put("ok", true).put("connected", false))
+        return@Thread
+      }
+      val status = try { ServerSmsGatewayApi.status(this) }
+        catch (_: Exception) { JSONObject().put("ok", false).put("error", "GATEWAY_STATUS_UNAVAILABLE") }
+      val lastSeen = try { java.time.Instant.parse(status.optString("last_seen_at")).toEpochMilli() }
+        catch (_: Exception) { 0L }
+      val connected = status.optBoolean("enabled") &&
+        lastSeen > 0L && System.currentTimeMillis() - lastSeen <= 90_000L
+      val result = JSONObject()
+        .put("ok", true).put("connected", connected)
+        .put("label", ServerSmsGatewaySecureStore.label(this))
+        .put("device_id", ServerSmsGatewaySecureStore.deviceId(this))
+        .put("last_seen_at", status.optString("last_seen_at"))
+      callbackToWebsite("onServerSmsGatewayStatus", result)
+    }.start()
   }
 
   private fun runJs(script: String) {
@@ -323,17 +401,55 @@ class ServerSetupWebActivity : Activity() {
       }.start()
     }
 
-    @JavascriptInterface fun createSmsGatewayPairingCode() {
+    @JavascriptInterface fun requestSmsGatewaySimOptions() {
+      runOnUiThread {
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+          requestPermissions(arrayOf(Manifest.permission.READ_PHONE_STATE), REQUEST_SMS_SIM_OPTIONS)
+        } else {
+          callbackToWebsite("onServerSmsGatewaySimOptions", ServerSmsGatewayManager.optionsJson(this@ServerSetupWebActivity))
+        }
+      }
+    }
+
+    @JavascriptInterface fun connectSmsGateway(subscriptionId: Int) {
+      runOnUiThread {
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+          callbackToWebsite("onServerSmsGatewayResult", JSONObject().put("ok", false).put("error", "SIM_PERMISSION_REQUIRED"))
+          return@runOnUiThread
+        }
+        val option = ServerSmsGatewayManager.resolve(this@ServerSetupWebActivity, subscriptionId)
+        if (option == null) {
+          callbackToWebsite("onServerSmsGatewayResult", JSONObject().put("ok", false).put("error", "SELECTED_SIM_UNAVAILABLE"))
+          return@runOnUiThread
+        }
+        if (checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+          pendingSmsGatewayOption = option
+          requestPermissions(arrayOf(Manifest.permission.SEND_SMS), REQUEST_SMS_GATEWAY_CONNECT)
+        } else {
+          completeSmsGatewayConnect(option)
+        }
+      }
+    }
+
+    @JavascriptInterface fun disconnectSmsGateway() {
       Thread {
         val access = prefs.getString("access_token", null).orEmpty()
-        val result = if (!Regex("^[0-9a-f]{64}$").matches(access)) {
-          JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
-        } else {
-          try { requestServerGateway(JSONObject().put("action", "create_pairing_code"), access) }
-          catch (_: Exception) { JSONObject().put("ok", false).put("error", "GATEWAY_PAIRING_UNAVAILABLE") }
-        }
-        callbackToWebsite("onServerGatewayPairingCode", result)
+        val deviceId = ServerSmsGatewaySecureStore.deviceId(this@ServerSetupWebActivity)
+        val serverResult = if (access.matches(Regex("^[0-9a-f]{64}$")) && deviceId.isNotBlank()) {
+          try { ServerSmsGatewayApi.disconnect(this@ServerSetupWebActivity, access, deviceId) }
+          catch (_: Exception) { JSONObject().put("ok", false).put("error", "GATEWAY_DISCONNECT_UNAVAILABLE") }
+        } else JSONObject().put("ok", true)
+        stopService(Intent(this@ServerSetupWebActivity, ServerSmsGatewayService::class.java).setAction(ServerSmsGatewayService.ACTION_STOP))
+        ServerSmsGatewaySecureStore.clear(this@ServerSetupWebActivity)
+        callbackToWebsite("onServerSmsGatewayResult", JSONObject()
+          .put("ok", serverResult.optBoolean("ok", false))
+          .put("connected", false)
+          .put("message", "The selected SIM has been disconnected from Server."))
       }.start()
+    }
+
+    @JavascriptInterface fun refreshSmsGatewayStatus() {
+      refreshSmsGatewayStatus()
     }
 
     @JavascriptInterface fun requestPhoneLinkOtp(rawPhone: String) {
@@ -455,5 +571,7 @@ class ServerSetupWebActivity : Activity() {
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
     private const val REQUEST_CALL = 5102
+    private const val REQUEST_SMS_SIM_OPTIONS = 5103
+    private const val REQUEST_SMS_GATEWAY_CONNECT = 5104
   }
 }
