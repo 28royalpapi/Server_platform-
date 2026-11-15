@@ -1,21 +1,23 @@
-name: Server Android gateway launch smoke
+name: Server Android single-app SIM gateway smoke
 
 on:
   workflow_dispatch:
   push:
+    branches: [main, android-finish]
     paths:
-      - 'apps/android-sim-gateway/**'
+      - 'apps/android-caller/**'
+      - 'web/**'
       - 'scripts/android-gateway-launch-smoke.sh'
       - '.github/workflows/server-android-launch-smoke.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  gateway-launch:
-    name: Build and launch SIM gateway in hosted Android emulator
+  integrated-sim-gateway:
+    name: Build and launch the integrated Server app
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -31,13 +33,13 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Install Android build components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Build gateway APK
-        run: gradle -p apps/android-sim-gateway assembleDebug --no-daemon
+      - name: Build the single Server Connector APK
+        run: gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
 
-      - name: Install and launch the gateway in a hosted Android emulator
-        timeout-minutes: 18
+      - name: Install and launch Server in a hosted Android emulator
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -49,31 +51,18 @@ jobs:
           disable-animations: true
           script: bash scripts/android-gateway-launch-smoke.sh
 
-      - name: Publish the emulator-tested SIM Gateway companion
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK='apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk'
-          test -s "$APK"
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          "$APKSIGNER" verify --verbose "$APK"
-          sha256sum "$APK"
-          gh release upload server-android-connector-preview "$APK#server-sim-gateway.apk" --repo "$GITHUB_REPOSITORY" --clobber
-          echo "SIM_GATEWAY_PREVIEW_PUBLISHED"
-      - name: Save emulator launch evidence
+      - name: Save single-app gateway evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: server-android-gateway-launch-evidence
+          name: server-android-integrated-sim-gateway-smoke
           path: |
-            artifacts/server-gateway-am-start.txt
-            artifacts/server-gateway-activities.txt
-            artifacts/server-gateway-activity-top.txt
-            artifacts/server-gateway-launch-logcat.txt
-            artifacts/server-gateway-package-manager-logcat.txt
-            artifacts/server-gateway-system-services.txt
-            artifacts/server-gateway-screen.png
-            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+            artifacts/server-app-manifest.txt
+            artifacts/server-app-am-start.txt
+            artifacts/server-app-activities.txt
+            artifacts/server-app-activity-top.txt
+            artifacts/server-app-launch-logcat.txt
+            artifacts/server-app-package-manager-logcat.txt
+            artifacts/server-app-screen.png
+            apps/android-caller/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
