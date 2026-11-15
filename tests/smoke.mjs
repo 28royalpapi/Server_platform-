@@ -93,6 +93,7 @@ const androidSmsGatewayRealtime=read("apps/android-caller/app/src/main/java/com/
 const androidSmsGatewayApi=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayApi.kt");
 const androidSmsGatewayStore=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewaySecureStore.kt");
 const integratedGatewayMigration=read("supabase/migrations/20261115120000_server_integrated_sim_gateway.sql");
+const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
 const gatewayWake=read("supabase/functions/_shared/server_gateway_wake.ts");
 const gatewayGradle=androidBuild;
 const calls=read("supabase/functions/server-calls/index.ts");
@@ -746,9 +747,13 @@ assert.match(gateway,/server_register_gateway_device/,"SIM registration uses an 
 assert.match(gateway,/selected_sim/,"registration returns the selected SIM metadata");
 assert.match(gateway,/action==="status"/,"the gateway exposes a backend status check");
 assert.match(auth,/p_user_id:session.user_id/,"SMS verification jobs are created for the authenticated Server identity");
-assert.match(integratedGatewayMigration,/server_issue_otp\(p_user_id uuid/,"OTP issuance binds the job to the requesting identity");
-assert.match(integratedGatewayMigration,/j\.auth_user_id=d\.owner_user_id/,"private OTP jobs can only be claimed by the account's own SIM gateway");
+assert.match(integratedGatewayMigration,/server_issue_otp\s*\(\s*p_user_id uuid/s,"OTP issuance binds the job to the requesting identity");
+assert.match(integratedGatewayMigration,/j\.auth_user_id\s*=\s*d\.owner_user_id/s,"private OTP jobs can only be claimed by the account's own SIM gateway");
 assert.match(integratedGatewayMigration,/sim_subscription_id/);
+assert.match(androidEmulatorSmoke,/SINGLE_APP_SIM_GATEWAY_SMOKE_PASS/,"the emulator smoke validates the SMS gateway inside the single Server app");
+assert.match(androidEmulatorSmoke,/ServerSmsGatewayService/);
+assert.match(androidEmulatorSmoke,/ServerSmsStatusReceiver/);
+assert.doesNotMatch(androidEmulatorSmoke,/apps\/android-sim-gateway/,"the main Android acceptance path must not install a second gateway APK");
 assert.match(integratedGatewayMigration,/sim_slot_index/);
 assert.match(gateway,/x-server-gateway-token/,"Gateway polling reads a separate paired-device token header");
 assert.match(handoff,/x-server-session-token/,"App handoff creation reads the Server session from a dedicated header");
