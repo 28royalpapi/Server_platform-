@@ -380,7 +380,7 @@ jobs:
           ram-size: 3072M
           emulator-boot-timeout: 360
           disable-animations: true
-          emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save
+          emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -allow-host-audio
           script: bash scripts/android-guest-browser-e2e.sh
       - uses: actions/upload-artifact@v4
         if: always()
