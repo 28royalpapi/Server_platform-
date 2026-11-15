@@ -28,7 +28,7 @@ internal class ServerSmsStatusReceiver : BroadcastReceiver() {
         if (seen >= partCount) {
           when (stage) {
             "sent" -> report(context, jobId, if (failed) "failed" else "sent", if (failed) "SMS_SEND_FAILED" else null)
-            "delivered" -> if (!failed) report(context, jobId, "delivered", null)
+            "delivered" -> report(context, jobId, if (failed) "failed" else "delivered", if (failed) "SMS_DELIVERY_FAILED" else null)
           }
           prefs.edit().remove(key).apply()
         }
@@ -61,6 +61,6 @@ internal class ServerSmsStatusReceiver : BroadcastReceiver() {
     }
 
     private const val PREFS = "server-session"
-    private val EXECUTOR = Executors.newCachedThreadPool()
+    // Multipart carrier callbacks for one message share a counter in preferences.\n    // Serialize all sent/delivered callbacks so simultaneous segments cannot lose increments.\n    private val EXECUTOR = Executors.newSingleThreadExecutor()
   }
 }
