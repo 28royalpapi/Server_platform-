@@ -10,6 +10,50 @@ Deno.serve(async(req:Request)=>{
  let b:Record<string,unknown>;try{b=await req.json();if(!b||Array.isArray(b)||typeof b!=="object")throw 0;}catch{return out({error:"INVALID_JSON"},400);}
  const url=Deno.env.get("SUPABASE_URL")||"",key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});const action=typeof b.action==="string"?b.action:"";
+ if(action==="register_device"){
+  const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\\s+(.+)$/i)?.[1]||"").trim();
+  if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
+  const tokenHash=await sha(sessionToken);
+  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id")
+   .eq("token_hash",tokenHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
+  const slot=Number(b.sim_slot_index),subId=Number(b.subscription_id);
+  if(!Number.isInteger(slot)||slot<0||slot>7||!Number.isInteger(subId)||subId<0)return out({error:"INVALID_SIM_SELECTION"},400);
+  const carrier=typeof b.carrier_label==="string"?b.carrier_label.trim().replace(/[\\u0000-\\u001f\\u007f]/g,"").slice(0,80):"";
+  if(!carrier)return out({error:"SIM_CARRIER_REQUIRED"},400);
+  const {data:allowed,error:limitError}=await db.rpc("server_rate_limit_allow",{
+   p_scope:"gateway_device_register",p_key_hash:await sha(session.user_id),p_window_seconds:3600,p_max_hits:5
+  });
+  if(limitError||allowed!==true)return out({error:"GATEWAY_REGISTRATION_RATE_LIMITED"},429);
+  const {error:disableError}=await db.from("server_gateway_devices")
+   .update({enabled:false,shared_guest_sms_enabled:false,updated_at:new Date().toISOString()})
+   .eq("owner_user_id",session.user_id).eq("enabled",true);
+  if(disableError)return out({error:"GATEWAY_REPLACE_FAILED"},503);
+  const deviceToken=token();
+  const label=("SIM "+(slot+1)+" · "+carrier).slice(0,80);
+  const {data:device,error}=await db.from("server_gateway_devices").insert({
+   owner_user_id:session.user_id,label,token_hash:await sha(deviceToken),enabled:true,
+   shared_guest_sms_enabled:false,last_seen_at:new Date().toISOString()
+  }).select("id,label,enabled,last_seen_at").single();
+  if(error||!device)return out({error:"GATEWAY_REGISTER_FAILED"},503);
+  return out({ok:true,gateway_token:deviceToken,device_id:device.id,label:device.label,
+   enabled:true,last_seen_at:device.last_seen_at,selected_sim:{slot_index:slot,carrier_label:carrier}});
+ }
+ if(action==="disconnect"){
+  const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\\s+(.+)$/i)?.[1]||"").trim();
+  if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
+  const tokenHash=await sha(sessionToken);
+  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id")
+   .eq("token_hash",tokenHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
+  const deviceId=typeof b.device_id==="string"?b.device_id.trim():"";
+  if(!/^[0-9a-f-]{36}$/i.test(deviceId))return out({error:"INVALID_DEVICE_ID"},400);
+  const {data:device,error}=await db.from("server_gateway_devices").update({
+   enabled:false,shared_guest_sms_enabled:false,updated_at:new Date().toISOString()
+  }).eq("id",deviceId).eq("owner_user_id",session.user_id).select("id").maybeSingle();
+  if(error||!device)return out({error:"GATEWAY_DEVICE_NOT_FOUND"},404);
+  return out({ok:true,connected:false,device_id:device.id});
+ }
  if(action==="create_pairing_code"){
   const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
   if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
@@ -53,8 +97,9 @@ Deno.serve(async(req:Request)=>{
  const bearer=(req.headers.get("x-server-gateway-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
  if(bearer.length<48||bearer.length>256)return out({error:"GATEWAY_UNAUTHORIZED"},401);
  const hash=await sha(bearer);
- const {data:device,error:de}=await db.from("server_gateway_devices").select("id,enabled").eq("token_hash",hash).maybeSingle();
+ const {data:device,error:de}=await db.from("server_gateway_devices").select("id,label,enabled,last_seen_at").eq("token_hash",hash).maybeSingle();
  if(de||!device||!device.enabled)return out({error:"GATEWAY_UNAUTHORIZED"},401);
+ if(action==="status")return out({ok:true,device_id:device.id,label:device.label,enabled:device.enabled,last_seen_at:device.last_seen_at});
  const now=new Date().toISOString();await db.from("server_gateway_devices").update({last_seen_at:now,updated_at:now}).eq("id",device.id);
  if(action==="poll"){
   const {data:jobs,error}=await db.rpc("server_claim_sms_jobs",{p_device_id:device.id,p_limit:3});
