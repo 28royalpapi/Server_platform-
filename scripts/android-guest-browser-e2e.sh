@@ -57,6 +57,11 @@ await writeFile(path,wav);
 NODE
 pactl load-module module-null-sink sink_name=server_e2e_mic rate=48000 channels=1 >/dev/null
 pactl set-default-source server_e2e_mic.monitor
+if ! adb emu avd hostmicon; then
+  echo "ERROR: Android Emulator refused to enable host microphone input; two-way audio cannot be tested honestly." >&2
+  exit 1
+fi
+echo "SERVER_ANDROID_HOST_MIC_ENABLED=true"
 pactl list short sources | grep -F 'server_e2e_mic.monitor'
 (paplay --device=server_e2e_mic "$MIC_TONE_FILE" >/dev/null 2>&1; while true; do paplay --device=server_e2e_mic "$MIC_TONE_FILE" >/dev/null 2>&1; done) &
 TONE_PID=$!
@@ -117,6 +122,10 @@ cat "$LOG_FILE"
 if [[ "$TEST_STATUS" -ne 0 ]]; then
   echo "The Android Telecom end-to-end instrumentation failed." >&2
   exit "$TEST_STATUS"
+fi
+if ! grep -Fq "OK (1 test)" "$LOG_FILE" || grep -Eq "FAILURES!!!|There (was|were) [1-9][0-9]* failures?" "$LOG_FILE"; then
+  echo "FAIL: Android Telecom instrumentation did not report a passing one-test JUnit result." >&2
+  exit 1
 fi
 
 adb pull "/sdcard/Android/data/com.server.caller.debug/files/server-guest-call-id.txt" \
