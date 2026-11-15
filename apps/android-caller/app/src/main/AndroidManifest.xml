@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.SEND_SMS" />
+  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <uses-feature android:name="android.hardware.telephony" android:required="false" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <!-- Read only the selected contact match locally to resolve its E.164 number/country. -->
   <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -42,6 +46,12 @@
         <data android:scheme="server" android:host="device-setup" />
       </intent-filter>
     </activity>
+    <service android:name="com.server.caller.ServerSmsGatewayService"
+      android:enabled="true" android:exported="false" android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="User-enabled SMS invitation delivery using the SIM explicitly selected by the phone owner." />
+    </service>
+    <receiver android:name="com.server.caller.ServerSmsStatusReceiver" android:enabled="true" android:exported="false" />
     <service android:name="com.server.caller.ServerIncomingCallService"
       android:exported="false" android:foregroundServiceType="phoneCall" />
     <service android:name="com.server.caller.ServerIncomingCallAlertService"
