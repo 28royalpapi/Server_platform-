@@ -67,7 +67,7 @@ jobs:
           : > artifacts/rea-server-dex-strings.txt
           while IFS= read -r dex; do
             unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-server-dex-strings.txt
-          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\\.dex$')
+          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
           for value in \
             'ServerSmsGatewayManager' \
