@@ -2,15 +2,17 @@
 set -euo pipefail
 
 mkdir -p artifacts
-APK="apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk"
+APK="apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
+if [[ ! -s "$APK" ]]; then
+  APK="$(find apps/android-caller/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' ! -name '*androidTest*' | head -n1)"
+fi
+test -s "$APK"
 
 echo "=== Emulator/device ==="
 adb devices -l
 adb shell getprop sys.boot_completed | grep -q '^1$'
 
 echo "=== Wait for Android Package Manager readiness ==="
-# sys.boot_completed can become 1 before system services have registered.
-# In that window adb install fails with: "Can't find service: package".
 package_manager_ready=false
 for attempt in $(seq 1 60); do
   if adb shell pm list packages >/dev/null 2>&1; then
@@ -21,42 +23,48 @@ for attempt in $(seq 1 60); do
   sleep 2
 done
 if [[ "$package_manager_ready" != true ]]; then
-  adb logcat -d -t 1200 > artifacts/server-gateway-package-manager-logcat.txt 2>&1 || true
-  adb shell dumpsys -l > artifacts/server-gateway-system-services.txt 2>&1 || true
+  adb logcat -d -t 1200 > artifacts/server-app-package-manager-logcat.txt 2>&1 || true
   echo "FAIL: Android Package Manager did not become available after boot." >&2
   exit 1
 fi
 
-echo "=== Install the exact SIM gateway APK ==="
+echo "=== Install the one Server Android application ==="
 timeout 120s adb install -r "$APK"
-adb shell pm path com.server.gateway.debug | grep -q '^package:'
+adb shell pm path com.server.caller.debug | grep -q '^package:'
 
-echo "=== Launch the real gateway activity ==="
-if ! timeout 60s adb shell am start -W -n com.server.gateway.debug/com.server.gateway.MainActivity > artifacts/server-gateway-am-start.txt 2>&1; then
-  adb logcat -d -t 1000 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
-  adb shell dumpsys activity activities > artifacts/server-gateway-activities.txt 2>&1 || true
-  cat artifacts/server-gateway-am-start.txt >&2 || true
+echo "=== Verify the integrated SIM gateway is packaged in the Connector ==="
+AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+"$AAPT" dump xmltree "$APK" AndroidManifest.xml > artifacts/server-app-manifest.txt
+grep -Fq 'com.server.caller.ServerSmsGatewayService' artifacts/server-app-manifest.txt
+grep -Fq 'com.server.caller.ServerSmsStatusReceiver' artifacts/server-app-manifest.txt
+if grep -Fq 'com.server.gateway' artifacts/server-app-manifest.txt; then
+  echo "FAIL: the distributed Server APK contains the retired second-app package." >&2
   exit 1
 fi
-cat artifacts/server-gateway-am-start.txt
+
+echo "=== Launch the real Server onboarding activity ==="
+if ! timeout 60s adb shell am start -W -n com.server.caller.debug/com.server.caller.ServerSetupWebActivity > artifacts/server-app-am-start.txt 2>&1; then
+  adb logcat -d -t 1000 > artifacts/server-app-launch-logcat.txt 2>&1 || true
+  adb shell dumpsys activity activities > artifacts/server-app-activities.txt 2>&1 || true
+  cat artifacts/server-app-am-start.txt >&2 || true
+  exit 1
+fi
+cat artifacts/server-app-am-start.txt
 
 sleep 3
-adb shell dumpsys activity activities > artifacts/server-gateway-activities.txt 2>&1
-if ! grep -Fq 'com.server.gateway.MainActivity' artifacts/server-gateway-activities.txt; then
-  adb logcat -d -t 1000 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
-  adb shell dumpsys activity top > artifacts/server-gateway-activity-top.txt 2>&1 || true
-  echo "FAIL: Android accepted the start intent but MainActivity did not remain on the activity stack." >&2
+adb shell dumpsys activity activities > artifacts/server-app-activities.txt 2>&1
+if ! grep -Fq 'com.server.caller.ServerSetupWebActivity' artifacts/server-app-activities.txt; then
+  adb logcat -d -t 1000 > artifacts/server-app-launch-logcat.txt 2>&1 || true
+  adb shell dumpsys activity top > artifacts/server-app-activity-top.txt 2>&1 || true
+  echo "FAIL: Server onboarding did not remain on the activity stack." >&2
   exit 1
 fi
 
-# Stream the screenshot directly over ADB instead of writing to the emulated
-# shared-storage mount, which has intermittently dropped its transport in CI.
-if ! timeout 30s adb exec-out screencap -p > artifacts/server-gateway-screen.png; then
-  adb logcat -d -t 1000 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
-  adb shell dumpsys meminfo > artifacts/server-gateway-meminfo.txt 2>&1 || true
-  echo "FAIL: gateway activity was present, but direct screenshot capture failed; diagnostics saved." >&2
+if ! timeout 30s adb exec-out screencap -p > artifacts/server-app-screen.png; then
+  adb logcat -d -t 1000 > artifacts/server-app-launch-logcat.txt 2>&1 || true
+  echo "FAIL: direct screenshot capture failed." >&2
   exit 1
 fi
-test -s artifacts/server-gateway-screen.png
-adb logcat -d -t 500 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
-echo "GATEWAY_LAUNCH_SMOKE_PASS: package installed, launcher stayed in the foreground, screenshot captured over ADB."
+test -s artifacts/server-app-screen.png
+adb logcat -d -t 500 > artifacts/server-app-launch-logcat.txt 2>&1 || true
+echo "SERVER_SINGLE_APP_GATEWAY_SMOKE_PASS: one package installed, integrated SIM service declared, onboarding launched."
