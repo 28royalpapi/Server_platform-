@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'apps/android-caller/**'
-      - 'apps/android-sim-gateway/**'
       - 'apps/ios-caller/**'
       - '.github/workflows/build-server-native.yml'
       - 'supabase/**'
@@ -19,7 +18,6 @@ on:
     branches: [main, android-finish]
     paths:
       - 'apps/android-caller/**'
-      - 'apps/android-sim-gateway/**'
       - 'apps/ios-caller/**'
       - '.github/workflows/build-server-native.yml'
       - 'supabase/**'
@@ -169,7 +167,7 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "ANDROID_PREVIEW_SIGNING=missing; preview release upload is disabled until the repository signing secrets are configured."
           fi
-      - name: Build Server caller and SIM gateway
+      - name: Build the single Server Android application
         timeout-minutes: 18
         shell: bash
         env:
@@ -191,8 +189,6 @@ jobs:
           echo "BUILD_SERVER_CALLER_START $(date -u +%FT%TZ)"
           timeout 480s gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_CALLER_COMPLETE $(date -u +%FT%TZ)"
-          timeout 480s gradle -p apps/android-sim-gateway assembleDebug --no-daemon --console=plain --stacktrace
-          echo "BUILD_SIM_GATEWAY_COMPLETE $(date -u +%FT%TZ)"
           echo "BUILD_SERVER_RELEASE_BUNDLE_START $(date -u +%FT%TZ)"
           timeout 600s gradle -p apps/android-caller bundleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=false --no-daemon --console=plain --stacktrace
           echo "BUILD_SERVER_RELEASE_BUNDLE_COMPLETE $(date -u +%FT%TZ)"
@@ -221,13 +217,11 @@ jobs:
           }
           APP_RELEASE='apps/android-caller/app/build/outputs/apk/release'
           BUNDLE_RELEASE='apps/android-caller/app/build/outputs/bundle/release'
-          GATEWAY_APK='apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk'
           mkdir -p artifacts/physical artifacts/release
 
           # Preserve release deliverables before any clean instrumentation build.
           cp "$APP_RELEASE"/*.apk artifacts/release/
           cp "$BUNDLE_RELEASE"/*.aab artifacts/release/
-          cp "$GATEWAY_APK" artifacts/release/server-sim-gateway-debug.apk
 
           # Step 10 only runs assembleDebug. Build the x86_64 instrumentation APK
           # explicitly before expecting the test APK to exist.
@@ -269,11 +263,10 @@ jobs:
           python3 scripts/check-16kb-elf-alignment.py arm64-v8a "$ARM64_RELEASE_APK"
           echo "CHECK_ARM64_16KB_ELF_PASS"
 
-          # Restore release and gateway outputs for downstream preview publishing.
-          mkdir -p "$APP_RELEASE" "$BUNDLE_RELEASE" "$(dirname "$GATEWAY_APK")"
+          # Restore release outputs for downstream preview publishing.
+          mkdir -p "$APP_RELEASE" "$BUNDLE_RELEASE"
           cp artifacts/release/*.apk "$APP_RELEASE"/
           cp artifacts/release/*.aab "$BUNDLE_RELEASE"/
-          cp artifacts/release/server-sim-gateway-debug.apk "$GATEWAY_APK"
           ls -lh artifacts/physical/*.apk artifacts/release/*
           echo "ASSEMBLE_ANDROID_TEST_PAIRS_COMPLETE $(date -u +%FT%TZ)"
       - name: Upload built Android APKs before emulator smoke test
@@ -288,7 +281,6 @@ jobs:
             apps/android-caller/app/build/outputs/apk/androidTest/debug/*.apk
             apps/android-caller/app/build/outputs/apk/release/*.apk
             apps/android-caller/app/build/outputs/bundle/release/*.aab
-            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
       - name: Run Android phone emulator UI smoke test
         timeout-minutes: 22
@@ -325,7 +317,6 @@ jobs:
             apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
             apps/android-caller/app/build/outputs/apk/androidTest/debug/*.apk
             apps/android-caller/app/build/outputs/bundle/release/*.aab
-            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
             apps/android-caller/app/build/outputs/androidTest-results/**
             artifacts/**
           if-no-files-found: warn
@@ -853,15 +844,7 @@ jobs:
           cp "$ARM64_APK" server-android-arm64.apk
           cp "$ARMV7_APK" server-android-armv7.apk
           sha256sum server-android-arm64.apk server-android-armv7.apk
-          GATEWAY_APK="$(find "$ROOT" -type f -name 'server-sim-gateway-debug.apk' -print -quit)"
-          if [[ -z "$GATEWAY_APK" || ! -s "$GATEWAY_APK" ]]; then
-            echo "ERROR: the tested Server SIM Gateway APK is missing from the Android build artifact." >&2
-            find "$ROOT" -maxdepth 8 -type f -print >&2
-            exit 1
-          fi
-          cp "$GATEWAY_APK" server-sim-gateway.apk
-          sha256sum server-sim-gateway.apk
-          gh release upload server-android-connector-preview server-android-arm64.apk server-android-armv7.apk server-sim-gateway.apk --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload server-android-connector-preview server-android-arm64.apk server-android-armv7.apk --repo "$GITHUB_REPOSITORY" --clobber
           gh release delete-asset server-android-connector-preview app-universal-release.apk --repo "$GITHUB_REPOSITORY" --yes || true
           gh release delete-asset server-android-connector-preview Server-Android-Connector-preview.apk --repo "$GITHUB_REPOSITORY" --yes || true
           echo "ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"
