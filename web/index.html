@@ -24,7 +24,7 @@
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
         <section id="android-install" class="install-card">
-          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This small Android companion connects Server to Android's system calling interface. It does not read SIMs, carrier names, phone numbers or subscriber identifiers. Server calls use mobile data or Wi-Fi; no SIM selection or carrier fallback is required.</p></div></div>
+          <div class="step-title"><span class="step-number">01</span><div><h2>Install the Server calling connector</h2><p>This is the one Android Server app. It connects Server to Android's system calling interface and includes the optional SIM SMS gateway. Server does not read your SIM phone number, IMSI or ICCID. Server calls use mobile data or Wi-Fi; the selected SIM is used only for SMS you ask Server to send.</p></div></div>
           <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-arm64.apk">Download 64-bit ARM connector (recommended) <span aria-hidden="true">↓</span></a>
           <p class="fine-print">Use this ARM64 build on most current Android phones. For an older phone that only supports 32-bit Android, use the ARMv7 option below. These are phone builds; emulator-only x86 packages are not offered here.</p>
           <a class="secondary full install-link-secondary" id="download-android-connector-armv7" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-armv7.apk">Download 32-bit ARM connector (ARMv7)</a>
@@ -131,7 +131,7 @@
           <div class="walkthrough-copy">
             <span>STEP 04</span>
             <h3>Allow required permissions</h3>
-            <p>Accept the terms, then allow microphone access for call audio and notifications for incoming-call alerts. Contacts access is optional and is used only on this phone to match numbers against names already saved in your address book; contacts are never uploaded. Server does not request SIM-reading or phone-state permission.</p>
+            <p>Accept the terms, then allow microphone access for call audio and notifications for incoming-call alerts. Contacts access is optional and is used only on this phone to match numbers against names already saved in your address book; contacts are never uploaded. The optional SMS gateway separately asks for permission to view active SIM slots and send SMS through the SIM you select. You can decline this and still use Server internet calling.</p>
           </div>
         </article>
         <article class="walkthrough-card">
