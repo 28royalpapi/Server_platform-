@@ -195,6 +195,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       smsGatewaySimSelect.appendChild(option);
     });
     smsGatewayOptionsReady = true;
+    smsGatewaySimSelect.disabled = false;
     if (options.length > 1) {
       smsGatewaySimSelect.classList.remove("hidden");
       smsGatewaySimLabel && smsGatewaySimLabel.classList.remove("hidden");
@@ -207,6 +208,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
       window.ServerAndroid.connectSmsGateway(Number(options[0].subscription_id));
       return;
     }
+    smsGatewaySimSelect.disabled = true;
+    smsGatewaySimLabel && smsGatewaySimLabel.classList.add("hidden");
     showSmsGatewayStatus("No active SIM with SMS capability was found on this device.");
     connectSmsGatewayButton.disabled = false;
     connectSmsGatewayButton.textContent = "Try again";
@@ -249,7 +252,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
       const reason = (result && result.error) || "SIM_LOOKUP_FAILED";
       const messages = {
         SIM_PERMISSION_DENIED: "Allow SIM access so Server can show your active SIM slots.",
-        SIM_PERMISSION_REQUIRED: "Allow SIM access, then try again."
+        SIM_PERMISSION_REQUIRED: "Allow SIM access, then try again.",
+        SMS_PERMISSION_DENIED: "Allow Server to send SMS from the SIM you selected.",
+        GATEWAY_NOTIFICATION_PERMISSION_DENIED: "Allow Server notifications so its SIM connection can stay visible.",
+        GATEWAY_PERMISSIONS_REQUIRED: "Allow the requested Android permissions, then connect again."
       };
       showSmsGatewayStatus(messages[reason] || "Server could not read the active SIMs (" + reason + ").");
       return;
@@ -274,12 +280,18 @@ if (isNativeSetup && nativeSetup && stepForm) {
       disconnectSmsGatewayButton.classList.add("hidden");
       connectSmsGatewayButton.classList.remove("hidden");
       connectSmsGatewayButton.textContent = "Connect my SIM";
+      if (smsGatewayOptionsReady && smsGatewaySimSelect && smsGatewaySimSelect.options.length > 2) {
+        smsGatewaySimSelect.classList.remove("hidden");
+        smsGatewaySimLabel && smsGatewaySimLabel.classList.remove("hidden");
+      }
       showSmsGatewayStatus(result.message || "Your SIM is disconnected from Server.", true);
       return;
     }
     connectSmsGatewayButton.classList.add("hidden");
     disconnectSmsGatewayButton.classList.remove("hidden");
-    showSmsGatewayStatus("Connected: " + (result.label || result.carrier || "selected SIM") + ". Server has registered this SIM with your account.", true);
+    smsGatewaySimSelect && smsGatewaySimSelect.classList.add("hidden");
+    smsGatewaySimLabel && smsGatewaySimLabel.classList.add("hidden");
+    showSmsGatewayStatus("Connected: " + (result.label || result.carrier || "selected SIM") + ". Server confirmed this SIM is registered and online.", true);
   };
 
   window.onServerSmsGatewayStatus = (result) => {
@@ -293,6 +305,8 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     connectSmsGatewayButton && connectSmsGatewayButton.classList.add("hidden");
     disconnectSmsGatewayButton && disconnectSmsGatewayButton.classList.remove("hidden");
+    smsGatewaySimSelect && smsGatewaySimSelect.classList.add("hidden");
+    smsGatewaySimLabel && smsGatewaySimLabel.classList.add("hidden");
     showSmsGatewayStatus("Connected: " + (result.label || "selected SIM") + ". SMS delivery is active while this phone stays online.", true);
   };
 
@@ -302,10 +316,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
     if (!result || !result.ok) {
       phoneLinkInput.disabled = false;
       const message = {
-        SMS_GATEWAY_OFFLINE: "The Server SMS gateway is offline. You can pair the Android SMS gateway later and try again, or skip number linking for now.",
+        SMS_GATEWAY_OFFLINE: "Connect a SIM to Server before requesting a phone verification code.",
         OTP_RATE_LIMITED: "Too many verification requests. Wait before requesting another code.",
         INVALID_PHONE_FORMAT: "Enter a valid number in international format.",
-        OTP_QUEUE_FAILED: "Server could not queue the SMS. Try again after checking the paired gateway."
+        OTP_QUEUE_FAILED: "Server could not queue the SMS. Check that your selected SIM is connected."
       }[(result && result.error)] || "Server could not send a verification code (" + ((result && result.error) || "unknown error") + ").";
       showPhoneLinkStatus(message);
       return;
