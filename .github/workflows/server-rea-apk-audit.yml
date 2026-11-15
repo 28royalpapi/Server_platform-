@@ -64,6 +64,13 @@ jobs:
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerSmsGatewayApi registerDevice --json > artifacts/rea-sim-registration.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerSmsGatewayService sendJob --json > artifacts/rea-sms-send-job.json
           npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerSmsStatusReceiver onReceive --json > artifacts/rea-sms-delivery-callbacks.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateOutgoingConnection --json > artifacts/rea-telecom-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateIncomingConnection --json > artifacts/rea-telecom-incoming.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine startOutgoing --json > artifacts/rea-telecom-start-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine answerIncoming --json > artifacts/rea-telecom-answer-incoming.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-telecom-ice-state.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-guest-invite-notification.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteShareActivity onCreate --json > artifacts/rea-guest-invite-share.json
           : > artifacts/rea-server-dex-strings.txt
           while IFS= read -r dex; do
             unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-server-dex-strings.txt
