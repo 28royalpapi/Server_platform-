@@ -696,7 +696,9 @@ jobs:
           path: apps/android-caller/app/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
+  # iOS is intentionally paused while Android calling/SIM acceptance is completed.
   ios-simulator-build-and-preview:
+    if: ${{ false }}
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
