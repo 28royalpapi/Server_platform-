@@ -93,7 +93,6 @@ const androidSmsGatewayRealtime=read("apps/android-caller/app/src/main/java/com/
 const androidSmsGatewayApi=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayApi.kt");
 const androidSmsGatewayStore=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewaySecureStore.kt");
 const integratedGatewayMigration=read("supabase/migrations/20261115120000_server_integrated_sim_gateway.sql");
-const androidEmulatorSmoke=read("scripts/android-emulator-smoke.sh");
 const gatewayWake=read("supabase/functions/_shared/server_gateway_wake.ts");
 const gatewayGradle=androidBuild;
 const calls=read("supabase/functions/server-calls/index.ts");
