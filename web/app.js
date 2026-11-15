@@ -196,16 +196,16 @@ if (isNativeSetup && nativeSetup && stepForm) {
     });
     smsGatewayOptionsReady = true;
     smsGatewaySimSelect.disabled = false;
-    if (options.length > 1) {
+    if (options.length > 0) {
+      // Even when only one SIM is present, keep the final Connect action explicit.
+      // Permission prompts and SIM discovery must never silently register a gateway.
+      if (options.length === 1) smsGatewaySimSelect.value = String(options[0].subscription_id);
       smsGatewaySimSelect.classList.remove("hidden");
       smsGatewaySimLabel && smsGatewaySimLabel.classList.remove("hidden");
       connectSmsGatewayButton.textContent = "Connect selected SIM";
-      showSmsGatewayStatus("Choose the SIM Server should use, then tap Connect.");
-      return;
-    }
-    if (options.length === 1) {
-      smsGatewaySimSelect.value = String(options[0].subscription_id);
-      window.ServerAndroid.connectSmsGateway(Number(options[0].subscription_id));
+      showSmsGatewayStatus(options.length === 1
+        ? "SIM found. Tap Connect to register it with Server."
+        : "Choose the SIM Server should use, then tap Connect.");
       return;
     }
     smsGatewaySimSelect.disabled = true;
