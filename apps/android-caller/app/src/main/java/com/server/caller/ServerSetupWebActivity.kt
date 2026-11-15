@@ -215,7 +215,7 @@ class ServerSetupWebActivity : Activity() {
     }.start()
   }
 
-  private fun refreshSmsGatewayStatus() {
+  private fun refreshSmsGatewayStatusNative() {
     Thread {
       val token = ServerSmsGatewaySecureStore.token(this)
       if (token.isNullOrBlank()) {
@@ -449,7 +449,7 @@ class ServerSetupWebActivity : Activity() {
     }
 
     @JavascriptInterface fun refreshSmsGatewayStatus() {
-      refreshSmsGatewayStatus()
+      refreshSmsGatewayStatusNative()
     }
 
     @JavascriptInterface fun requestPhoneLinkOtp(rawPhone: String) {
