@@ -64,8 +64,10 @@ const record = (name, ok, detail) => {
 // Invalid phone input must be rejected before any OTP is generated or queued.
 {
   const r = await request("server-auth", "POST", { action: "request_otp", phone: "not-a-real-number" });
-  const ok = r.response.status === 400 && r.data.error === "INVALID_PHONE_FORMAT";
-  record("server-auth input validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+  // OTP issuance now requires a Server session before it inspects a destination.
+  // The malformed-code verification contract below remains the no-SMS input test.
+  const ok = r.response.status === 401 && r.data.error === "SESSION_REQUIRED";
+  record("server-auth request_otp session boundary", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
 // Never trigger a carrier SMS from CI. A malformed verification code must be rejected
