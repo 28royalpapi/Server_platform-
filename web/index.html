@@ -61,17 +61,15 @@
           <p class="done-text">Your Server ID is ready. Server calls use WebRTC over the internet. When you call a non-member, Server sends a caller-identified browser push alert if that phone number has previously enrolled a guest receiver. On first contact, share the secure invitation once; the recipient can enable call alerts in their browser and answer without installing Server. If no internet receiver is available, Server records the attempt as unreachable—no mobile-operator fallback is placed.</p>
 
           <section class="gateway-setup" id="sms-gateway-setup">
-            <h3>One-time setup: Server's shared SMS Gateway</h3>
-            <p class="fine-print">Only the designated Gateway operator needs to do this once on one Android phone. When the operator explicitly opts in to sharing, this one handset can send guest-call invitation SMS for all Server users. Regular members do not install the Gateway app. Server-to-Server calls do not need it; the Gateway is used for SMS invitations to non-members and optional phone-number verification. The operator's carrier may charge for SMS, and the Gateway phone must stay online. you do not need to link or verify your own phone number first to place or receive Server guest calls.</p>
-            <a class="secondary full install-link-secondary" id="download-server-sim-gateway" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/app-debug.apk">Download Server SIM Gateway (Android companion) ↓</a>
-            <p class="fine-print">On the operator's phone: install this companion, generate a code below, enter that code in the Gateway app, tick the sharing-consent box, tap Pair, then start the Gateway and approve Android's SMS and notification permissions. This pairing is done once; the phone can then serve other Server users.</p>
-            <button class="secondary full" id="create-sms-gateway-pairing-code" type="button">Generate one-time gateway pairing code</button>
-            <div id="sms-gateway-pairing-result" class="hidden">
-              <label for="sms-gateway-pairing-code">One-time pairing code</label>
-              <p id="sms-gateway-pairing-code" class="pairing-result"></p>
-              <p id="sms-gateway-pairing-expiry" class="fine-print"></p>
-            </div>
-            <p id="sms-gateway-pairing-status" class="status hidden" role="status" aria-live="polite"></p>
+            <h3>Connect your SIM for Server SMS</h3>
+            <p class="fine-print">Choose the SIM you want Server to use for SMS invitations and verification messages. Server will connect it to your existing account automatically. No project URL, pairing code, or second app is required. Your mobile operator may charge for messages. This is an SMS connection, not a voice-call connection.</p>
+            <label for="sms-gateway-sim" id="sms-gateway-sim-label" class="hidden">Choose your SIM</label>
+            <select id="sms-gateway-sim" class="hidden" disabled>
+              <option value="">Choose a SIM</option>
+            </select>
+            <button class="secondary full" id="connect-sms-gateway" type="button">Connect my SIM</button>
+            <button class="secondary full hidden" id="disconnect-sms-gateway" type="button">Disconnect SIM</button>
+            <p id="sms-gateway-status" class="status hidden" role="status" aria-live="polite"></p>
           </section>
           <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
           <section id="phone-link-step" class="phone-link-step hidden">
