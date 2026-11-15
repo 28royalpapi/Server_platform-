@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioManager
+import android.media.MediaRecorder
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -114,6 +115,10 @@ private var activeStateSyncedFor: String? = null
   private var audioSource: AudioSource? = null
   private var audioTrack: AudioTrack? = null
   private var audioModule: JavaAudioDeviceModule? = null
+  private var previousAudioMode: Int? = null
+  private var previousMicrophoneMute: Boolean? = null
+  private var audioFocusGranted = false
+
   private var iceServers = JSONArray()
   private var iceServerMode = "stun-only"
   private val pendingIce = mutableListOf<IceCandidate>()
@@ -693,9 +698,12 @@ if (ServerRecipientReachability.isFresh(availability)) {
       throw IllegalStateException("Microphone permission is required for Server calls.")
     }
     if (peer != null) cleanupPeer()
+    beginAudioSession()
     val init = PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions()
     PeerConnectionFactory.initialize(init)
-    audioModule = JavaAudioDeviceModule.builder(context).createAudioDeviceModule()
+    audioModule = JavaAudioDeviceModule.builder(context)
+      .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+      .createAudioDeviceModule()
     peerFactory = PeerConnectionFactory.builder().setAudioDeviceModule(audioModule).createPeerConnectionFactory()
     val servers = mutableListOf<PeerConnection.IceServer>()
     for (index in 0 until serversJson.length()) {
@@ -728,7 +736,58 @@ if (ServerRecipientReachability.isFresh(availability)) {
     audioTrack = peerFactory?.createAudioTrack("server-audio", audioSource)
     audioTrack?.setEnabled(true)
     audioTrack?.let { peer?.addTrack(it, listOf("server-audio-stream")) }
-    (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode = AudioManager.MODE_IN_COMMUNICATION
+  }
+
+  /**
+   * Follow Android's WebRTC call-audio lifecycle: request voice-call focus,
+   * select communication mode before capture/playout, and restore the exact
+   * previous system state when Telecom ends this Connection.
+   */
+  private fun beginAudioSession() {
+    val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    if (previousAudioMode == null) {
+      previousAudioMode = manager.mode
+      previousMicrophoneMute = manager.isMicrophoneMute
+    }
+    try {
+      val result = manager.requestAudioFocus(
+        null,
+        AudioManager.STREAM_VOICE_CALL,
+        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+      )
+      audioFocusGranted = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+      if (!audioFocusGranted) Log.w(TAG, "Android did not grant transient voice-call audio focus.")
+    } catch (error: Exception) {
+      Log.w(TAG, "Voice-call audio focus request failed: " + error.javaClass.simpleName)
+    }
+    manager.mode = AudioManager.MODE_IN_COMMUNICATION
+    // A device-wide microphone mute otherwise produces valid RTP packets that
+    // contain silence. Restore the user's original mute state at teardown.
+    try {
+      if (manager.isMicrophoneMute) manager.isMicrophoneMute = false
+    } catch (error: Exception) {
+      Log.w(TAG, "Could not clear the device microphone mute for this call: " + error.javaClass.simpleName)
+    }
+  }
+
+  private fun endAudioSession() {
+    val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    try {
+      previousMicrophoneMute?.let { manager.isMicrophoneMute = it }
+    } catch (error: Exception) {
+      Log.w(TAG, "Could not restore the previous microphone mute state: " + error.javaClass.simpleName)
+    }
+    try {
+      manager.mode = previousAudioMode ?: AudioManager.MODE_NORMAL
+    } catch (error: Exception) {
+      Log.w(TAG, "Could not restore the previous Android audio mode: " + error.javaClass.simpleName)
+    }
+    if (audioFocusGranted) {
+      try { manager.abandonAudioFocus(null) } catch (_: Exception) {}
+    }
+    audioFocusGranted = false
+    previousAudioMode = null
+    previousMicrophoneMute = null
   }
 
   private suspend fun createLocalDescription(offer: Boolean): JSONObject =
@@ -868,6 +927,7 @@ if (ServerRecipientReachability.isFresh(availability)) {
     peerFactory = null
     try { audioModule?.release() } catch (_: Exception) {}
     audioModule = null
+    endAudioSession()
     activeStateSyncedFor = null
     iceConnected = false
     remoteAudioTrackReady = false
