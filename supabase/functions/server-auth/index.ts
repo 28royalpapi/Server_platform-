@@ -121,16 +121,20 @@ Deno.serve(async(req:Request)=>{
    });
   }
   if(action==="request_otp"){
+   const session=await bearer(req,db);
+   if(!session)return out({error:"SESSION_REQUIRED"},401);
    const to=phone(b.phone);if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
    const rawCode=crypto.getRandomValues(new Uint32Array(1))[0]%1000000;
    const code=String(rawCode).padStart(6,"0");
-   const {data,error}=await db.rpc("server_issue_otp",{p_phone:to,p_code:code,p_ip_hash:await ipHash(req)});
+   const {data,error}=await db.rpc("server_issue_otp",{
+    p_user_id:session.user_id,p_phone:to,p_code:code,p_ip_hash:await ipHash(req)
+   });
    if(error)return out({error:"OTP_QUEUE_FAILED"},503);
    const result=data as Record<string,unknown>;
    if(result?.status==="GATEWAY_OFFLINE")return out({error:"SMS_GATEWAY_OFFLINE"},503);
    if(result?.status==="RATE_LIMITED")return out({error:"OTP_RATE_LIMITED"},429);
    if(result?.status!=="QUEUED")return out({error:"OTP_REQUEST_REJECTED"},400);
-   return out({ok:true,phone:to,expires_at:result.expires_at,delivery:"queued_to_paired_android_sim"});
+   return out({ok:true,phone:to,expires_at:result.expires_at,delivery:"queued_to_your_connected_sim"});
   }
   if(action==="verify_otp"){
    const to=phone(b.phone),code=typeof b.code==="string"?b.code.trim():"";
