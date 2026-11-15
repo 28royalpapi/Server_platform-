@@ -25,19 +25,16 @@ Deno.serve(async(req:Request)=>{
    p_scope:"gateway_device_register",p_key_hash:await sha(session.user_id),p_window_seconds:3600,p_max_hits:5
   });
   if(limitError||allowed!==true)return out({error:"GATEWAY_REGISTRATION_RATE_LIMITED"},429);
-  const {error:disableError}=await db.from("server_gateway_devices")
-   .update({enabled:false,shared_guest_sms_enabled:false,updated_at:new Date().toISOString()})
-   .eq("owner_user_id",session.user_id).eq("enabled",true);
-  if(disableError)return out({error:"GATEWAY_REPLACE_FAILED"},503);
-  const deviceToken=token();
-  const label=("SIM "+(slot+1)+" · "+carrier).slice(0,80);
-  const {data:device,error}=await db.from("server_gateway_devices").insert({
-   owner_user_id:session.user_id,label,token_hash:await sha(deviceToken),enabled:true,
-   shared_guest_sms_enabled:false,last_seen_at:new Date().toISOString()
-  }).select("id,label,enabled,last_seen_at").single();
-  if(error||!device)return out({error:"GATEWAY_REGISTER_FAILED"},503);
+  const deviceToken=token(),label=("SIM "+(slot+1)+" · "+carrier).slice(0,80);
+  const {data:registered,error:registerError}=await db.rpc("server_register_gateway_device",{
+   p_owner_user_id:session.user_id,p_label:label,p_token_hash:await sha(deviceToken),
+   p_subscription_id:subId,p_slot_index:slot,p_carrier_label:carrier
+  });
+  const device=Array.isArray(registered)?registered[0]:registered;
+  if(registerError||!device?.id)return out({error:"GATEWAY_REGISTER_FAILED"},503);
   return out({ok:true,gateway_token:deviceToken,device_id:device.id,label:device.label,
-   enabled:true,last_seen_at:device.last_seen_at,selected_sim:{slot_index:slot,carrier_label:carrier}});
+   enabled:device.enabled===true,last_seen_at:device.last_seen_at,
+   selected_sim:{subscription_id:subId,slot_index:slot,carrier_label:carrier}});
  }
  if(action==="disconnect"){
   const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\\s+(.+)$/i)?.[1]||"").trim();
