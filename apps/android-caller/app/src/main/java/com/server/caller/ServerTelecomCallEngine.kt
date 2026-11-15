@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaRecorder
 import android.net.ConnectivityManager
@@ -116,7 +118,7 @@ private var activeStateSyncedFor: String? = null
   private var audioTrack: AudioTrack? = null
   private var audioModule: JavaAudioDeviceModule? = null
   private var previousAudioMode: Int? = null
-  private var previousMicrophoneMute: Boolean? = null
+  private var audioFocusRequest: AudioFocusRequest? = null
   private var audioFocusGranted = false
 
   private var iceServers = JSONArray()
@@ -745,49 +747,46 @@ if (ServerRecipientReachability.isFresh(availability)) {
    */
   private fun beginAudioSession() {
     val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    if (previousAudioMode == null) {
-      previousAudioMode = manager.mode
-      previousMicrophoneMute = manager.isMicrophoneMute
-    }
+    if (previousAudioMode == null) previousAudioMode = manager.mode
+
+    // Android 8+ requires a real AudioFocusRequest/listener. A null listener
+    // can be rejected by the platform, leaving WebRTC without call audio focus.
+    val audioAttributes = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+      .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+      .build()
+    val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+      .setAudioAttributes(audioAttributes)
+      .setAcceptsDelayedFocusGain(false)
+      .setOnAudioFocusChangeListener { change ->
+        if (change == AudioManager.AUDIOFOCUS_LOSS) {
+          Log.w(TAG, "Android voice-call audio focus was lost.")
+        }
+      }
+      .build()
+    audioFocusRequest = request
     try {
-      val result = manager.requestAudioFocus(
-        null,
-        AudioManager.STREAM_VOICE_CALL,
-        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
-      )
-      audioFocusGranted = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+      audioFocusGranted = manager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
       if (!audioFocusGranted) Log.w(TAG, "Android did not grant transient voice-call audio focus.")
     } catch (error: Exception) {
       Log.w(TAG, "Voice-call audio focus request failed: " + error.javaClass.simpleName)
     }
     manager.mode = AudioManager.MODE_IN_COMMUNICATION
-    // A device-wide microphone mute otherwise produces valid RTP packets that
-    // contain silence. Restore the user's original mute state at teardown.
-    try {
-      if (manager.isMicrophoneMute) manager.isMicrophoneMute = false
-    } catch (error: Exception) {
-      Log.w(TAG, "Could not clear the device microphone mute for this call: " + error.javaClass.simpleName)
-    }
   }
 
   private fun endAudioSession() {
     val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    try {
-      previousMicrophoneMute?.let { manager.isMicrophoneMute = it }
-    } catch (error: Exception) {
-      Log.w(TAG, "Could not restore the previous microphone mute state: " + error.javaClass.simpleName)
-    }
     try {
       previousAudioMode?.let { manager.mode = it }
     } catch (error: Exception) {
       Log.w(TAG, "Could not restore the previous Android audio mode: " + error.javaClass.simpleName)
     }
     if (audioFocusGranted) {
-      try { manager.abandonAudioFocus(null) } catch (_: Exception) {}
+      try { audioFocusRequest?.let { manager.abandonAudioFocusRequest(it) } } catch (_: Exception) {}
     }
+    audioFocusRequest = null
     audioFocusGranted = false
     previousAudioMode = null
-    previousMicrophoneMute = null
   }
 
   private suspend fun createLocalDescription(offer: Boolean): JSONObject =
