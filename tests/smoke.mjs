@@ -658,7 +658,10 @@ assert.match(androidEngine,/toStartPayload\("android_telecom"\)/,
 assert.match(androidEngine,/two_way_audio_media_ready/);
 assert.match(androidEngine,/beginAudioSession/,"Android requests voice-call audio focus before WebRTC capture");
 assert.match(androidEngine,/MediaRecorder\.AudioSource\.VOICE_COMMUNICATION/,"the Android WebRTC microphone uses the communication audio source");
-assert.match(androidEngine,/endAudioSession/,"Android restores audio mode and mute state at call teardown");
+assert.match(androidEngine,/AudioFocusRequest\.Builder/,"Android requests voice-call audio focus with a platform listener");
+assert.match(androidEngine,/abandonAudioFocusRequest/,"Android releases call audio focus at teardown");
+assert.doesNotMatch(androidEngine,/isMicrophoneMute\s*=/,"Server must respect the device microphone mute state");
+assert.match(androidEngine,/endAudioSession/,"Android restores its previous audio mode at call teardown");
 assert.match(androidEngine,/remote_audio_track_received/);
 assert.match(androidEngine,/audio_rtp_packets_both_directions/);
 assert.match(androidEngine,/outboundAudioRtpPacketsSent/);
