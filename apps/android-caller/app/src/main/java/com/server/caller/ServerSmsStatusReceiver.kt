@@ -47,6 +47,19 @@ internal class ServerSmsStatusReceiver : BroadcastReceiver() {
   }
 
   companion object {
+    fun reportFailure(context: Context, jobId: String, errorCode: String) {
+      EXECUTOR.execute {
+        try {
+          val payload = JSONObject().put("action", "complete")
+            .put("job_id", jobId).put("status", "failed")
+            .put("error_code", errorCode.take(64))
+          ServerSmsGatewayApi.postGateway(context, payload)
+        } catch (_: Exception) {
+          // The lease expiry provides server-side recovery if the acknowledgement is lost.
+        }
+      }
+    }
+
     private const val PREFS = "server-session"
     private val EXECUTOR = Executors.newCachedThreadPool()
   }
