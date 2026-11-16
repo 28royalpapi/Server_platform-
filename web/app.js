@@ -277,7 +277,12 @@ if (isNativeSetup && nativeSetup && stepForm) {
     }
     const options = Array.isArray(result.options) ? result.options : [];
     if (!options.length) {
-      showSmsGatewayStatus("This phone has no active SIM that supports SMS, or it is a Wi-Fi-only device.");
+      const slots = Number(result.phone_count) || 0;
+      const detail = slots > 1
+        ? `Android reports ${slots} SIM slots but did not return any active SIM subscriptions.`
+        : "Android did not return an active SIM subscription.";
+      showSmsGatewayStatus(detail + " Open Android Settings → SIM cards and make sure each line is enabled, wait for the mobile network to load, then tap Try again. Server now checks each SIM slot as well as Android's active-SIM list.");
+      connectSmsGatewayButton.textContent = "Try again";
       return;
     }
     populateSmsGatewaySims(options);
