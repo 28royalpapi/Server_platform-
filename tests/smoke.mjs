@@ -790,7 +790,9 @@ assert.match(guestWebPushSender,/await Promise\.all\(freshDevices\.map/,"stale s
 assert.match(projectReadme,/Server digital address/);
 assert.match(projectReadme,/Server Backend URL/);
 assert.match(projectReadme,/first-party Gateway source is in/ ,
-  "README identifies the self-operated Android SIM Gateway implementation");
+  "README identifies the SIM gateway implementation bundled inside the Android calling app");
+assert.match(projectReadme,/one Android download|one Android app/i,"README documents the single combined consumer APK");
+assert.match(projectReadme,/gateway is \*\*not required\*\*/i,"README makes SMS Gateway optional for calling");
 assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
 assert.match(calls,/eq\("owner_user_id",uid\)/,"the caller's own active SIM Gateway is preferred");
 assert.match(calls,/eq\("shared_guest_sms_enabled",true\)/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
@@ -849,7 +851,7 @@ assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
   "public website provides one Android Server installation action");
-assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-arm64.apk"), "the only onboarding download is the combined ARM64 Server phone build");
+assert.ok(html.includes("releases/download/server-android-connector-preview/Server-Android-Connector-preview.apk"), "the only onboarding download targets the combined Server connector preview asset");
 assert.match(html,/Download Server — ARM64 \(calling \+ SMS gateway\)/,
   "the sole Android download is explicitly identified as the combined calling and SMS app");
 assert.doesNotMatch(html,/server-android-armv7\.apk|download-android-connector-armv7/,
@@ -893,11 +895,11 @@ assert.doesNotMatch(gateway,/VERIFIED_PROFILE_REQUIRED|phone_verified_at/,"SIM g
 assert.match(liveGuestTransitionContract,/action: "create_pairing_code"/,"the live contract validates the first gateway pairing step without phone verification");
 assert.match(html,/id="sms-gateway-setup"/,"the SIM gateway connection is a required Android onboarding step");
 assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the required SIM gateway connects before optional phone-number linking");
-assert.match(html,/Connect your SIM to finish setup/,"the SIM gateway is presented as a setup requirement");
+assert.match(html,/Connect a SIM for automatic SMS invitations \(optional\)/,"the SIM gateway is offered as an optional SMS invitation transport");
 assert.match(html,/six-digit code verifies the phone number only/,"the six-digit code is clearly limited to optional number verification and is not gateway pairing");
 assert.match(app,/showSmsGatewayStatus/,"integrated SIM connection feedback is visible in onboarding without a pairing-code screen");
 assert.match(app,/updateSmsGatewayGate/,"the onboarding maintains one SIM-gateway readiness state");
-assert.match(app,/if \(!smsGatewayConnected\)/,"calling-account and dialler actions reject attempts before SIM gateway connection");
+assert.doesNotMatch(app,/enableCallingAccountButton\.disabled\s*=\s*!smsGatewayConnected|openPhoneDialerButton\.disabled\s*=\s*!smsGatewayConnected/,"calling-account and dialler actions are not gated on optional SMS gateway availability");
 assert.match(androidSmsGatewayApi,/\.put\("action", "register_device"\)/,"the combined Android app registers its selected SIM directly without a manual pairing code");
 assert.doesNotMatch(androidSmsGatewayApi,/create_pairing_code|pairing_code|pairing_pin/i,"the integrated Android app API has no URL/code pairing flow");
 assert.match(gateway,/server_claim_sms_jobs/);
@@ -1017,8 +1019,8 @@ assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest notification cannot launch the legacy carrier handoff Activity");
 assert.doesNotMatch(androidMain,/button\("Call using selected SIM"\)|handoffToCarrierDialer/,
   "the main caller app cannot silently or manually convert the Server route to a SIM call");
-assert.match(html,/Connect your SIM to finish setup/);
-assert.match(html,/No project URL, six-digit pairing code, or separate Gateway app is involved/);
+assert.match(html,/Connect a SIM for automatic SMS invitations \(optional\)/);
+assert.match(html,/same Server app contains the calling connector and SMS gateway—no second APK/);
 assert.match(html,/Connect my SIM/);
 assert.match(html,/Disconnect SIM/);
 assert.doesNotMatch(html,/download-server-sim-gateway|server-sim-gateway\.apk|create-sms-gateway-pairing-code/);

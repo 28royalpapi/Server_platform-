@@ -25,8 +25,8 @@
       <div class="step-form">
         <section id="android-install" class="install-card">
           <div class="step-title"><span class="step-number">01</span><div><h2>Download Server for Android — one app</h2><p>This single ARM64 Server app contains both the normal calling connector and the SIM SMS gateway. You do not download a separate Gateway app, enter a project URL, or type a pairing PIN. Server does not read your SIM phone number, IMSI or ICCID.</p></div></div>
-          <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-arm64.apk">Download Server — ARM64 (calling + SMS gateway) <span aria-hidden="true">↓</span></a>
-          <p class="fine-print">The website cannot access SIM slots before an Android app is installed. After this one app is installed, return here, open Server, choose the SIM Android detects, and tap Connect. Server verifies that the gateway is online before you can finish setup.</p>
+          <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/Server-Android-Connector-preview.apk">Download Server — ARM64 (calling + SMS gateway) <span aria-hidden="true">↓</span></a>
+          <p class="fine-print">The website cannot access SIM slots before an Android app is installed. After installing this one app, you can optionally connect a SIM for automatic SMS invitations. Server identity creation and Server-to-Server internet calling do not require a SIM or SMS gateway.</p>
           <ol class="install-steps">
             <li>Open this one downloaded APK from Chrome's download notification or your Downloads folder.</li>
             <li>When Android asks, allow Chrome or Files to install Server, then approve the installation.</li>
@@ -60,8 +60,8 @@
           <p class="done-text">Your Server ID is ready. Server calls use WebRTC over the internet. When you call a non-member, Server sends a caller-identified browser push alert if that phone number has previously enrolled a guest receiver. On first contact, share the secure invitation once; the recipient can enable call alerts in their browser and answer without installing Server. If no internet receiver is available, Server records the attempt as unreachable—no mobile-operator fallback is placed.</p>
 
           <section class="gateway-setup" id="sms-gateway-setup">
-            <h3>Connect your SIM to finish setup</h3>
-            <p class="fine-print">This connection is part of Android setup. Server detects the active SIMs on this phone; choose the SIM you want it to use and tap Connect. No project URL, six-digit pairing code, or separate Gateway app is involved. Android will ask permission to read SIM slots, send SMS and show the gateway's ongoing notification. Your mobile operator may charge for messages. This is an SMS connection, not a voice-call connection.</p>
+            <h3>Connect a SIM for automatic SMS invitations (optional)</h3>
+            <p class="fine-print">This optional connection lets Server send first-contact invitation SMS from this phone's selected SIM. Server detects the active SIMs; choose one and tap Connect. The same Server app contains the calling connector and SMS gateway—no second APK, project URL or pairing code. Android will ask for SIM-list, SMS-send and notification permissions. Messages use your mobile operator's SMS allowance or tariff; Server adds no per-message SMS-provider fee. This is only an invitation link, not a carrier voice call.</p>
             <label for="sms-gateway-sim" id="sms-gateway-sim-label" class="hidden">Choose your SIM</label>
             <select id="sms-gateway-sim" class="hidden" disabled>
               <option value="">Choose a SIM</option>
@@ -70,7 +70,7 @@
             <button class="secondary full hidden" id="disconnect-sms-gateway" type="button">Disconnect SIM</button>
             <p id="sms-gateway-status" class="status hidden" role="status" aria-live="polite"></p>
           </section>
-          <p class="fine-print">The SIM gateway connection above is required to finish Android setup. Phone-number linking below is separate and optional.</p>
+          <p class="fine-print">The SIM gateway is optional. You can skip it and still finish setup, place Server-to-Server internet calls, and receive Server calls. Without it, first-contact invitations use an enrolled browser push or the normal share sheet. Phone-number linking below is also optional; SMS verification requires an available SMS route.</p>
           <button class="secondary full" id="show-phone-link" type="button">Link a phone number (optional)</button>
           <section id="phone-link-step" class="phone-link-step hidden">
             <h3>Link your mobile number</h3>
@@ -88,7 +88,7 @@
             <button class="secondary full" id="skip-phone-link" type="button">Skip number verification</button>
           </section>
 
-          <p id="calling-account-note" class="done-text">Connect and confirm your selected SIM above first. Server enables the normal phone dialer step only after the SMS gateway is registered and online. Calls placed through Server use mobile data or Wi-Fi; if a recipient cannot be reached, Server marks the call unreachable. Server never switches automatically to a cellular SIM.</p>
+          <p id="calling-account-note" class="done-text">Server calling is independent of the optional SMS gateway. Calls placed through Server use mobile data or Wi-Fi. If the SMS gateway is connected, Server can send guest invitation links from your SIM; if it is not, use an enrolled browser push or share the invitation yourself. Server never silently switches an internet call to a cellular voice call.</p>
           <button class="secondary full" id="enable-calling-account" type="button" disabled>Enable Server in phone settings</button>
           <button class="primary full" id="open-phone-dialer" type="button" disabled>Open my normal phone dialer <span aria-hidden="true">→</span></button>
           <p class="fine-print">Server is an Android internet-calling account, not a second cellular SIM. Android dialers differ, so the exact placement of Server in the system's call choices depends on the phone and dialer version.</p>

@@ -55,13 +55,15 @@ if (isNativeSetup && nativeSetup && stepForm) {
   let smsGatewayOptionsReady = false;
   let smsGatewayConnected = false;
   const updateSmsGatewayGate = (connected) => {
+    // SMS invitation delivery is an optional transport, never a prerequisite
+    // for a Server identity, Telecom registration, or Server-to-Server calling.
     smsGatewayConnected = connected === true;
-    if (enableCallingAccountButton) enableCallingAccountButton.disabled = !smsGatewayConnected;
-    if (openPhoneDialerButton) openPhoneDialerButton.disabled = !smsGatewayConnected;
+    if (enableCallingAccountButton) enableCallingAccountButton.disabled = false;
+    if (openPhoneDialerButton) openPhoneDialerButton.disabled = false;
     if (callingAccountNote) {
       callingAccountNote.textContent = smsGatewayConnected
-        ? "Your selected SIM is connected and confirmed online. You can now enable Server under Android Calling accounts and open your normal Phone app. Server voice calls use mobile data or Wi-Fi."
-        : "Connect and confirm your selected SIM above first. The normal phone-calling setup is unlocked only after Server confirms that the SMS gateway is registered and online.";
+        ? "Server calling is ready. Your selected SIM is also connected for automatic guest invitation SMS. Voice calls still use mobile data or Wi-Fi."
+        : "Server calling works without a selected SIM or SMS gateway. Connect one below only if you want Server to send guest invitation links by SMS; otherwise use browser push or Share invitation.";
     }
   };
   updateSmsGatewayGate(false);
@@ -174,7 +176,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     } catch { /* First-time number linking remains available. */ }
     const contactCountryNote = destinationCountryContactsGranted ? "" : " Contacts access was not granted. For safety, use an international number beginning with +; Server will not guess a country for a national-format number.";
     updateSmsGatewayGate(false);
-    showStatus("Server identity created. Next, connect the SIM that Server will use for SMS. This is required to finish Android setup; the same app handles calling and SMS." + contactCountryNote, true);
+    showStatus("Server identity created. Setup and Server-to-Server calling do not require a SIM. You can optionally connect one for automatic SMS invitations." + contactCountryNote, true);
     if (window.ServerAndroid && typeof window.ServerAndroid.refreshSmsGatewayStatus === "function") {
       window.ServerAndroid.refreshSmsGatewayStatus();
     }
@@ -301,7 +303,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
         smsGatewaySimLabel && smsGatewaySimLabel.classList.remove("hidden");
       }
       showSmsGatewayStatus(result.message || "Your SIM is disconnected from Server.");
-      showStatus("Reconnect your selected SIM before continuing to the phone calling setup.");
+      showStatus("The optional SMS gateway is disconnected. Server calling remains available; reconnect it only when you want automatic SMS invitations.");
       return;
     }
     if (!result || !result.ok || result.connected !== true) {
@@ -315,7 +317,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     smsGatewaySimSelect && smsGatewaySimSelect.classList.add("hidden");
     smsGatewaySimLabel && smsGatewaySimLabel.classList.add("hidden");
     showSmsGatewayStatus("Connected: " + (result.label || result.carrier || "selected SIM") + ". Server confirmed this SIM is registered and online.", true);
-    showStatus("Your SIM SMS gateway is connected. Continue to enable Server in your normal phone dialer.", true);
+    showStatus("Your SIM is connected for automatic SMS invitations. Server calling works independently of this gateway.", true);
   };
 
   window.onServerSmsGatewayStatus = (result) => {
@@ -326,7 +328,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       if (result && result.ok === false && result.error !== "GATEWAY_NOT_REGISTERED") {
         showSmsGatewayStatus("Server cannot confirm the SIM connection. Reconnect the SIM before continuing.");
       } else {
-        showSmsGatewayStatus("Connect the SIM detected on this phone to finish Server setup.");
+        showSmsGatewayStatus("The optional SMS gateway is not connected. Server calling still works; connect a SIM only for automatic SMS invitations.");
       }
       return;
     }
