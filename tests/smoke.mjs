@@ -865,9 +865,9 @@ assert.match(app,/androidDownload && androidDownload\.addEventListener/,
 assert.doesNotMatch(app,/androidDownloadArmv7|download-android-connector-armv7/,
   "website JavaScript contains no second ARMv7 download action");
 assert.match(html,/id="enable-calling-account" type="button" disabled/,
-  "normal calling-account activation is locked until the SIM gateway connects");
+  "normal calling-account activation starts disabled until Server identity setup completes");
 assert.match(html,/id="open-phone-dialer" type="button" disabled/,
-  "opening the normal Phone app is locked until the SIM gateway connects");
+  "opening the normal Phone app starts disabled until Server identity setup completes");
 
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
@@ -893,8 +893,8 @@ assert.match(gateway,/create_pairing_code/);
 assert.match(gateway,/p_key_hash:await sha\(session\.user_id\)/,"SIM gateway pairing is rate-limited against the signed-in Server session");
 assert.doesNotMatch(gateway,/VERIFIED_PROFILE_REQUIRED|phone_verified_at/,"SIM gateway pairing must not depend on phone verification");
 assert.match(liveGuestTransitionContract,/action: "create_pairing_code"/,"the live contract validates the first gateway pairing step without phone verification");
-assert.match(html,/id="sms-gateway-setup"/,"the SIM gateway connection is a required Android onboarding step");
-assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the required SIM gateway connects before optional phone-number linking");
+assert.match(html,/id="sms-gateway-setup"/,"the optional SIM gateway is visible during Android onboarding");
+assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the optional SIM gateway is shown before optional phone-number linking");
 assert.match(html,/Connect a SIM for automatic SMS invitations \(optional\)/,"the SIM gateway is offered as an optional SMS invitation transport");
 assert.match(html,/six-digit code verifies the phone number only/,"the six-digit code is clearly limited to optional number verification and is not gateway pairing");
 assert.match(app,/showSmsGatewayStatus/,"integrated SIM connection feedback is visible in onboarding without a pairing-code screen");
@@ -1092,10 +1092,10 @@ assert.match(calls,/guestPushRegistered/,
   "a number with no live browser heartbeat can still be classified as background-reachable when a guest push receiver is enrolled");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
-assert.match(html,/Server detects the active SIMs on this phone; choose the SIM you want it to use and tap Connect/,
+assert.match(html,/Server detects the active SIMs; choose one and tap Connect/,
   "onboarding explains direct SIM detection and selection in the integrated Server app");
 assert.match(html,/Server never switches automatically to a cellular SIM/,"onboarding must not promise an automatic carrier fallback");
-assert.match(html,/Android will ask permission to read SIM slots, send SMS and show the gateway's ongoing notification/i,
+assert.match(html,/Android will ask for SIM-list, SMS-send and notification permissions/i,
   "onboarding accurately discloses Android's selected-SIM SMS permissions");
 assert.doesNotMatch(html,/Phone-state and notification permissions|automatically hands the call to the SIM|selected cellular SIM is used automatically/i,"stale SIM-fallback and phone-state instructions must not return");
 assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
