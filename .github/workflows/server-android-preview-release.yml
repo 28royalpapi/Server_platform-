@@ -43,8 +43,16 @@ jobs:
           # Build one universal APK so the website exposes one download, not
           # separate calling and gateway packages or an architecture picker.
           gradle -p apps/android-caller assembleRelease -PSERVER_ENABLE_RELEASE_ABI_SPLITS=false --no-daemon --console=plain
-          APK='apps/android-caller/app/build/outputs/apk/release/app-universal-release.apk'
+          APK_DIR='apps/android-caller/app/build/outputs/apk/release'
+          mapfile -t APK_CANDIDATES < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | sort)
+          if [[ "${#APK_CANDIDATES[@]}" -ne 1 ]]; then
+            echo "Expected one universal release APK after disabling ABI splits; found ${#APK_CANDIDATES[@]}."
+            find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print || true
+            exit 1
+          fi
+          APK="${APK_CANDIDATES[0]}"
           test -s "$APK"
+          echo "Combined APK path: $APK"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
           "$APKSIGNER" verify --verbose "$APK"
