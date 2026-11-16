@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: server-android-connector-preview
+  group: server-android-combined-preview
   cancel-in-progress: true
 
 jobs:
@@ -82,9 +82,9 @@ jobs:
       - name: Publish public preview download
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: server-android-connector-preview
+          tag_name: server-android-combined-preview
           target_commitish: ${{ github.sha }}
-          name: Server Android Connector — Preview
+          name: Server Android — Combined Calling + SMS Preview
           prerelease: true
           make_latest: false
           overwrite_files: true
