@@ -314,7 +314,7 @@ assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeS
 assert.doesNotMatch(androidSetup,/ServerFallbackSimManager|READ_PHONE_NUMBERS|CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
   "the Android setup bridge only reads SIM slot/carrier metadata and never reads the subscriber line number or places carrier calls");
 assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,"the Android setup bridge requests SIM-list permission only when the user connects a SIM");
-assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/,"SMS send permission is requested only for the optional SIM gateway");
+assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/,"the integrated SIM SMS gateway requests Android SMS permission from the same Server app");
 assert.match(androidSetup,/requestSmsGatewaySimOptions/);
 assert.match(androidSetup,/connectSmsGateway/);
 assert.match(androidSetup,/disconnectSmsGateway/);
@@ -843,15 +843,24 @@ assert.match(androidTests,/telecom\.defaultDialerPackage/,
 assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
-  "public website provides a direct Android connector installation action");
-assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-arm64.apk"), "the primary onboarding download is the ARM64 phone build");
-assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-armv7.apk"), "onboarding offers the separate ARMv7 phone build");
-assert.match(html,/emulator-only x86 packages are not offered here/);
+  "public website provides one Android Server installation action");
+assert.ok(html.includes("releases/download/server-android-connector-preview/server-android-arm64.apk"), "the only onboarding download is the combined ARM64 Server phone build");
+assert.match(html,/Download Server — ARM64 \(calling \+ SMS gateway\)/,
+  "the sole Android download is explicitly identified as the combined calling and SMS app");
+assert.doesNotMatch(html,/server-android-armv7\.apk|download-android-connector-armv7/,
+  "onboarding does not offer a second architecture download or separate gateway installer");
+assert.match(html,/website cannot access SIM slots before an Android app is installed/,
+  "the site explains why SIM detection happens after installing the combined app");
 assert.match(html,/I'?ve installed Server — continue setup/,
   "website offers the return-to-this-page hand-off after connector installation");
 assert.match(app,/androidDownload && androidDownload\.addEventListener/,
   "website explains that the user should return after the APK download");
-assert.ok(app.includes("androidDownloadArmv7 && androidDownloadArmv7.addEventListener"));
+assert.doesNotMatch(app,/androidDownloadArmv7|download-android-connector-armv7/,
+  "website JavaScript contains no second ARMv7 download action");
+assert.match(html,/id="enable-calling-account" type="button" disabled/,
+  "normal calling-account activation is locked until the SIM gateway connects");
+assert.match(html,/id="open-phone-dialer" type="button" disabled/,
+  "opening the normal Phone app is locked until the SIM gateway connects");
 
 assert.match(androidTelecom,/reconcileIncoming\(liveCallIds: Set<String>\)/,"incoming Telecom calls are reconciled against backend ringing state");
 assert.match(androidIncoming,/ServerTelecomRegistry.reconcileIncoming\(liveCallIds\)/,"the background listener clears unanswered calls that disappear from the backend");
@@ -877,9 +886,15 @@ assert.match(gateway,/create_pairing_code/);
 assert.match(gateway,/p_key_hash:await sha\(session\.user_id\)/,"SIM gateway pairing is rate-limited against the signed-in Server session");
 assert.doesNotMatch(gateway,/VERIFIED_PROFILE_REQUIRED|phone_verified_at/,"SIM gateway pairing must not depend on phone verification");
 assert.match(liveGuestTransitionContract,/action: "create_pairing_code"/,"the live contract validates the first gateway pairing step without phone verification");
-assert.match(html,/id="sms-gateway-setup"/,"the SIM gateway setup is a separate optional onboarding step");
-assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the SIM gateway can be paired before optional phone-number linking");
+assert.match(html,/id="sms-gateway-setup"/,"the SIM gateway connection is a required Android onboarding step");
+assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the required SIM gateway connects before optional phone-number linking");
+assert.match(html,/Connect your SIM to finish setup/,"the SIM gateway is presented as a setup requirement");
+assert.match(html,/six-digit code verifies the phone number only/,"the six-digit code is clearly limited to optional number verification and is not gateway pairing");
 assert.match(app,/showSmsGatewayStatus/,"integrated SIM connection feedback is visible in onboarding without a pairing-code screen");
+assert.match(app,/updateSmsGatewayGate/,"the onboarding maintains one SIM-gateway readiness state");
+assert.match(app,/if \(!smsGatewayConnected\)/,"calling-account and dialler actions reject attempts before SIM gateway connection");
+assert.match(androidSmsGatewayApi,/\.put\("action", "register_device"\)/,"the combined Android app registers its selected SIM directly without a manual pairing code");
+assert.doesNotMatch(androidSmsGatewayApi,/create_pairing_code|pairing_code|pairing_pin/i,"the integrated Android app API has no URL/code pairing flow");
 assert.match(gateway,/server_claim_sms_jobs/);
 assert.match(gateway,/PAIRING_RATE_LIMITED/);
 assert.match(gateway,/body:null/);
