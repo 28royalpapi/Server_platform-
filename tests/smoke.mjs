@@ -603,8 +603,9 @@ assert.match(androidBuild,/androidx\.fragment:fragment-ktx:1\.9\.1/);
 assert.match(androidBuild,/versionCode = 2/);
 assert.match(androidBuild,/versionName = "0.2.0"/);
 assert.ok(nativeWorkflow.includes("app-arm64-v8a-release.apk"));
-assert.ok(nativeWorkflow.includes("app-armeabi-v7a-release.apk"));
-assert.ok(nativeWorkflow.includes("ANDROID_ARM_PHONE_RELEASE_ASSETS_PUBLISHED"));
+assert.doesNotMatch(nativeWorkflow,/app-armeabi-v7a-release\.apk/,
+  "the onboarding release publisher exposes only one ARM64 combined Server APK");
+assert.ok(nativeWorkflow.includes("ANDROID_SINGLE_ARM64_CALLING_AND_SMS_GATEWAY_PUBLISHED"));
 assert.match(androidProguard,/-keep class org\.webrtc/);
 assert.match(androidFirebase,/onMessageReceived/);
 assert.match(androidFirebase,/server_incoming_call/);
