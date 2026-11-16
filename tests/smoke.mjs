@@ -1012,8 +1012,8 @@ assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest notification cannot launch the legacy carrier handoff Activity");
 assert.doesNotMatch(androidMain,/button\("Call using selected SIM"\)|handoffToCarrierDialer/,
   "the main caller app cannot silently or manually convert the Server route to a SIM call");
-assert.match(html,/Connect your SIM for Server SMS/);
-assert.match(html,/No project URL, pairing code, or second app is required/);
+assert.match(html,/Connect your SIM to finish setup/);
+assert.match(html,/No project URL, six-digit pairing code, or separate Gateway app is involved/);
 assert.match(html,/Connect my SIM/);
 assert.match(html,/Disconnect SIM/);
 assert.doesNotMatch(html,/download-server-sim-gateway|server-sim-gateway\.apk|create-sms-gateway-pairing-code/);
@@ -1085,11 +1085,11 @@ assert.match(calls,/guestPushRegistered/,
   "a number with no live browser heartbeat can still be classified as background-reachable when a guest push receiver is enrolled");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
-assert.match(html,/Choose the SIM you want Server to use for SMS invitations and verification messages/,
-  "onboarding explains direct SIM selection for the integrated SMS gateway without a pairing step");
+assert.match(html,/Server detects the active SIMs on this phone; choose the SIM you want it to use and tap Connect/,
+  "onboarding explains direct SIM detection and selection in the integrated Server app");
 assert.match(html,/Server never switches automatically to a cellular SIM/,"onboarding must not promise an automatic carrier fallback");
-assert.match(html,/optional SMS gateway separately asks for permission to view active SIM slots and send SMS through the SIM you select/i,
-  "onboarding accurately discloses the selected-SIM and SMS permissions");
+assert.match(html,/Android will ask permission to read SIM slots, send SMS and show the gateway's ongoing notification/i,
+  "onboarding accurately discloses Android's selected-SIM SMS permissions");
 assert.doesNotMatch(html,/Phone-state and notification permissions|automatically hands the call to the SIM|selected cellular SIM is used automatically/i,"stale SIM-fallback and phone-state instructions must not return");
 assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
