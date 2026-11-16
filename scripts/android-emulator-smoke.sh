@@ -158,7 +158,7 @@ fi
 "$AAPT" dump xmltree artifacts/server-caller-debug-for-reinstall.apk AndroidManifest.xml > artifacts/server-single-app-manifest.txt
 grep -Fq 'com.server.caller.ServerSmsGatewayService' artifacts/server-single-app-manifest.txt
 grep -Fq 'com.server.caller.ServerSmsStatusReceiver' artifacts/server-single-app-manifest.txt
-unzip -p artifacts/server-caller-debug-for-reinstall.apk assets/server-web/index.html | grep -Fq 'Connect your SIM for Server SMS'
+unzip -p artifacts/server-caller-debug-for-reinstall.apk assets/server-web/index.html | grep -Fq 'Connect a SIM for automatic SMS invitations (optional)'
 if ! adb shell pm path com.server.caller.debug | grep -q '^package:'; then
   echo "The one Server Connector package is not installed." >&2
   exit 1
