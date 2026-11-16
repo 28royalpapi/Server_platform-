@@ -853,7 +853,7 @@ assert.match(html,/Ask every time/,
   "website explains the Android outgoing-account preference needed by some dialers");
 assert.match(html,/id="download-android-connector"/,
   "public website provides one Android Server installation action");
-assert.ok(html.includes("releases/download/server-android-connector-preview/Server-Android-Connector-preview.apk"), "the only onboarding download targets the combined Server connector preview asset");
+assert.ok(html.includes("releases/download/server-android-combined-preview/Server-Android-Connector-preview.apk"), "the only onboarding download targets the combined Server connector preview asset");
 assert.match(html,/Download Server — ARM64 \(calling \+ SMS gateway\)/,
   "the sole Android download is explicitly identified as the combined calling and SMS app");
 assert.doesNotMatch(html,/server-android-armv7\.apk|download-android-connector-armv7/,
