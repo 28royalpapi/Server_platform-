@@ -233,8 +233,11 @@ if (isNativeSetup && nativeSetup && stepForm) {
       return;
     }
     if (smsGatewayOptionsReady && smsGatewaySimSelect && smsGatewaySimSelect.options.length > 1) {
-      const selected = Number(smsGatewaySimSelect.value);
-      if (!Number.isInteger(selected) || selected < 0) {
+      // The first option is only a placeholder. Number("") is 0 in JavaScript,
+      // so check the selected option explicitly before converting its SIM ID.
+      const selectedValue = smsGatewaySimSelect.value.trim();
+      const selected = selectedValue === "" ? NaN : Number(selectedValue);
+      if (smsGatewaySimSelect.selectedIndex === 0 || !Number.isInteger(selected) || selected < 0) {
         showSmsGatewayStatus("Choose the SIM you want Server to use.");
         return;
       }
