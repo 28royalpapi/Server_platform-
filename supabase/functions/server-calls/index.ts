@@ -631,17 +631,11 @@ Deno.serve(async(req:Request)=>{
    // an additional alert, never a reason to suppress the SMS invitation.
    let simSmsQueued=false;
    let simSmsGatewayOnline=false;
-   const {data:pairAllowed,error:pairLimitError}=await db.rpc("server_rate_limit_allow",{
-    p_scope:"guest_invite_sms_pair",
-    p_key_hash:await sha("guest-invite-sms-pair:"+uid+":"+to),
-    p_window_seconds:3600,p_max_hits:3
-   });
-   const {data:senderAllowed,error:senderLimitError}=await db.rpc("server_rate_limit_allow",{
-    p_scope:"guest_invite_sms_sender",
-    p_key_hash:await sha("guest-invite-sms-sender:"+uid),
-    p_window_seconds:3600,p_max_hits:20
-   });
-   if(!pairLimitError&&!senderLimitError&&pairAllowed===true&&senderAllowed===true){
+   // No hourly message quota is attached to a recipient or caller. Each distinct
+   // call attempt can notify its guest recipient again. The authenticated call
+   // creation path retains its per-caller burst protection against automation;
+   // actual delivery remains subject to the selected SIM's carrier plan.
+   {
     // Use the caller's own paired SIM through Server's first-party Android
     // gateway. Supabase owns the queue; the handset's carrier sends the SMS.
     const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
@@ -682,8 +676,6 @@ Deno.serve(async(req:Request)=>{
       console.warn("GUEST_SIM_SMS_QUEUE_FAILED");
      }
     }
-   }else{
-    console.warn("GUEST_SIM_SMS_RATE_LIMITED_OR_UNAVAILABLE");
    }
 
    const deliveryMode=simSmsQueued?"sim_sms_queued":hasPushAccepted?"web_push":"manual_share";

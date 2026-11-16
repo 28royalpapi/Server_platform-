@@ -813,8 +813,10 @@ assert.match(androidSmsGatewayService,/PRESENCE_HEARTBEAT_SECONDS = 45L/,"the in
 assert.match(androidSmsGatewayService,/FALLBACK_POLL_INTERVAL_SECONDS = 15L/,"the gateway retries the queue every 15 seconds if Realtime is unavailable");
 assert.match(androidSmsGatewayService,/put\("action", "health"\)/,"the gateway health heartbeat refreshes backend reachability");
 assert.match(androidBuild,/com\.squareup\.okhttp3:okhttp:4\.12\.0/,"the integrated Realtime WebSocket client uses pinned OkHttp");
-assert.match(calls,/guest_invite_sms_pair/);
-assert.match(calls,/guest_invite_sms_sender/);
+assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest invitation SMS has no arbitrary hourly per-recipient or per-sender quota");
+assert.match(calls,/CALL_START_RATE_MAX = 20/,"call creation retains an account-level burst guard instead of a monthly SMS cap");
+assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest invitation SMS has no arbitrary hourly per-recipient or per-sender quota");
+assert.match(calls,/CALL_START_RATE_MAX = 20/,"call creation retains an account-level burst guard instead of a monthly SMS cap");
 assert.match(calls,/guest_invite_id:created\.invite_id/);
 assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
   "Android reports when the first-contact SMS invitation is queued through an active Server SIM Gateway");
@@ -953,8 +955,10 @@ assert.match(calls,/shared_guest_sms_enabled/,"a shared SIM Gateway can serve SM
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/source_event_id:"server-guest-invite:"/);
-assert.match(calls,/guest_invite_sms_pair/);
-assert.match(calls,/guest_invite_sms_sender/);
+assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest invitation SMS has no arbitrary hourly per-recipient or per-sender quota");
+assert.match(calls,/CALL_START_RATE_MAX = 20/,"call creation retains an account-level burst guard instead of a monthly SMS cap");
+assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest invitation SMS has no arbitrary hourly per-recipient or per-sender quota");
+assert.match(calls,/CALL_START_RATE_MAX = 20/,"call creation retains an account-level burst guard instead of a monthly SMS cap");
 assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
 assert.match(gateway,/owner_user_id:pair\.owner_user_id/,"claimed SIM gateways inherit the pairing owner's identity");
 assert.match(gatewayOwnerMigration,/add column if not exists owner_user_id uuid references auth\.users\(id\)/,"existing SIM gateway rows can be migrated to account ownership");
