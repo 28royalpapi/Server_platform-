@@ -324,7 +324,8 @@ assert.match(androidSmsGatewayManager,/activeSubscriptionInfoList/);
 assert.match(androidSmsGatewayManager,/getActiveSubscriptionInfoForSimSlotIndex/,"SIM discovery falls back to per-slot subscription lookup for OEM multi-SIM implementations");
 assert.match(androidSmsGatewayManager,/phoneSlotCount/,"SIM discovery queries every reported modem slot instead of trusting one aggregate result");
 assert.doesNotMatch(androidSmsGatewayManager,/FEATURE_TELEPHONY_MESSAGING[\\s\\S]{0,120}return emptyList/,"an optional OEM feature flag must not hide real active SIM subscriptions");
-assert.match(androidSmsGatewayManager,/active_subscription_count/,"SIM discovery returns a diagnostic count when Android exposes no active subscriptions");
+assert.match(androidSmsGatewayManager,/getDefaultSmsSubscriptionId\(\)/,"managed SMS sending follows the Android system default subscription");
+assert.match(androidSmsGatewayManager,/return sims\.singleOrNull\(\)/,"a single active SIM is selected automatically, while ambiguous dual-SIM devices require the OS default");
 assert.match(androidSmsGatewayManager,/carrierName/);
 assert.doesNotMatch(androidSmsGatewayManager,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
   "the SMS gateway does not read a SIM phone number, IMSI, ICCID or SIM serial");
