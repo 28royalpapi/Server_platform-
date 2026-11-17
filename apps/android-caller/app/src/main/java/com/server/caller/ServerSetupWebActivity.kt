@@ -457,31 +457,6 @@ class ServerSetupWebActivity : Activity() {
       }.start()
     }
 
-    // Customer sessions cannot register, select, or disconnect an SMS-sending SIM.
-    // Only claimPlatformGatewayWithDefaultSmsSubscription() can provision a managed
-    // Server-owned handset through its single-use operator pairing code.
-    @JavascriptInterface fun requestSmsGatewaySimOptions() {
-      callbackToWebsite("onServerSmsGatewaySimOptions", JSONObject()
-        .put("ok", false).put("error", "PLATFORM_GATEWAY_ONLY")
-        .put("message", "Customer SIMs cannot send Server messages."))
-    }
-
-    @JavascriptInterface fun connectSmsGateway(subscriptionId: Int) {
-      callbackToWebsite("onServerSmsGatewayResult", JSONObject()
-        .put("ok", false).put("connected", false).put("error", "PLATFORM_GATEWAY_ONLY")
-        .put("message", "Only a Server-operated handset can be provisioned as an SMS gateway."))
-    }
-
-    @JavascriptInterface fun disconnectSmsGateway() {
-      callbackToWebsite("onServerSmsGatewayResult", JSONObject()
-        .put("ok", false).put("connected", false).put("error", "PLATFORM_GATEWAY_ONLY"))
-    }
-
-    @JavascriptInterface fun refreshSmsGatewayStatus() {
-      callbackToWebsite("onServerSmsGatewayStatus", JSONObject()
-        .put("ok", false).put("connected", false).put("error", "PLATFORM_GATEWAY_ONLY"))
-    }
-
     @JavascriptInterface fun requestPhoneLinkOtp(rawPhone: String) {
       Thread {
         val to = rawPhone.trim()
