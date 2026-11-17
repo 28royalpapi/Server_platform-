@@ -43,6 +43,7 @@ Deno.serve(async(req:Request)=>{
    enabled:device.enabled===true,is_platform_owned:true});
 }
   if(action==="register_device"){
+  return out({error:"PLATFORM_GATEWAY_ONLY",message:"Customer devices cannot register as SMS senders."},403);
   const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\\s+(.+)$/i)?.[1]||"").trim();
   if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
   const tokenHash=await sha(sessionToken);
@@ -126,8 +127,9 @@ Deno.serve(async(req:Request)=>{
  const bearer=(req.headers.get("x-server-gateway-token")||(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||"").trim();
  if(bearer.length<48||bearer.length>256)return out({error:"GATEWAY_UNAUTHORIZED"},401);
  const hash=await sha(bearer);
- const {data:device,error:de}=await db.from("server_gateway_devices").select("id,label,enabled,last_seen_at").eq("token_hash",hash).maybeSingle();
+ const {data:device,error:de}=await db.from("server_gateway_devices").select("id,label,enabled,last_seen_at,is_platform_owned").eq("token_hash",hash).maybeSingle();
  if(de||!device||!device.enabled)return out({error:"GATEWAY_UNAUTHORIZED"},401);
+ if(device.is_platform_owned!==true)return out({error:"PLATFORM_GATEWAY_ONLY",stop_device:true},403);
  if(action==="status")return out({ok:true,device_id:device.id,label:device.label,enabled:device.enabled,last_seen_at:device.last_seen_at});
  const now=new Date().toISOString();await db.from("server_gateway_devices").update({last_seen_at:now,updated_at:now}).eq("id",device.id);
  if(action==="poll"){
