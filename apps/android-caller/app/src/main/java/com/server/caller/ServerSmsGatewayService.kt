@@ -68,10 +68,14 @@ class ServerSmsGatewayService : Service() {
     try {
       executor.execute {
         try {
-          val response = ServerSmsGatewayApi.postGateway(this, JSONObject().put("action", "poll"))
-          val jobs = response.optJSONArray("jobs") ?: JSONArray()
-          for (i in 0 until jobs.length()) sendJob(jobs.optJSONObject(i) ?: continue)
-          updateNotification(if (jobs.length() > 0) "Sending ${jobs.length()} SMS message(s)" else "Connected · Server SMS gateway ready")
+          var claimedCount: Int
+          do {
+            val response = ServerSmsGatewayApi.postGateway(this, JSONObject().put("action", "poll"))
+            val jobs = response.optJSONArray("jobs") ?: JSONArray()
+            claimedCount = jobs.length()
+            for (i in 0 until jobs.length()) sendJob(jobs.optJSONObject(i) ?: continue)
+            updateNotification(if (claimedCount > 0) "Sending ${claimedCount} SMS message(s)" else "Connected · Server SMS gateway ready")
+          } while (claimedCount == MAX_SMS_BATCH_SIZE && running.get())
         } catch (e: Exception) {
           updateNotification("Waiting for Server · ${safeStatus(e)}")
         } finally {
@@ -193,6 +197,7 @@ class ServerSmsGatewayService : Service() {
     const val ACTION_STOP = "com.server.caller.sms_gateway.STOP"
     private const val CHANNEL_ID = "server-sms-gateway"
     private const val NOTIFICATION_ID = 4137
+    private const val MAX_SMS_BATCH_SIZE = 50
     private const val PRESENCE_HEARTBEAT_SECONDS = 45L
     private const val FALLBACK_POLL_INTERVAL_SECONDS = 15L
   }
