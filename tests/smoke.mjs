@@ -1107,11 +1107,8 @@ assert.match(calls,/guestPushRegistered/,
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
 assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"onboarding explains that Server funds the SMS gateway");
-  "onboarding explains direct SIM detection and selection in the integrated Server app");
 assert.match(html,/your personal SIM is never used to send them/,"onboarding promises that customers do not pay for Server SMS");
 assert.doesNotMatch(html,/SIM-list, SMS-send|selected SIM|Connect my SIM/i,"customer onboarding does not request SMS-sending or SIM permissions");
-  "onboarding accurately discloses Android's selected-SIM SMS permissions");
-   "stale personal-SIM SMS instructions must not return");
 assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
   "Android instrumentation covers fresh heartbeat and background wake classification");
