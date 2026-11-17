@@ -177,7 +177,7 @@ class ServerSmsGatewayService : Service() {
     realtimeClient = null
     timers.shutdownNow()
     executor.shutdownNow()
-    try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+    try { stopForeground(true) } catch (_: Exception) {}
   }
 
   override fun onDestroy() {
