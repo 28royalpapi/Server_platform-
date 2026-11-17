@@ -613,37 +613,45 @@ Deno.serve(async(req:Request)=>{
    // A customer's personal SIM must never be used as Server's SMS transport.
    let simSmsQueued=false;
    let simSmsGatewayOnline=false;
-   const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
-   const platformGatewayLookup=await db.from("server_gateway_devices")
-    .select("id,token_hash")
-    .eq("is_platform_owned",true)
-    .eq("enabled",true)
-    .gte("last_seen_at",gatewayFreshAfter)
-    .order("last_seen_at",{ascending:false})
-    .limit(1)
-    .maybeSingle();
-   const gateway=platformGatewayLookup.error?null:platformGatewayLookup.data;
-   if(platformGatewayLookup.error){
-    console.warn("PLATFORM_SMS_GATEWAY_LOOKUP_FAILED");
-   }else if(gateway){
-    simSmsGatewayOnline=true;
-    const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
-     category:"guest_invite",
-     recipient_e164:to,
-     body:invitationText,
-     call_id:call.id,
-     guest_invite_id:created.invite_id,
-     source_event_id:"server-guest-invite:"+call.id,
-     status:"queued"
-    }).select("id").maybeSingle();
-    if(!queueError&&queuedJob){
-     simSmsQueued=true;
-     deferRealtime(sendServerGatewayWake(gateway.token_hash));
-    }else{
-     console.warn("PLATFORM_SMS_QUEUE_FAILED");
+   // 202-555-0100 through 202-555-0199 are reserved fictional NANP test numbers.
+   // Automated browser/WebRTC acceptance tests use this range and must never
+   // submit carrier SMS, even when a Server-operated gateway is online.
+   const reservedGuestTestNumber=/^\\+120255501[0-9]{2}$/.test(to);
+   if(!reservedGuestTestNumber){
+    let simSmsGatewayOnline=false;
+    const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
+    const platformGatewayLookup=await db.from("server_gateway_devices")
+     .select("id,token_hash")
+     .eq("is_platform_owned",true)
+     .eq("enabled",true)
+     .gte("last_seen_at",gatewayFreshAfter)
+     .order("last_seen_at",{ascending:false})
+     .limit(1)
+     .maybeSingle();
+    const gateway=platformGatewayLookup.error?null:platformGatewayLookup.data;
+    if(platformGatewayLookup.error){
+     console.warn("PLATFORM_SMS_GATEWAY_LOOKUP_FAILED");
+    }else if(gateway){
+     simSmsGatewayOnline=true;
+     const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
+      category:"guest_invite",
+      recipient_e164:to,
+      body:invitationText,
+      call_id:call.id,
+      guest_invite_id:created.invite_id,
+      source_event_id:"server-guest-invite:"+call.id,
+      status:"queued"
+     }).select("id").maybeSingle();
+     if(!queueError&&queuedJob){
+      simSmsQueued=true;
+      deferRealtime(sendServerGatewayWake(gateway.token_hash));
+     }else{
+      console.warn("PLATFORM_SMS_QUEUE_FAILED");
+     }
     }
+ 
+ 
    }
-
    const deliveryMode=simSmsQueued?"sim_sms_queued":hasPushAccepted?"web_push":"manual_share";
    const deliveryMessage=simSmsQueued
     ?"Server queued the invitation through a Server-operated SMS gateway. Queueing is not proof of handset delivery."
