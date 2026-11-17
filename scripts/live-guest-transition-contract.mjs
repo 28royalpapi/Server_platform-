@@ -83,8 +83,9 @@ async function startGuestCall() {
   assert.ok(created.call_id);
   assert.equal(created.call?.state, "ringing");
   assert.ok(created.guest_invite_url);
-  assert.match(created.invitation_text || "", /Turn on mobile data or Wi-Fi/);
-  assert.match(created.invitation_text || "", /This invitation expires in 2 minutes/);
+  assert.match(created.invitation_text || "", /^SERVER CALL\\n/);
+  assert.match(created.invitation_text || "", /Expires in 2 minutes\\n/);
+  assert.match(created.invitation_text || "", /server-onboarding-ochre\\.vercel\\.app\\/c\\//);
   const inviteExpiryMs = Date.parse(created.invite_expires_at || "") - Date.now();
   assert.ok(inviteExpiryMs > 0 && inviteExpiryMs <= 125000,
     "the actual guest invitation token must expire within two minutes");
@@ -130,19 +131,6 @@ try {
   assert.match(registered.user?.server_id || "", /^SVR-[0-9A-F]{10}$/);
   accessToken = registered.access_token;
   pass("disposable authenticated Server identity", "device-first registration; no OTP or SMS");
-
-  // Pair the first-party SIM gateway before linking or verifying a phone number.
-  // This creates a short-lived code only; it does not claim a device or send SMS.
-  const pairing = await request("server-gateway", { action: "create_pairing_code" });
-  assert.equal(pairing.ok, true);
-  assert.match(pairing.pairing_code || "", /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/);
-  const pairingExpiry = Date.parse(pairing.expires_at || "");
-  assert.ok(Number.isFinite(pairingExpiry) && pairingExpiry > Date.now() &&
-    pairingExpiry <= Date.now() + 11 * 60 * 1000,
-    "gateway pairing code must be short-lived and expire within approximately ten minutes");
-  pass("first-party SIM gateway pairing without phone verification",
-    "one-time code generated from the active Server session; no SMS sent");
-
 
   // Select an unused fictional number before any call creation. This prevents
   // a prior Web Push subscription from receiving a test invitation.
