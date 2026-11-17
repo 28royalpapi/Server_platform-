@@ -767,6 +767,7 @@ assert.match(gateway,/action==="status"/,"the gateway exposes a backend status c
 assert.match(auth,/p_user_id:session.user_id/,"SMS verification jobs are created for the authenticated Server identity");
 assert.match(integratedGatewayMigration,/server_issue_otp\s*\(\s*p_user_id uuid/s,"OTP issuance binds the job to the requesting identity");
 assert.match(platformSmsMigration,/add column if not exists is_platform_owned boolean not null default false/);
+assert.match(platformSmsMigration,/owner_user_id\s*=\s*null[\s\S]*is_platform_owned\s*=\s*true/,"platform gateway records have no customer owner");
 assert.match(platformSmsMigration,/d\.is_platform_owned\s*=\s*true/,"only platform-owned handsets can claim Server SMS jobs");
 assert.doesNotMatch(platformSmsMigration,/j\.auth_user_id\s*=\s*d\.owner_user_id/s,"OTP delivery is not tied to a customer's SIM");
 assert.match(integratedGatewayMigration,/sim_subscription_id/);
@@ -966,8 +967,8 @@ assert.doesNotMatch(calls,/CALL_START_RATE_MAX = 20|CALL_START_RATE_LIMITED/,
 assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest invitation SMS has no arbitrary hourly per-recipient or per-sender quota");
 assert.doesNotMatch(calls,/CALL_START_RATE_MAX = 20|CALL_START_RATE_LIMITED/,
   "the call-start endpoint has no fixed per-user attempts-per-minute quota");
-assert.match(gateway,/owner_user_id:session\.user_id/,"SIM gateway pairing codes are bound to the signed-in Server owner");
-assert.match(gateway,/owner_user_id:pair\.owner_user_id/,"claimed SIM gateways inherit the pairing owner's identity");
+assert.match(gateway,/claim_platform_device/,"managed gateway devices are registered using the operator-only one-time pairing path");
+assert.match(gateway,/PLATFORM_GATEWAY_ONLY/,"customer devices are explicitly rejected as SMS senders");
 assert.match(gatewayOwnerMigration,/add column if not exists owner_user_id uuid references auth\.users\(id\)/,"existing SIM gateway rows can be migrated to account ownership");
 assert.equal((gatewayCustomIdentityMigration.match(/REFERENCES public\.server_profiles\(user_id\)/g)||[]).length,2,
   "SIM Gateway pairings and devices reference the custom Server profile identity");
