@@ -1394,4 +1394,26 @@ assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.inclu
   "Android 17 ARM64 preview reserves 4 GB guest RAM and an 8 GB userdata disk on Apple Silicon");
 console.log("Server backend/web contract checks: PASS");
 console.log("Checks include hybrid WebRTC/SIM fallback, SIM metadata minimisation, recipient reachability, previewable guest calls, device permissions and public-key hygiene.");
+
+const platformGatewayMigrationFinal=read("supabase/migrations/20261117100000_server_platform_owned_sms_gateways.sql");
+const platformGatewayEdgeFinal=read("supabase/functions/server-gateway/index.ts");
+const platformGatewayNativeFinal=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
+const platformGatewayManagerFinal=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayManager.kt");
+const platformGatewayServiceFinal=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayService.kt");
+const platformGatewayApiFinal=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayApi.kt");
+assert.match(platformGatewayMigrationFinal,/server_platform_gateway_pairings/,"managed gateway pairing codes are stored as hashes");
+assert.match(platformGatewayMigrationFinal,/server_create_platform_sms_gateway_pairing/,"only an operator/service role can create a one-time pairing code");
+assert.match(platformGatewayMigrationFinal,/server_claim_platform_sms_gateway/,"a pairing code creates an explicitly platform-owned device");
+assert.match(platformGatewayEdgeFinal,/claim_platform_device/,"the edge gateway supports managed handset claim");
+assert.match(platformGatewayEdgeFinal,/PLATFORM_GATEWAY_ONLY/,"customer-owned devices are rejected by the SMS transport");
+assert.match(platformGatewayNativeFinal,/showPlatformGatewaySetupDialog/,"managed gateway enrollment is native and operator-only");
+assert.match(platformGatewayNativeFinal,/defaultSmsSim\(this\)/,"managed handset uses Android's default SMS subscription automatically");
+assert.match(platformGatewayManagerFinal,/getDefaultSmsSubscriptionId/,"dual-SIM selection follows Android system default, not a Server picker");
+assert.match(platformGatewayApiFinal,/claim_platform_device/,"the Server APK claims its own gateway directly through Server Backend");
+assert.match(platformGatewayServiceFinal,/claimedCount == MAX_SMS_BATCH_SIZE/,"the worker drains successive batches without a daily/hourly user quota");
+assert.match(platformGatewayServiceFinal,/PLATFORM_GATEWAY_ONLY/,"legacy customer SIM gateway workers stop without sending");
+assert.doesNotMatch(app,/connectSmsGateway|smsGatewayConnected/,"customer onboarding does not start or depend on a personal SMS gateway");
+assert.doesNotMatch(html,/Connect my SIM|Choose a SIM|sms-gateway-sim/,"customer onboarding never asks for SIM selection");
+assert.doesNotMatch(calls,/recipient_availability|CALL_START_RATE_MAX|CALL_START_RATE_LIMITED/,"call attempts and availability checks have no per-user minute/hour quota");
+
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");
