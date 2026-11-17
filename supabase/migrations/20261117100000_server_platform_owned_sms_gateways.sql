@@ -174,3 +174,103 @@ revoke all on function public.server_claim_sms_jobs(uuid,integer)
   from public, anon, authenticated;
 grant execute on function public.server_claim_sms_jobs(uuid,integer)
   to service_role;
+
+
+-- One-time pairing for a physical Server-operated SMS gateway handset.
+-- Only the hash is stored; the pairing code is returned once to the operator.
+create table if not exists public.server_platform_gateway_pairings (
+  id uuid primary key default gen_random_uuid(),
+  code_hash text not null unique check (code_hash ~ '^[0-9a-f]{64}$'),
+  expires_at timestamptz not null,
+  claimed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+alter table public.server_platform_gateway_pairings enable row level security;
+revoke all on table public.server_platform_gateway_pairings from public, anon, authenticated;
+grant all on table public.server_platform_gateway_pairings to service_role;
+
+create or replace function public.server_create_platform_sms_gateway_pairing()
+returns table(pairing_code text, expires_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_code text;
+  v_expires timestamptz;
+begin
+  v_code := encode(extensions.gen_random_bytes(16),'hex');
+  v_expires := now() + interval '15 minutes';
+  insert into public.server_platform_gateway_pairings(code_hash,expires_at)
+  values(encode(extensions.digest(v_code,'sha256'),'hex'),v_expires);
+  return query select v_code,v_expires;
+end;
+$$;
+revoke all on function public.server_create_platform_sms_gateway_pairing()
+  from public, anon, authenticated;
+grant execute on function public.server_create_platform_sms_gateway_pairing()
+  to service_role;
+
+create or replace function public.server_claim_platform_sms_gateway(
+  p_code_hash text,
+  p_token_hash text,
+  p_subscription_id integer,
+  p_slot_index integer,
+  p_carrier_label text
+)
+returns table(id uuid,label text,enabled boolean,last_seen_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_pairing_id uuid;
+  v_label text;
+begin
+  if p_code_hash !~ '^[0-9a-f]{64}$'
+     or p_token_hash !~ '^[0-9a-f]{64}$'
+     or p_subscription_id is null or p_subscription_id < 0
+     or p_slot_index is null or p_slot_index < 0 or p_slot_index > 7
+     or nullif(btrim(p_carrier_label),'') is null then
+    raise exception 'invalid_platform_gateway_registration';
+  end if;
+
+  select p.id into v_pairing_id
+    from public.server_platform_gateway_pairings p
+   where p.code_hash = p_code_hash
+     and p.claimed_at is null
+     and p.expires_at > now()
+   for update;
+
+  if v_pairing_id is null then
+    raise exception 'platform_gateway_pairing_expired_or_used';
+  end if;
+
+  update public.server_platform_gateway_pairings
+     set claimed_at = now()
+   where id = v_pairing_id;
+
+  v_label := left('Server SMS Gateway - ' || btrim(p_carrier_label),80);
+
+  return query
+  insert into public.server_gateway_devices(
+    owner_user_id,label,token_hash,enabled,shared_guest_sms_enabled,
+    sim_subscription_id,sim_slot_index,carrier_label,last_seen_at,updated_at,is_platform_owned
+  )
+  values(
+    null,v_label,p_token_hash,true,false,
+    p_subscription_id,p_slot_index,left(btrim(p_carrier_label),80),null,now(),true
+  )
+  returning server_gateway_devices.id,
+            server_gateway_devices.label,
+            server_gateway_devices.enabled,
+            server_gateway_devices.last_seen_at;
+end;
+$$;
+revoke all on function public.server_claim_platform_sms_gateway(text,text,integer,integer,text)
+  from public, anon, authenticated;
+grant execute on function public.server_claim_platform_sms_gateway(text,text,integer,integer,text)
+  to service_role;
+
+comment on column public.server_gateway_devices.is_platform_owned is
+  'True only for physical SMS gateway devices owned or controlled by Server and using a Server-funded carrier plan. Never mark a customer phone as platform-owned.';
