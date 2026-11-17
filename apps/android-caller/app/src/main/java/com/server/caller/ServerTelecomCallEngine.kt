@@ -254,7 +254,6 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
 // Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
       if (shouldRequestTelecomRingback(route)) {
-        startLocalRingback()
         armUnansweredTimeout(callId.orEmpty())
       }
       if (route == "guest") {
@@ -269,6 +268,7 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
       iceServerMode = started.optString("ice_server_mode", "stun-only")
       recordStage("backend_call_created")
       preparePeer(iceServers)
+      if (shouldRequestTelecomRingback(route)) startLocalRingback()
       if (hangupRequested) {
         finishCall(callId.orEmpty(), "local")
         return
