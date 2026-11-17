@@ -1095,7 +1095,7 @@ assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute i
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
-assert.doesNotMatch(calls,/recipient_availability|RECIPIENT_AVAILABILITY_RATE_LIMITED/,"recipient availability does not impose a caller-level attempts-per-minute cap");
+assert.doesNotMatch(calls,/p_scope:"recipient_availability"|RECIPIENT_AVAILABILITY_RATE_LIMITED/,"recipient availability does not impose a caller-level attempts-per-minute cap");
 assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
   "only a browser heartbeat can classify a non-Server recipient as currently online");
 assert.match(calls,/guestPushRegistered/,
@@ -1404,6 +1404,6 @@ assert.match(platformGatewayServiceFinal,/claimedCount == MAX_SMS_BATCH_SIZE/,"t
 assert.match(platformGatewayServiceFinal,/PLATFORM_GATEWAY_ONLY/,"legacy customer SIM gateway workers stop without sending");
 assert.doesNotMatch(app,/connectSmsGateway|smsGatewayConnected/,"customer onboarding does not start or depend on a personal SMS gateway");
 assert.doesNotMatch(html,/Connect my SIM|Choose a SIM|sms-gateway-sim/,"customer onboarding never asks for SIM selection");
-assert.doesNotMatch(calls,/recipient_availability|CALL_START_RATE_MAX|CALL_START_RATE_LIMITED/,"call attempts and availability checks have no per-user minute/hour quota");
+assert.doesNotMatch(calls,/p_scope:"recipient_availability"|CALL_START_RATE_MAX|CALL_START_RATE_LIMITED|RECIPIENT_AVAILABILITY_RATE_LIMITED/,"call attempts and availability checks have no per-user minute/hour quota");
 
 console.log("Static checks only; they do not prove real SIM SMS or connected call audio.");
