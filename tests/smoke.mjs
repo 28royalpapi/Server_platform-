@@ -314,12 +314,12 @@ assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeS
   "the WebView bridge never reads SIM serials or phone numbers directly; SIM enumeration is isolated in the native selector");
 assert.doesNotMatch(androidSetup,/ServerFallbackSimManager|READ_PHONE_NUMBERS|CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
   "the Android setup bridge only reads SIM slot/carrier metadata and never reads the subscriber line number or places carrier calls");
-assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,"the Android setup bridge requests SIM-list permission only when the user connects a SIM");
-assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/,"the integrated SIM SMS gateway requests Android SMS permission from the same Server app");
-assert.match(androidSetup,/requestSmsGatewaySimOptions/);
-assert.match(androidSetup,/connectSmsGateway/);
-assert.match(androidSetup,/disconnectSmsGateway/);
-assert.match(androidSetup,/GATEWAY_HEARTBEAT_NOT_CONFIRMED/,"the app must prove a live gateway heartbeat before saying Connected");
+assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,"only internal managed-gateway setup requests phone-state permission");
+assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/,"only internal managed-gateway setup requests SMS-send permission");
+assert.match(androidSetup,/showPlatformGatewaySetupDialog/,"managed gateway enrollment is operator-only");
+assert.match(androidSetup,/defaultSmsSim\(this\)/,"the managed gateway uses Android's default SMS subscription");
+assert.match(androidSetup,/PLATFORM_GATEWAY_ONLY/,"legacy customer SIM bridge methods are denied");
+assert.match(androidSetup,/System\.currentTimeMillis\(\) - lastSeenMs <= 90_000L/,"managed gateway online status requires a fresh heartbeat");
 assert.match(androidSmsGatewayManager,/activeSubscriptionInfoList/);
 assert.match(androidSmsGatewayManager,/getActiveSubscriptionInfoForSimSlotIndex/,"SIM discovery falls back to per-slot subscription lookup for OEM multi-SIM implementations");
 assert.match(androidSmsGatewayManager,/phoneSlotCount/,"SIM discovery queries every reported modem slot instead of trusting one aggregate result");
@@ -865,11 +865,9 @@ assert.match(html,/id="download-android-connector"/,
   "public website provides one Android Server installation action");
 assert.ok(html.includes("releases/download/server-android-combined-preview/Server-Android-Connector-preview.apk"), "the only onboarding download targets the combined Server connector preview asset");
 assert.match(html,/Download Server — ARM64/,"customer download is the single Server Android app; gateway service is internal to Server-owned devices");
-  "the sole Android download is explicitly identified as the combined calling and SMS app");
 assert.doesNotMatch(html,/server-android-armv7\.apk|download-android-connector-armv7/,
   "onboarding does not offer a second architecture download or separate gateway installer");
 assert.match(html,/No SIM selection or SMS permission is needed/,"customer onboarding does not request SIM enumeration or SMS sending");
-  "the site explains why SIM detection happens after installing the combined app");
 assert.match(html,/I'?ve installed Server — continue setup/,
   "website offers the return-to-this-page hand-off after connector installation");
 assert.match(app,/androidDownload && androidDownload\.addEventListener/,
@@ -905,7 +903,7 @@ assert.match(gateway,/create_pairing_code/,"legacy customer pairing is blocked e
 assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"Server-funded gateways send message traffic for customers");
 assert.match(html,/verification message is sent by Server-operated messaging infrastructure/,"phone verification is sent by Server, not by the customer's SIM");
 assert.match(app,/Your personal SIM is never used to send Server messages/,"onboarding makes the no-customer-SIM policy explicit");
-assert.match(app,/updateSmsGatewayGate/,"the onboarding maintains one SIM-gateway readiness state");
+assert.match(app,/Your personal SIM is never used to send Server messages/,"customer onboarding documents that Server sends from managed gateways");
 assert.doesNotMatch(app,/enableCallingAccountButton\.disabled\s*=\s*!smsGatewayConnected|openPhoneDialerButton\.disabled\s*=\s*!smsGatewayConnected/,"calling-account and dialler actions are not gated on optional SMS gateway availability");
 assert.match(androidSmsGatewayApi,/claim_platform_device/,"the Android app claims its managed gateway using a one-time platform code");
 assert.doesNotMatch(androidSmsGatewayApi,/create_pairing_code|pairing_pin/i,"the Android app does not create customer-owned gateway pairings");
