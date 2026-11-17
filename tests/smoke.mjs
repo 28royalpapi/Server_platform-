@@ -318,7 +318,7 @@ assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/,"only interna
 assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/,"only internal managed-gateway setup requests SMS-send permission");
 assert.match(androidSetup,/showPlatformGatewaySetupDialog/,"managed gateway enrollment is operator-only");
 assert.match(androidSetup,/defaultSmsSim\(this\)/,"the managed gateway uses Android's default SMS subscription");
-assert.match(androidSetup,/PLATFORM_GATEWAY_ONLY/,"legacy customer SIM bridge methods are denied");
+assert.doesNotMatch(androidSetup,/fun requestSmsGatewaySimOptions|fun connectSmsGateway|fun disconnectSmsGateway/,"customer SIM registration entry points are removed from the native onboarding bridge");
 assert.match(androidSetup,/System\.currentTimeMillis\(\) - lastSeenMs <= 90_000L/,"managed gateway online status requires a fresh heartbeat");
 assert.match(androidSmsGatewayManager,/activeSubscriptionInfoList/);
 assert.match(androidSmsGatewayManager,/getActiveSubscriptionInfoForSimSlotIndex/,"SIM discovery falls back to per-slot subscription lookup for OEM multi-SIM implementations");
