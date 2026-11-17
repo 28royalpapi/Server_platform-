@@ -802,7 +802,7 @@ assert.match(projectReadme,/first-party source remains in/ ,
   "README identifies the SIM gateway implementation bundled inside the Android calling app");
 assert.match(projectReadme,/one Android download|one Android app/i,"README documents the single combined consumer APK");
 assert.match(projectReadme,/gateway is \*\*not required\*\*/i,"README makes SMS Gateway optional for calling");
-assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
+assert.match(projectReadme,/does not use the hosted TextBee API/i,"the setup guide distinguishes reference source code from a hosted TextBee API dependency");
 assert.match(calls,/eq\("is_platform_owned",true\)/,"only Server-operated gateways may send invitations");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
