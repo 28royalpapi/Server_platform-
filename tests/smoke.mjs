@@ -746,8 +746,8 @@ assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
   "guest browser reachability never suppresses a first-contact invitation");
 assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
-assert.match(calls,/invitationText="SERVER CALL\\\\n"\+callerDisplay/);
-assert.match(calls,/Expires in 2 minutes\.\\\\n"\+invitationUrl/,
+assert.ok(calls.includes('const invitationText="SERVER CALL\n"+callerDisplay'),"guest SMS is branded and names the caller");
+assert.ok(calls.includes('Expires in 2 minutes.\n"+invitationUrl'),"the short expiry is visible and the preview URL is the final SMS element");
   "the Open Graph link is the final SMS element so messaging clients can inspect it");
 assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute invite expiry");
 assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
@@ -761,8 +761,8 @@ assert.doesNotMatch(calls,/textbee/i,"the production call backend has no externa
 assert.match(auth,/x-server-session-token/,"Server auth reads its opaque Server session from a dedicated header");
 assert.match(calls,/x-server-session-token/,"Server calls read the opaque Server session from a dedicated header");
 assert.match(gateway,/x-server-session-token/,"SIM registration reads the Server account session from a dedicated header");
-assert.match(gateway,/server_register_gateway_device/,"SIM registration uses an atomic owner-bound database operation");
-assert.match(gateway,/selected_sim/,"registration returns the selected SIM metadata");
+assert.match(gateway,/server_claim_platform_sms_gateway/,"the managed gateway claims through the platform-only database function");
+assert.match(gateway,/is_platform_owned/,"the gateway device registration marks platform-owned hardware explicitly");
 assert.match(gateway,/action==="status"/,"the gateway exposes a backend status check");
 assert.match(auth,/p_user_id:session.user_id/,"SMS verification jobs are created for the authenticated Server identity");
 assert.match(integratedGatewayMigration,/server_issue_otp\s*\(\s*p_user_id uuid/s,"OTP issuance binds the job to the requesting identity");
@@ -913,10 +913,10 @@ assert.match(html,/verification message is sent by Server-operated messaging inf
 assert.match(app,/Your personal SIM is never used to send Server messages/,"onboarding makes the no-customer-SIM policy explicit");
 assert.match(app,/updateSmsGatewayGate/,"the onboarding maintains one SIM-gateway readiness state");
 assert.doesNotMatch(app,/enableCallingAccountButton\.disabled\s*=\s*!smsGatewayConnected|openPhoneDialerButton\.disabled\s*=\s*!smsGatewayConnected/,"calling-account and dialler actions are not gated on optional SMS gateway availability");
-assert.match(androidSmsGatewayApi,/\.put\("action", "register_device"\)/,"the combined Android app registers its selected SIM directly without a manual pairing code");
-assert.doesNotMatch(androidSmsGatewayApi,/create_pairing_code|pairing_code|pairing_pin/i,"the integrated Android app API has no URL/code pairing flow");
+assert.match(androidSmsGatewayApi,/claim_platform_device/,"the Android app claims its managed gateway using a one-time platform code");
+assert.doesNotMatch(androidSmsGatewayApi,/create_pairing_code|pairing_pin/i,"the Android app does not create customer-owned gateway pairings");
 assert.match(gateway,/server_claim_sms_jobs/);
-assert.match(gateway,/PAIRING_RATE_LIMITED/);
+assert.match(gateway,/PLATFORM_GATEWAY_ONLY/,"customer-owned gateway actions are rejected at the backend");
 assert.match(gateway,/body:null/);
 assert.match(calls,/action==="incoming"/);
 assert.match(calls,/phone_verified_at/,"incoming calls only share verified caller numbers");
@@ -926,7 +926,7 @@ assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"
 
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
-assert.doesNotMatch(calls,/server_rate_limit_allow|recipient_availability|CALL_START_RATE_LIMITED/,"call and availability flows are not blocked by user-level attempt quotas");
+assert.doesNotMatch(calls,/p_scope:"call_start"|p_scope:"recipient_availability"|CALL_START_RATE_MAX|CALL_START_RATE_LIMITED|RECIPIENT_AVAILABILITY_RATE_LIMITED/,"call and availability flows are not blocked by per-user attempt quotas");
 assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
   "guest invitations do not have an additional hourly or per-recipient product quota");
 assert.match(atomicCallMigration,/token_hash/,
@@ -1095,7 +1095,7 @@ assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
-assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest SMS is branded and names the caller");
+assert.ok(calls.includes('const invitationText="SERVER CALL\\n"+callerDisplay'),"guest SMS is branded and names the caller");
 assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute invite expiry");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
@@ -1257,7 +1257,6 @@ assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
 assert.match(calls,/callerDisplayName=.*profile\.server_id/,"a caller without a display name remains callable through the stable Server ID fallback");
 assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest SMS is branded and names the caller");
-  "non-Server SMS invitation identifies the caller, asks for internet and includes the answer link");
 assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview prefers the caller profile name");
 assert.match(guestPreview,/profile\?\.server_id/,"the Open Graph preview falls back to the stable Server ID when no display name exists");
 assert.match(guestPreview,/"SERVER CALLER"/,"legacy invitations without a stored name use a neutral label instead of PRIVATE CALLER");
