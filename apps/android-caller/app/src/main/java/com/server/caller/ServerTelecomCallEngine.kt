@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.ToneGenerator
 import android.media.MediaRecorder
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -131,6 +132,10 @@ private var activeStateSyncedFor: String? = null
   private var disposed = false
   private var failCallStarted = false
   @Volatile private var hangupRequested = false
+  @Volatile private var callAnswered = false
+  private var unansweredTimeoutJob: Job? = null
+  @Volatile private var ringbackTone: ToneGenerator? = null
+
 
   init {
     accessToken = prefs.getString("access_token", null)
@@ -155,6 +160,52 @@ private var activeStateSyncedFor: String? = null
     if (actionJob?.isActive != true) {
       val id = callId ?: ServerTelecomRegistry.currentCallId()
       actionJob = scope.launch { finishCall(id.orEmpty(), "local") }
+    }
+  }
+
+  private fun startLocalRingback() {
+    if (disposed || callAnswered) return
+    stopLocalRingback()
+    try {
+      val tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 80)
+      if (tone.startTone(ToneGenerator.TONE_SUP_RINGTONE)) {
+        ringbackTone = tone
+        connection.setRingbackRequested(false)
+      } else {
+        tone.release()
+        connection.setRingbackRequested(true)
+      }
+    } catch (error: Exception) {
+      Log.w(TAG, "Local ringback unavailable; using Android Telecom ringback.")
+      connection.setRingbackRequested(true)
+    }
+  }
+
+  private fun stopLocalRingback() {
+    try { ringbackTone?.stopTone() } catch (_: Exception) {}
+    try { ringbackTone?.release() } catch (_: Exception) {}
+    ringbackTone = null
+    connection.setRingbackRequested(false)
+  }
+
+  private fun markCallAnswered() {
+    callAnswered = true
+    unansweredTimeoutJob?.cancel()
+    unansweredTimeoutJob = null
+    stopLocalRingback()
+  }
+
+  private fun armUnansweredTimeout(id: String) {
+    unansweredTimeoutJob?.cancel()
+    callAnswered = false
+    unansweredTimeoutJob = scope.launch {
+      delay(120_000L)
+      if (!disposed && !callAnswered && callId == id) {
+        recordStage("call_no_answer_timeout_120s")
+        stopLocalRingback()
+        connection.markEnded()
+        finishCall(id, "no_answer_timeout")
+      }
     }
   }
 
@@ -202,7 +253,10 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
       route = started.optString("route", "guest")
 // Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
-      connection.setRingbackRequested(shouldRequestTelecomRingback(route))
+      if (shouldRequestTelecomRingback(route)) {
+        startLocalRingback()
+        armUnansweredTimeout(callId.orEmpty())
+      }
       if (route == "guest") {
         // The number is not registered as a Server identity. This does NOT tell us
         // whether its ordinary handset has mobile data or Wi-Fi. Keep the guest
@@ -385,6 +439,7 @@ if (ServerRecipientReachability.isFresh(availability)) {
 
   private suspend fun failCall(message: String) {
     if (disposed || failCallStarted) return
+    markCallAnswered()
     failCallStarted = true
     recordStage("call_setup_failed")
     if (BuildConfig.DEBUG) prefs.edit().putString("debug_last_call_failure", message.take(240)).apply()
@@ -485,6 +540,7 @@ if (ServerRecipientReachability.isFresh(availability)) {
         if (state in listOf("ended", "failed", "missed")) {
           handleRemoteCallEnded()
         } else if (state == "active") {
+          markCallAnswered()
           recordStage("remote_call_active_realtime")
         }
       }
@@ -507,6 +563,7 @@ if (ServerRecipientReachability.isFresh(availability)) {
   }
 
   private suspend fun handleRemoteCallEnded() {
+    markCallAnswered()
     val endedId = callId
     if (!endedId.isNullOrBlank()) {
       ServerCallNotifications.cancel(context, endedId)
@@ -552,6 +609,7 @@ if (ServerRecipientReachability.isFresh(availability)) {
         api("signal", JSONObject().put("call_id", id).put("kind", "answer").put("payload", answer))
       }
       "answer" -> {
+        markCallAnswered()
         setRemoteDescription(signal.optJSONObject("payload") ?: JSONObject())
         applyPendingIceCandidates()
       }
@@ -670,6 +728,7 @@ if (ServerRecipientReachability.isFresh(availability)) {
       inboundAudioRtpPacketsReceived < 1L || outboundAudioRtpPacketsSent < 1L ||
       inboundAudioRtpEnergy <= 0.0 || outboundAudioRtpEnergy <= 0.0) return
     val id = callId ?: return
+    markCallAnswered()
     connection.markConnected()
     if (activeStateSyncedFor == id) return
     val now = System.currentTimeMillis()
@@ -915,6 +974,9 @@ if (ServerRecipientReachability.isFresh(availability)) {
   }
 
   private fun cleanupPeer() {
+    unansweredTimeoutJob?.cancel()
+    unansweredTimeoutJob = null
+    stopLocalRingback()
     pollingJob?.cancel()
     pollingJob = null
     realtimeConnected = false
