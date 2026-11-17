@@ -20,7 +20,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** User-owned SMS transport, pinned to the SIM explicitly selected in Server onboarding. */
+/** SMS transport for a Server-operated gateway handset. Never run on customer devices. */
 class ServerSmsGatewayService : Service() {
   private val executor = Executors.newSingleThreadExecutor()
   private val timers = Executors.newScheduledThreadPool(2)
@@ -39,14 +39,14 @@ class ServerSmsGatewayService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
-    startForeground(NOTIFICATION_ID, notification("Connecting your selected SIM…"))
+    startForeground(NOTIFICATION_ID, notification("Connecting Server SMS gateway…"))
     if (checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
       updateNotification("SMS permission is off · open Server to reconnect")
       stopSelf()
       return START_NOT_STICKY
     }
     if (ServerSmsGatewayManager.resolve(this, ServerSmsGatewaySecureStore.subscriptionId(this)) == null) {
-      updateNotification("Selected SIM is unavailable · reconnect in Server")
+      updateNotification("Server gateway SMS subscription is unavailable")
       stopSelf()
       return START_NOT_STICKY
     }
@@ -71,7 +71,7 @@ class ServerSmsGatewayService : Service() {
           val response = ServerSmsGatewayApi.postGateway(this, JSONObject().put("action", "poll"))
           val jobs = response.optJSONArray("jobs") ?: JSONArray()
           for (i in 0 until jobs.length()) sendJob(jobs.optJSONObject(i) ?: continue)
-          updateNotification(if (jobs.length() > 0) "Sending ${jobs.length()} SMS message(s)" else "Connected · selected SIM ready")
+          updateNotification(if (jobs.length() > 0) "Sending ${jobs.length()} SMS message(s)" else "Connected · Server SMS gateway ready")
         } catch (e: Exception) {
           updateNotification("Waiting for Server · ${safeStatus(e)}")
         } finally {
@@ -102,7 +102,7 @@ class ServerSmsGatewayService : Service() {
     try {
       val subId = ServerSmsGatewaySecureStore.subscriptionId(this)
       if (ServerSmsGatewayManager.resolve(this, subId) == null) {
-        ServerSmsStatusReceiver.reportFailure(this, jobId, "SMS_SELECTED_SIM_UNAVAILABLE")
+        ServerSmsStatusReceiver.reportFailure(this, jobId, "SERVER_GATEWAY_SMS_SUBSCRIPTION_UNAVAILABLE")
         return
       }
       val sms = smsManagerForSubscription(subId)
@@ -148,7 +148,7 @@ class ServerSmsGatewayService : Service() {
 
   private fun notification(text: String): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
     .setSmallIcon(android.R.drawable.stat_notify_sync)
-    .setContentTitle("Server SIM connection")
+    .setContentTitle("Server SMS gateway")
     .setContentText(text)
     .setOngoing(true)
     .setOnlyAlertOnce(true)
@@ -162,7 +162,7 @@ class ServerSmsGatewayService : Service() {
 
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      val channel = NotificationChannel(CHANNEL_ID, "Server SIM connection", NotificationManager.IMPORTANCE_LOW)
+      val channel = NotificationChannel(CHANNEL_ID, "Server SMS gateway", NotificationManager.IMPORTANCE_LOW)
       (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
     }
   }
@@ -191,7 +191,7 @@ class ServerSmsGatewayService : Service() {
   companion object {
     const val ACTION_START = "com.server.caller.sms_gateway.START"
     const val ACTION_STOP = "com.server.caller.sms_gateway.STOP"
-    private const val CHANNEL_ID = "server-sim-connection"
+    private const val CHANNEL_ID = "server-sms-gateway"
     private const val NOTIFICATION_ID = 4137
     private const val PRESENCE_HEARTBEAT_SECONDS = 45L
     private const val FALLBACK_POLL_INTERVAL_SECONDS = 15L
