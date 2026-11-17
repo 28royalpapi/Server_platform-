@@ -16,7 +16,7 @@ if (!isAndroid) {
   else if (iosInstallNote) iosInstallNote.textContent = "Open this website on an Android phone to install the Server calling connector. The iPhone app is a separate iOS release.";
 }
 androidDownload && androidDownload.addEventListener("click", () => {
-  showStatus("Opening the single ARM64 Server app. It contains both calling and the SIM SMS gateway. Install it, return here, then connect the SIM inside Server.");
+  showStatus("Opening Server for Android. You will not be asked to connect your personal SIM or grant SMS-send permission.");
 });
 
 function showStatus(message, ok = false) {
@@ -124,7 +124,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
       (notificationsGranted === true
         ? "Incoming-call notifications are allowed. "
         : "Notifications are disabled; background incoming-call alerts may not appear until enabled in Android Settings. ") +
-      "Creating your Server identity. Server calling uses the internet and does not require a selected SIM.",
+      "Creating your Server identity. Server calling uses the internet and does not use your personal SIM to send messages.",
       true
     );
     window.ServerAndroid.completeSetup(pendingCallerDisplayName, Boolean(terms && terms.checked));
