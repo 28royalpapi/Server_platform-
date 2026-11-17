@@ -259,7 +259,7 @@ begin
   )
   values(
     null,v_label,p_token_hash,true,false,
-    p_subscription_id,p_slot_index,left(btrim(p_carrier_label),80),null,now(),true
+    p_subscription_id,p_slot_index,left(btrim(p_carrier_label),80),now() - interval '2 minutes',now(),true
   )
   returning server_gateway_devices.id,
             server_gateway_devices.label,
