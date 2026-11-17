@@ -40,6 +40,29 @@ internal object ServerSmsGatewayApi {
     }
   }
 
+  /**
+   * Claims a Server-operated SMS handset with its single-use operator pairing code.
+   * This method is only called by the internal managed-gateway setup screen.
+   */
+  fun claimPlatformDevice(
+    context: Context,
+    pairingCode: String,
+    subscriptionId: Int,
+    slotIndex: Int,
+    carrier: String
+  ): JSONObject {
+    val safeCarrier = carrier.trim().take(80).ifBlank { "Mobile network" }
+    return post(
+      context,
+      JSONObject()
+        .put("action", "claim_platform_device")
+        .put("pairing_code", pairingCode.trim().lowercase())
+        .put("subscription_id", subscriptionId)
+        .put("sim_slot_index", slotIndex)
+        .put("carrier_label", safeCarrier)
+    )
+  }
+
   fun status(context: Context): JSONObject {
     val token = ServerSmsGatewaySecureStore.token(context)
       ?: return JSONObject().put("ok", false).put("error", "GATEWAY_NOT_REGISTERED")
