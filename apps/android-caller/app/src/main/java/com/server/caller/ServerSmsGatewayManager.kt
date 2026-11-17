@@ -103,30 +103,4 @@ internal object ServerSmsGatewayManager {
     return sims.singleOrNull()
   }
 
-  fun optionsJson(context: Context): JSONObject {
-    if (context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-      return JSONObject().put("ok", false).put("error", "SIM_PERMISSION_REQUIRED")
-    }
-    val available = activeSims(context)
-    val selected = defaultSmsSim(context)
-    val array = JSONArray()
-    if (selected != null) {
-      array.put(JSONObject()
-        .put("subscription_id", selected.subscriptionId)
-        .put("slot_index", selected.slotIndex)
-        .put("carrier", selected.carrier)
-        .put("label", selected.label))
-    }
-    return JSONObject()
-      .put("ok", selected != null)
-      .put("error", if (selected == null && available.size > 1) "DEFAULT_SMS_SUBSCRIPTION_NOT_SET" else if (selected == null) "NO_ACTIVE_SMS_SUBSCRIPTION" else JSONObject.NULL)
-      .put("options", array)
-      .put("phone_count", phoneSlotCount(context))
-      .put("active_subscription_count", available.size)
-      .put("default_sms_selected_automatically", selected != null)
-      .put("telephony_feature_reported", context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY))
-  }
 
-  fun resolve(context: Context, subscriptionId: Int): ServerSmsGatewaySim? =
-    activeSims(context).firstOrNull { it.subscriptionId == subscriptionId }
-}
