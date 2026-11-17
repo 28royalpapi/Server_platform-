@@ -2,26 +2,15 @@ package com.server.caller
 
 import android.app.Activity
 import android.content.Intent
-import android.content.ActivityNotFoundException
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 
 /**
  * Launched only after the caller taps the guest-invitation notification.
- * Prefills the recipient and invitation in Android's SMS composer. The user
- * must press Send; Server never sends this fallback SMS silently.
- * If no SMS app is available, the normal Android share chooser is offered.
+ * It opens Android's native app-share chooser; the caller chooses where to share.
  */
 class ServerGuestInviteShareActivity : Activity() {
   companion object {
-    internal fun createSmsComposeIntent(phone: String, invitation: String): Intent {
-      require(phone.isNotBlank() && invitation.isNotBlank()) { "A recipient and secure invitation are required." }
-      return Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone, null)).apply {
-        putExtra("sms_body", invitation)
-      }
-    }
-
     internal fun createShareChooserIntent(phone: String, invitation: String): Intent {
       require(phone.isNotBlank() && invitation.isNotBlank()) { "A recipient and secure invitation are required." }
       val share = Intent(Intent.ACTION_SEND).apply {
@@ -42,13 +31,9 @@ class ServerGuestInviteShareActivity : Activity() {
         throw IllegalArgumentException("The invitation is no longer available. Start a new Server call.")
       }
       ServerGuestInviteNotifications.cancel(this, callId)
-      try {
-        startActivity(createSmsComposeIntent(phone, invitation))
-      } catch (_: ActivityNotFoundException) {
-        startActivity(createShareChooserIntent(phone, invitation))
-      }
+      startActivity(createShareChooserIntent(phone, invitation))
     } catch (error: Exception) {
-      Log.w("ServerGuestInvite", "Could not open the native invitation composer: " + error.javaClass.simpleName)
+      Log.w("ServerGuestInvite", "Could not open the native invitation chooser: " + error.javaClass.simpleName)
     } finally {
       finish()
     }
