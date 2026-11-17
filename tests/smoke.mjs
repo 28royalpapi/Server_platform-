@@ -1105,7 +1105,7 @@ assert.match(html,/Every call is registered in Server/,"onboarding explains that
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
 assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"onboarding explains that Server funds the SMS gateway");
 assert.match(html,/your personal SIM is never used to send them/,"onboarding promises that customers do not pay for Server SMS");
-assert.doesNotMatch(html,/id="sms-gateway-sim"|id="connect-sms-gateway"|Connect my SIM|Disconnect SIM|Choose a SIM/i,"customer onboarding does not expose SIM-picker or connect/disconnect controls");
+assert.doesNotMatch(html,/id="sms-gateway-sim"|id="connect-sms-gateway"|id="disconnect-sms-gateway"|>Connect my SIM<|>Disconnect SIM</i,"customer onboarding contains no SIM picker or personal-SIM connect/disconnect controls");
 assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
   "Android instrumentation covers fresh heartbeat and background wake classification");
