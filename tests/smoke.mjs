@@ -749,7 +749,7 @@ assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
 assert.match(calls,/invitationText="SERVER CALL\\\\n"\+callerDisplay/);
 assert.match(calls,/Expires in 2 minutes\.\\\\n"\+invitationUrl/,
   "the Open Graph link is the final SMS element so messaging clients can inspect it");
-assert.match(calls,/This invitation expires in 2 minutes/);
+assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute invite expiry");
 assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   guestSmsTransport.includes('.eq("is_platform_owned",true)') &&
   guestSmsTransport.includes('from("server_sms_jobs").insert') &&
@@ -926,8 +926,8 @@ assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"
 
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
-assert.match(calls,/p_scope:"availability"/,
-  "recipient availability lookups retain a service-protection guard, but call creation has no per-caller cap");
+assert.doesNotMatch(calls,/server_rate_limit_allow|recipient_availability|CALL_START_RATE_LIMITED/,"call and availability flows are not blocked by user-level attempt quotas");
+  "recipient availability is not restricted by a caller-level rate cap");
 assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
   "guest invites do not impose a separate recipient quota beyond the caller-wide safety limit");
 assert.match(atomicCallMigration,/token_hash/,
@@ -1096,12 +1096,12 @@ assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
- assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server/,"the SMS identifies the caller and tells the recipient to turn on internet");
-assert.match(calls,/This invitation expires in 2 minutes/,"the SMS advertises the two-minute invitation expiry");
+assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest SMS is branded and names the caller");
+assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute invite expiry");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
-assert.match(calls,/p_scope:"recipient_availability"/,"recipient availability checks are rate-limited per authenticated caller");
+assert.doesNotMatch(calls,/recipient_availability|RECIPIENT_AVAILABILITY_RATE_LIMITED/,"recipient availability does not impose a caller-level attempts-per-minute cap");
 assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
   "only a browser heartbeat can classify a non-Server recipient as currently online");
 assert.match(calls,/guestPushRegistered/,
@@ -1257,7 +1257,7 @@ assert.match(app,/server:\/\/device-setup/);
 assert.match(guestWeb,/getUserMedia/);
 assert.match(guestWeb,/RTCPeerConnection/);
 assert.match(calls,/callerDisplayName=.*profile\.server_id/,"a caller without a display name remains callable through the stable Server ID fallback");
-assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server\. Turn on mobile data or Wi-Fi, then tap to answer: "/,
+assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest SMS is branded and names the caller");
   "non-Server SMS invitation identifies the caller, asks for internet and includes the answer link");
 assert.match(guestPreview,/profile\?\.display_name/,"the Open Graph preview prefers the caller profile name");
 assert.match(guestPreview,/profile\?\.server_id/,"the Open Graph preview falls back to the stable Server ID when no display name exists");
