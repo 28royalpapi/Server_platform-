@@ -93,7 +93,7 @@ internal object ServerSmsGatewayManager {
     }.sortedWith(compareBy<ServerSmsGatewaySim> { it.slotIndex }.thenBy { it.carrier })
   }
 
-  private fun defaultSmsSim(context: Context): ServerSmsGatewaySim? {
+  fun defaultSmsSim(context: Context): ServerSmsGatewaySim? {
     val sims = activeSims(context)
     if (sims.isEmpty()) return null
     val defaultId = try { SubscriptionManager.getDefaultSmsSubscriptionId() } catch (_: Exception) { -1 }
