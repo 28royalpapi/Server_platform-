@@ -17,12 +17,12 @@ internal data class ServerSmsGatewaySim(
 )
 
 /**
- * SIM discovery for the explicitly enabled SMS gateway.
+ * Select the Android system's default SMS subscription for a Server-operated
+ * gateway handset. Consumer phones are not enrolled as Server SMS senders.
  *
  * Do not gate this on FEATURE_TELEPHONY_MESSAGING: several Android builds do
  * not advertise that optional package-manager feature consistently even when
- * the modem and active subscriptions are available. The authoritative signal
- * is an active SubscriptionInfo returned by SubscriptionManager.
+ * the modem and active subscriptions are available.
  */
 internal object ServerSmsGatewayManager {
   private fun phoneSlotCount(context: Context): Int {
@@ -93,24 +93,37 @@ internal object ServerSmsGatewayManager {
     }.sortedWith(compareBy<ServerSmsGatewaySim> { it.slotIndex }.thenBy { it.carrier })
   }
 
+  private fun defaultSmsSim(context: Context): ServerSmsGatewaySim? {
+    val sims = activeSims(context)
+    if (sims.isEmpty()) return null
+    val defaultId = try { SubscriptionManager.getDefaultSmsSubscriptionId() } catch (_: Exception) { -1 }
+    if (defaultId >= 0) return sims.firstOrNull { it.subscriptionId == defaultId }
+    // A single active SIM is unambiguous. On a dual-SIM device, require the
+    // Android system default to be set instead of asking the Server user to choose.
+    return sims.singleOrNull()
+  }
+
   fun optionsJson(context: Context): JSONObject {
     if (context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
       return JSONObject().put("ok", false).put("error", "SIM_PERMISSION_REQUIRED")
     }
-    val sims = activeSims(context)
+    val available = activeSims(context)
+    val selected = defaultSmsSim(context)
     val array = JSONArray()
-    sims.forEach { sim ->
+    if (selected != null) {
       array.put(JSONObject()
-        .put("subscription_id", sim.subscriptionId)
-        .put("slot_index", sim.slotIndex)
-        .put("carrier", sim.carrier)
-        .put("label", sim.label))
+        .put("subscription_id", selected.subscriptionId)
+        .put("slot_index", selected.slotIndex)
+        .put("carrier", selected.carrier)
+        .put("label", selected.label))
     }
     return JSONObject()
-      .put("ok", true)
+      .put("ok", selected != null)
+      .put("error", if (selected == null && available.size > 1) "DEFAULT_SMS_SUBSCRIPTION_NOT_SET" else if (selected == null) "NO_ACTIVE_SMS_SUBSCRIPTION" else JSONObject.NULL)
       .put("options", array)
       .put("phone_count", phoneSlotCount(context))
-      .put("active_subscription_count", sims.size)
+      .put("active_subscription_count", available.size)
+      .put("default_sms_selected_automatically", selected != null)
       .put("telephony_feature_reported", context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY))
   }
 
