@@ -77,6 +77,13 @@ class ServerSmsGatewayService : Service() {
             updateNotification(if (claimedCount > 0) "Sending ${claimedCount} SMS message(s)" else "Connected · Server SMS gateway ready")
           } while (claimedCount == MAX_SMS_BATCH_SIZE && running.get())
         } catch (e: Exception) {
+          if (e.message.orEmpty().contains("PLATFORM_GATEWAY_ONLY")) {
+            updateNotification("This handset is not a Server-operated SMS gateway. Sending stopped.")
+            running.set(false)
+            stopForeground(true)
+            stopSelf()
+            return@execute
+          }
           updateNotification("Waiting for Server · ${safeStatus(e)}")
         } finally {
           pollInProgress.set(false)
