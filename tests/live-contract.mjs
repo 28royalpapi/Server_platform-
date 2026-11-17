@@ -103,11 +103,16 @@ const record = (name, ok, detail) => {
   record("server-calls session boundary", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
-// Invalid gateway pairing codes must not create a gateway device.
+// Legacy customer-SIM pairing must be rejected; only the platform-owned operator flow remains.
 {
   const r = await request("server-gateway", "POST", { action: "claim", pairing_code: "INVALID0" });
+  const ok = r.response.status === 403 && r.data.error === "PLATFORM_GATEWAY_ONLY";
+  record("server-gateway blocks customer SIM pairing", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+{
+  const r = await request("server-gateway", "POST", { action: "claim_platform_device", pairing_code: "INVALID0" });
   const ok = r.response.status === 400 && r.data.error === "PAIRING_CODE_INVALID";
-  record("server-gateway pairing validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+  record("server-gateway validates platform pairing code", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
 // Guest API must reject missing bearer invitation tokens.
