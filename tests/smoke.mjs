@@ -746,7 +746,9 @@ assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
   "guest browser reachability never suppresses a first-contact invitation");
 assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
-assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server\. Turn on mobile data or Wi-Fi, then tap to answer: "/);
+assert.match(calls,/invitationText="SERVER CALL\\\\n"\+callerDisplay/);
+assert.match(calls,/Expires in 2 minutes\.\\\\n"\+invitationUrl/,
+  "the Open Graph link is the final SMS element so messaging clients can inspect it");
 assert.match(calls,/This invitation expires in 2 minutes/);
 assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   guestSmsTransport.includes('.eq("is_platform_owned",true)') &&
@@ -755,17 +757,6 @@ assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   "the backend queues invitation SMS only for a Server-owned Android gateway");
 assert.doesNotMatch(guestSmsTransport,/owner_user_id|shared_guest_sms_enabled/,
   "the call invitation path never selects a customer's SIM gateway");
-assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\?"web_push":"manual_share"/,
-  "the caller SIM SMS is the primary guest invitation transport");
-assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
-  "guest browser reachability must never suppress the first-contact caller SIM SMS");
-assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
-assert.match(calls,/invitationText=callerDisplay\+" is calling you through Server\. Turn on mobile data or Wi-Fi, then tap to answer: "/);
-assert.match(calls,/This invitation expires in 2 minutes/);
-assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
-  guestSmsTransport.includes('from("server_sms_jobs").insert') &&
-  guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
-  "the backend queues SMS for the caller-owned Android SIM Gateway and wakes it through Server Realtime");
 assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
 assert.match(auth,/x-server-session-token/,"Server auth reads its opaque Server session from a dedicated header");
 assert.match(calls,/x-server-session-token/,"Server calls read the opaque Server session from a dedicated header");
@@ -813,8 +804,7 @@ assert.match(projectReadme,/first-party Gateway source is in/ ,
 assert.match(projectReadme,/one Android download|one Android app/i,"README documents the single combined consumer APK");
 assert.match(projectReadme,/gateway is \*\*not required\*\*/i,"README makes SMS Gateway optional for calling");
 assert.doesNotMatch(projectReadme,/textbee/i,"the setup guide does not require a third-party SMS gateway");
-assert.match(calls,/eq\("owner_user_id",uid\)/,"the caller's own active SIM Gateway is preferred");
-assert.match(calls,/eq\("shared_guest_sms_enabled",true\)/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
+assert.match(calls,/eq\("is_platform_owned",true\)/,"only Server-operated gateways may send invitations");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/select\("id,token_hash(?:,shared_guest_sms_enabled)?"\)/,"the server retrieves only the hash and Gateway consent metadata needed for wake routing");
@@ -840,7 +830,7 @@ assert.doesNotMatch(calls,/CALL_START_RATE_MAX = 20|CALL_START_RATE_LIMITED/,
   "the call-start endpoint has no fixed per-user attempts-per-minute quota");
 assert.match(calls,/guest_invite_id:created\.invite_id/);
 assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
-  "Android reports when the first-contact SMS invitation is queued through an active Server SIM Gateway");
+  "Android reports when the first-contact SMS invitation is queued through a Server-operated gateway");
 assert.doesNotMatch(androidMain,/textbee/i,"Android caller UI has no third-party SMS provider states");
 assert.doesNotMatch(iosModel,/textbee/i,"iOS caller UI has no third-party SMS provider states");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
@@ -919,7 +909,7 @@ assert.match(liveGuestTransitionContract,/action: "create_pairing_code"/,"the li
 assert.match(html,/id="sms-gateway-setup"/,"the optional SIM gateway is visible during Android onboarding");
 assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the optional SIM gateway is shown before optional phone-number linking");
 assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"Server-funded gateways send message traffic for customers");
-assert.match(html,/six-digit code verifies the phone number only/,"the six-digit code is clearly limited to optional number verification and is not gateway pairing");
+assert.match(html,/verification message is sent by Server-operated messaging infrastructure/,"phone verification is sent by Server, not by the customer's SIM");
 assert.match(app,/Your personal SIM is never used to send Server messages/,"onboarding makes the no-customer-SIM policy explicit");
 assert.match(app,/updateSmsGatewayGate/,"the onboarding maintains one SIM-gateway readiness state");
 assert.doesNotMatch(app,/enableCallingAccountButton\.disabled\s*=\s*!smsGatewayConnected|openPhoneDialerButton\.disabled\s*=\s*!smsGatewayConnected/,"calling-account and dialler actions are not gated on optional SMS gateway availability");
@@ -936,8 +926,8 @@ assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"
 
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
-assert.match(calls,/server_rate_limit_allow/,
-  "call starts have a bounded per-caller abuse limit");
+assert.match(calls,/p_scope:"availability"/,
+  "recipient availability lookups retain a service-protection guard, but call creation has no per-caller cap");
 assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
   "guest invites do not impose a separate recipient quota beyond the caller-wide safety limit");
 assert.match(atomicCallMigration,/token_hash/,
@@ -972,7 +962,7 @@ assert.match(guest,/SERVER_TURN_URLS/,"guest calls use the same optional TURN re
 assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches Android and browser STUN discovery");
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
-assert.match(calls,/shared_guest_sms_enabled/,"a shared SIM Gateway can serve SMS invitations for other Server callers");
+assert.match(calls,/is_platform_owned/,"only platform-owned gateways are selected for SMS invitations");
 assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
 assert.match(calls,/category:"guest_invite"/);
 assert.match(calls,/source_event_id:"server-guest-invite:"/);
@@ -989,7 +979,8 @@ assert.equal((gatewayCustomIdentityMigration.match(/REFERENCES public\.server_pr
   "SIM Gateway pairings and devices reference the custom Server profile identity");
 assert.doesNotMatch(gatewayCustomIdentityMigration,/REFERENCES auth\.users/,
   "SIM Gateway ownership no longer requires Supabase Auth user rows");
-assert.match(gatewayGuestClaimMigration,/c\.caller_user_id=d\.owner_user_id/,"only the caller-owned SIM gateway can claim a guest invitation SMS job");
+assert.match(platformSmsMigration,/d\.is_platform_owned\s*=\s*true/,"only a Server-owned gateway can claim invitation and OTP messages");
+assert.doesNotMatch(platformSmsMigration,/c\.caller_user_id\s*=\s*d\.owner_user_id|shared_guest_sms_enabled/,"customer SIM consent cannot route Server messages");
 assert.match(guestInviteSmsGuardMigration,/c\.state in \('ringing','connecting'\)/,
   "SIM gateways can only claim guest invitations for calls that are still ringing or connecting");
 assert.match(guestInviteSmsGuardMigration,/gi\.joined_at is null/);
