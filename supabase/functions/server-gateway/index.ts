@@ -47,30 +47,6 @@ Deno.serve(async(req:Request)=>{
 }
   if(action==="register_device"){
   return out({error:"PLATFORM_GATEWAY_ONLY",message:"Customer devices cannot register as SMS senders."},403);
-  const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\\s+(.+)$/i)?.[1]||"").trim();
-  if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
-  const tokenHash=await sha(sessionToken);
-  const {data:session,error:sessionError}=await db.from("server_sessions").select("id,user_id")
-   .eq("token_hash",tokenHash).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
-  if(sessionError||!session)return out({error:"SESSION_REQUIRED"},401);
-  const slot=Number(b.sim_slot_index),subId=Number(b.subscription_id);
-  if(!Number.isInteger(slot)||slot<0||slot>7||!Number.isInteger(subId)||subId<0)return out({error:"INVALID_SIM_SELECTION"},400);
-  const carrier=typeof b.carrier_label==="string"?b.carrier_label.trim().replace(/[\\u0000-\\u001f\\u007f]/g,"").slice(0,80):"";
-  if(!carrier)return out({error:"SIM_CARRIER_REQUIRED"},400);
-  const {data:allowed,error:limitError}=await db.rpc("server_rate_limit_allow",{
-   p_scope:"gateway_device_register",p_key_hash:await sha(session.user_id),p_window_seconds:3600,p_max_hits:5
-  });
-  if(limitError||allowed!==true)return out({error:"GATEWAY_REGISTRATION_RATE_LIMITED"},429);
-  const deviceToken=token(),label=("SIM "+(slot+1)+" · "+carrier).slice(0,80);
-  const {data:registered,error:registerError}=await db.rpc("server_register_gateway_device",{
-   p_owner_user_id:session.user_id,p_label:label,p_token_hash:await sha(deviceToken),
-   p_subscription_id:subId,p_slot_index:slot,p_carrier_label:carrier
-  });
-  const device=Array.isArray(registered)?registered[0]:registered;
-  if(registerError||!device?.id)return out({error:"GATEWAY_REGISTER_FAILED"},503);
-  return out({ok:true,gateway_token:deviceToken,device_id:device.id,label:device.label,
-   enabled:device.enabled===true,last_seen_at:device.last_seen_at,
-   selected_sim:{subscription_id:subId,slot_index:slot,carrier_label:carrier}});
  }
  if(action==="disconnect"){
   const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\\s+(.+)$/i)?.[1]||"").trim();
