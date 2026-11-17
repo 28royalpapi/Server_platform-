@@ -10,7 +10,39 @@ Deno.serve(async(req:Request)=>{
  let b:Record<string,unknown>;try{b=await req.json();if(!b||Array.isArray(b)||typeof b!=="object")throw 0;}catch{return out({error:"INVALID_JSON"},400);}
  const url=Deno.env.get("SUPABASE_URL")||"",key=(()=>{const raw=Deno.env.get("SUPABASE_SECRET_KEYS");if(raw){try{const parsed=JSON.parse(raw);if(parsed&&typeof parsed==="object")return parsed.default||Object.values(parsed)[0]||"";}catch{}}return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";})();if(!url||!key)return out({error:"SUPABASE_SERVER_CONFIG_MISSING"},500);
  const db=createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});const action=typeof b.action==="string"?b.action:"";
- if(action==="register_device"){
+ if(action==="claim_platform_device"){
+  const ip=(req.headers.get("cf-connecting-ip")||req.headers.get("x-real-ip")||(req.headers.get("x-forwarded-for")||"unknown").split(",")[0].trim()).slice(0,160);
+  const {data:allowed,error:limitError}=await db.rpc("server_rate_limit_allow",{
+   p_scope:"platform_gateway_pairing_claim",p_key_hash:await sha(ip),
+   p_window_seconds:60,p_max_hits:8
+  });
+  if(limitError||allowed!==true)return out({error:"PAIRING_RATE_LIMITED"},429);
+  const pairingCode=typeof b.pairing_code==="string"?b.pairing_code.trim().toLowerCase():"";
+  if(!/^[0-9a-f]{32}$/.test(pairingCode))return out({error:"PAIRING_CODE_INVALID"},400);
+  const slot=Number(b.sim_slot_index),subId=Number(b.subscription_id);
+  if(!Number.isInteger(slot)||slot<0||slot>7||!Number.isInteger(subId)||subId<0){
+   return out({error:"DEFAULT_SMS_SUBSCRIPTION_INVALID"},400);
+  }
+  const carrier=typeof b.carrier_label==="string"?b.carrier_label.trim().replace(/[\\u0000-\\u001f\\u007f]/g,"").slice(0,80):"";
+  if(!carrier)return out({error:"SMS_CARRIER_REQUIRED"},400);
+  const deviceToken=token();
+  const {data:registered,error:registerError}=await db.rpc("server_claim_platform_sms_gateway",{
+   p_code_hash:await sha(pairingCode),
+   p_token_hash:await sha(deviceToken),
+   p_subscription_id:subId,
+   p_slot_index:slot,
+   p_carrier_label:carrier
+  });
+  const device=Array.isArray(registered)?registered[0]:registered;
+  if(registerError||!device?.id){
+   const reason=String(registerError?.message||"");
+   const expired=reason.includes("platform_gateway_pairing_expired_or_used");
+   return out({error:expired?"PAIRING_CODE_EXPIRED_OR_USED":"PLATFORM_GATEWAY_REGISTRATION_FAILED"},expired?401:503);
+  }
+  return out({ok:true,gateway_token:deviceToken,device_id:device.id,label:device.label,
+   enabled:device.enabled===true,is_platform_owned:true});
+}
+  if(action==="register_device"){
   const sessionToken=(req.headers.get("x-server-session-token")||(req.headers.get("authorization")||"").match(/^Bearer\\s+(.+)$/i)?.[1]||"").trim();
   if(!/^[0-9a-f]{64}$/.test(sessionToken))return out({error:"SESSION_REQUIRED"},401);
   const tokenHash=await sha(sessionToken);
