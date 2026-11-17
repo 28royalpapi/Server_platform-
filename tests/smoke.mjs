@@ -792,13 +792,13 @@ assert.doesNotMatch(androidSmsGatewayApi,/setRequestProperty\("authorization"/);
 assert.match(e2eIdentityScript,/"x-server-session-token": result\.access_token/);
 assert.doesNotMatch(e2eIdentityScript,/authorization: "Bearer "/);
 assert.match(calls,/guestInternetReachable=guestPush\.recent_online>0/);
-assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,"guest browser reachability never suppresses SIM SMS");
+assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,"guest browser reachability never suppresses platform SMS invitations");
 assert.match(calls,/internet_status:guestInternetReachable\?"internet_on":"unknown"/);
 assert.match(calls,/phone's internet state is unknown, not offline/);
 assert.match(guestWebPushSender,/await Promise\.all\(freshDevices\.map/,"stale subscriptions are not counted as live guest internet connections");
 assert.match(projectReadme,/Server digital address/);
 assert.match(projectReadme,/Server Backend URL/);
-assert.match(projectReadme,/first-party Gateway source is in/ ,
+assert.match(projectReadme,/first-party source remains in/ ,
   "README identifies the SIM gateway implementation bundled inside the Android calling app");
 assert.match(projectReadme,/one Android download|one Android app/i,"README documents the single combined consumer APK");
 assert.match(projectReadme,/gateway is \*\*not required\*\*/i,"README makes SMS Gateway optional for calling");
