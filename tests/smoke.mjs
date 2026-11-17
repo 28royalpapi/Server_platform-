@@ -499,16 +499,21 @@ assert.ok(androidBuildJob.includes("runs-on: ubuntu-24.04") &&
   androidGuestJob.includes("runs-on: ubuntu-24.04") &&
   androidMinimumJob.includes("runs-on: ubuntu-24.04") &&
   androidVersionMatrix.includes("runs-on: ubuntu-24.04"),
+  "stable Android emulator, guest-audio, minimum-install and API-matrix jobs use Linux KVM rather than macOS runners");
 assert.ok(androidBuildJob.includes("sudo apt-get install -y coreutils binutils") &&
   androidBuildJob.includes("command -v readelf"),
+  "the Linux build job installs a readelf implementation accepted by the APK ELF-alignment audit");
 for (const job of [androidBuildJob, androidGuestJob, androidMinimumJob, androidVersionMatrix]) {
   assert.ok(job.includes("Enable Linux KVM access for Android emulator") &&
     job.includes("sudo chmod 666 /dev/kvm"),
+    "each stable Android emulator job explicitly verifies and enables hardware KVM access");
 }
 assert.ok(androidGuestJob.includes("pulseaudio --start") &&
   guestBrowserE2e.includes("--use-file-for-fake-audio-capture"),
+  "the Android-to-browser audio E2E uses a Linux virtual-audio host and deterministic microphone input");
 assert.ok(android17Preview.includes("runs-on: macos-15") &&
   android17Preview.includes("continue-on-error: true"),
+  "Android 17 remains a non-blocking Apple Silicon preview while stable APIs gate release");
 assert.doesNotMatch(nativeWorkflow,/if: github\.head_ref != 'android-finish' && github\.ref != 'refs\/heads\/android-finish'/,
   "the Android completion branch also runs the iOS simulator build and startup check");
 assert.ok(androidVersionMatrix.includes("channel: stable"), "stable Android 8–16 matrix uses released SDK images");
@@ -748,6 +753,7 @@ assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   guestSmsTransport.includes('.eq("is_platform_owned",true)') &&
   guestSmsTransport.includes('from("server_sms_jobs").insert') &&
   guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
+  "the backend queues invitation SMS only for a Server-owned Android gateway");
 assert.doesNotMatch(guestSmsTransport,/owner_user_id|shared_guest_sms_enabled/,
   "the call invitation path never selects a customer's SIM gateway");
 assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
