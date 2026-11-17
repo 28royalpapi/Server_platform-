@@ -901,7 +901,7 @@ assert.match(hook,/new Webhook\(secret\)\.verify/);
 assert.match(hook,/SMS_HOOK_NOT_CONFIGURED/);
 assert.match(hook,/SMS_GATEWAY_OFFLINE/);
 assert.doesNotMatch(hook,/console\.(log|error)\([^)]*otp/i);
-assert.match(gateway,/create_pairing_code/);
+assert.match(gateway,/create_pairing_code/,"legacy customer pairing is blocked explicitly before dispatch");
 assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"Server-funded gateways send message traffic for customers");
 assert.match(html,/verification message is sent by Server-operated messaging infrastructure/,"phone verification is sent by Server, not by the customer's SIM");
 assert.match(app,/Your personal SIM is never used to send Server messages/,"onboarding makes the no-customer-SIM policy explicit");
