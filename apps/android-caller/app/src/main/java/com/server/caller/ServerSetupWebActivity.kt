@@ -2,6 +2,7 @@ package com.server.caller
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -16,6 +17,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.EditText
+import android.widget.Toast
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -121,7 +124,55 @@ class ServerSetupWebActivity : Activity() {
     }
     setContentView(FrameLayout(this).apply { addView(web, FrameLayout.LayoutParams(-1, -1)) })
     val platformGatewayLaunch = intent?.data?.getQueryParameter("mode") == "platform-gateway"
-    if (platformGatewayLaunch) web.loadUrl("https://$HOST/platform-gateway.html") else loadBundledOnboarding()
+    loadBundledOnboarding()
+    if (platformGatewayLaunch) web.post { showPlatformGatewaySetupDialog() }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    if (intent.data?.getQueryParameter("mode") == "platform-gateway") {
+      if (::web.isInitialized) web.post { showPlatformGatewaySetupDialog() }
+    }
+  }
+
+  private fun showPlatformGatewaySetupDialog() {
+    val codeInput = EditText(this).apply {
+      hint = "32-character one-time code"
+      singleLine = true
+      inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+      filters = arrayOf(android.text.InputFilter.LengthFilter(32))
+    }
+    val dialog = AlertDialog.Builder(this)
+      .setTitle("Server-managed SMS gateway")
+      .setMessage("Internal setup for a physical handset and SIM owned or funded by Server. Do not use a personal phone or personal SIM. The app will automatically use Android's default SMS subscription; no SIM is selected inside Server.")
+      .setView(codeInput)
+      .setNegativeButton("Cancel", null)
+      .setPositiveButton("Register handset", null)
+      .create()
+    dialog.setOnShowListener {
+      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        val code = codeInput.text.toString().trim().lowercase()
+        if (!Regex("^[0-9a-f]{32}$").matches(code)) {
+          Toast.makeText(this, "Enter the valid 32-character pairing code.", Toast.LENGTH_LONG).show()
+        } else {
+          dialog.dismiss()
+          beginPlatformGatewayClaim(code)
+        }
+      }
+    }
+    dialog.show()
+  }
+
+  private fun showPlatformGatewayResult(title: String, message: String) {
+    runOnUiThread {
+      if (isFinishing || isDestroyed) return@runOnUiThread
+      AlertDialog.Builder(this)
+        .setTitle(title)
+        .setMessage(message)
+        .setPositiveButton("Done", null)
+        .show()
+    }
   }
 
   /**
@@ -209,9 +260,7 @@ class ServerSetupWebActivity : Activity() {
   private fun claimPlatformGatewayWithDefaultSmsSubscription(pairingCode: String) {
     val sim = ServerSmsGatewayManager.defaultSmsSim(this)
     if (sim == null) {
-      callbackToWebsite("onServerPlatformGatewayResult", JSONObject()
-        .put("ok", false).put("error", "DEFAULT_SMS_SUBSCRIPTION_NOT_SET")
-        .put("message", "Set the Android system default SMS SIM on this Server-managed handset, then retry."))
+      showPlatformGatewayResult("Default SMS SIM not set", "Set Android's system default SMS subscription on this Server-managed handset, then open the setup link again.")
       return
     }
     Thread {
@@ -221,13 +270,13 @@ class ServerSetupWebActivity : Activity() {
         JSONObject().put("ok", false).put("error", "PLATFORM_GATEWAY_PAIRING_UNAVAILABLE")
       }
       if (!result.optBoolean("ok")) {
-        callbackToWebsite("onServerPlatformGatewayResult", result)
+        showPlatformGatewayResult("Gateway pairing failed", result.optString("error", "The one-time pairing could not be used."))
         return@Thread
       }
       val token = result.optString("gateway_token")
       val deviceId = result.optString("device_id")
       if (!token.matches(Regex("^[0-9a-f]{64}$")) || deviceId.isBlank()) {
-        callbackToWebsite("onServerPlatformGatewayResult", JSONObject().put("ok", false).put("error", "PLATFORM_GATEWAY_REGISTRATION_INVALID"))
+        showPlatformGatewayResult("Gateway registration failed", "The registration response was invalid. Ask an operator to review the gateway record.")
         return@Thread
       }
       try {
@@ -246,15 +295,14 @@ class ServerSetupWebActivity : Activity() {
             break
           }
         }
-        callbackToWebsite("onServerPlatformGatewayResult", JSONObject()
-          .put("ok", true).put("registered", true).put("online", online)
-          .put("device_id", deviceId).put("carrier", sim.carrier)
-          .put("last_seen_at", lastSeenAt)
-          .put("message", if (online) "Server-managed SMS gateway is registered and online." else "Gateway registration succeeded; waiting for its first heartbeat. Keep this Server-managed handset online."))
+        showPlatformGatewayResult(
+          if (online) "Gateway registered and online" else "Gateway registered; heartbeat pending",
+          "Device: $deviceId\\nCarrier: ${sim.carrier}\\n" +
+            if (online) "Server-managed SMS gateway is online. Keep this handset powered and connected."
+            else "The device record is created. Keep this Server-managed handset powered and connected while it sends its first heartbeat."
+        )
       } catch (_: Exception) {
-        callbackToWebsite("onServerPlatformGatewayResult", JSONObject().put("ok", false)
-          .put("error", "PLATFORM_GATEWAY_START_FAILED")
-          .put("message", "The gateway was registered but the Android SMS service did not start."))
+        showPlatformGatewayResult("Gateway service did not start", "The device record was created, but Android did not start the SMS service. Review permissions and battery settings on this Server-managed handset.")
       }
     }.start()
   }
@@ -498,22 +546,6 @@ class ServerSetupWebActivity : Activity() {
         val result = registerDevice(displayName, acceptedTerms)
         runJs("window.onServerSetupResult && window.onServerSetupResult($result)")
       }.start()
-    }
-
-    @JavascriptInterface fun claimPlatformSmsGateway(rawPairingCode: String) {
-      runOnUiThread {
-        val currentPath = Uri.parse(web.url.orEmpty()).path.orEmpty()
-        if (currentPath != "/platform-gateway.html") {
-          callbackToWebsite("onServerPlatformGatewayResult", JSONObject().put("ok", false).put("error", "PLATFORM_GATEWAY_SETUP_PAGE_REQUIRED"))
-          return@runOnUiThread
-        }
-        val code = rawPairingCode.trim().lowercase()
-        if (!Regex("^[0-9a-f]{32}$").matches(code)) {
-          callbackToWebsite("onServerPlatformGatewayResult", JSONObject().put("ok", false).put("error", "PAIRING_CODE_INVALID"))
-          return@runOnUiThread
-        }
-        beginPlatformGatewayClaim(code)
-      }
     }
 
     @JavascriptInterface fun requestSmsGatewaySimOptions() {
