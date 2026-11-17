@@ -60,6 +60,29 @@ internal object ServerSmsGatewayApi {
     )
   }
 
+  /**
+   * Claims a Server-operated SMS handset using its one-time operator pairing code.
+   * No customer Server session is accepted or required for platform-owned hardware.
+   */
+  fun claimPlatformDevice(
+    context: Context,
+    pairingCode: String,
+    subscriptionId: Int,
+    slotIndex: Int,
+    carrier: String
+  ): JSONObject {
+    val safeCarrier = carrier.trim().take(80).ifBlank { "Mobile network" }
+    return post(
+      context,
+      JSONObject()
+        .put("action", "claim_platform_device")
+        .put("pairing_code", pairingCode.trim().lowercase())
+        .put("subscription_id", subscriptionId)
+        .put("sim_slot_index", slotIndex)
+        .put("carrier_label", safeCarrier)
+    )
+  }
+
   fun disconnect(context: Context, sessionToken: String, deviceId: String): JSONObject =
     post(context, JSONObject().put("action", "disconnect").put("device_id", deviceId), sessionToken = sessionToken)
 
