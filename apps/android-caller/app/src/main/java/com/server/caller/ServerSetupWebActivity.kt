@@ -234,9 +234,9 @@ class ServerSetupWebActivity : Activity() {
         val pairingCode = pendingPlatformGatewayPairingCode
         pendingPlatformGatewayPairingCode = ""
         if (pairingCode.isBlank()) {
-          callbackToWebsite("onServerPlatformGatewayResult", JSONObject().put("ok", false).put("error", "PAIRING_CODE_MISSING"))
+          showPlatformGatewayResult("Pairing code missing", "Open the managed gateway setup again and enter the one-time code.")
         } else if (!phoneStateGranted || !smsGranted || !notificationsGranted) {
-          callbackToWebsite("onServerPlatformGatewayResult", JSONObject().put("ok", false).put("error", "PLATFORM_GATEWAY_PERMISSIONS_DENIED"))
+          showPlatformGatewayResult("Android permissions required", "The Server-managed handset needs SMS, phone-state and notification permissions to operate as the platform gateway.")
         } else {
           claimPlatformGatewayWithDefaultSmsSubscription(pairingCode)
         }
