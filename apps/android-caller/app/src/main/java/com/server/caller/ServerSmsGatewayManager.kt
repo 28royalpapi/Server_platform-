@@ -6,8 +6,6 @@ import android.content.pm.PackageManager
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
-import org.json.JSONArray
-import org.json.JSONObject
 
 internal data class ServerSmsGatewaySim(
   val subscriptionId: Int,
