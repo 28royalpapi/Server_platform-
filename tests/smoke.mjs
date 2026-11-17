@@ -93,7 +93,7 @@ const androidSmsGatewayRealtime=read("apps/android-caller/app/src/main/java/com/
 const androidSmsGatewayApi=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayApi.kt");
 const androidSmsGatewayStore=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewaySecureStore.kt");
 const integratedGatewayMigration=read("supabase/migrations/20261115120000_server_integrated_sim_gateway.sql");
-const platformSmsMigration=read("supabase/migrations/20261117100000_server_platform_owned_sms_gateways.sql");
+const platformSmsMigration=read("supabase/migrations/20261117140908_server_platform_owned_sms_gateways.sql");
 const gatewayWake=read("supabase/functions/_shared/server_gateway_wake.ts");
 const gatewayGradle=androidBuild;
 const calls=read("supabase/functions/server-calls/index.ts");
@@ -1386,7 +1386,7 @@ assert.ok(android17Preview.includes("ram-size: 4096M") && android17Preview.inclu
 console.log("Server backend/web contract checks: PASS");
 console.log("Checks include hybrid WebRTC/SIM fallback, SIM metadata minimisation, recipient reachability, previewable guest calls, device permissions and public-key hygiene.");
 
-const platformGatewayMigrationFinal=read("supabase/migrations/20261117100000_server_platform_owned_sms_gateways.sql");
+const platformGatewayMigrationFinal=read("supabase/migrations/20261117140908_server_platform_owned_sms_gateways.sql");
 const platformGatewayEdgeFinal=read("supabase/functions/server-gateway/index.ts");
 const platformGatewayNativeFinal=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const platformGatewayManagerFinal=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayManager.kt");
