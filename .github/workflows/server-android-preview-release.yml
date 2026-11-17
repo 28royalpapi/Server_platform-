@@ -1,4 +1,4 @@
-name: Publish Server Android connector preview
+name: Publish Server Android connector and managed gateway preview
 
 on:
   push:
@@ -84,7 +84,7 @@ jobs:
         with:
           tag_name: server-android-combined-preview
           target_commitish: ${{ github.sha }}
-          name: Server Android — Combined Calling + SMS Preview
+          name: Server Android — Calling + Managed SMS Gateway Preview
           prerelease: true
           make_latest: false
           overwrite_files: true
@@ -93,9 +93,9 @@ jobs:
           body: |
             Server Android connector preview for the website-led onboarding flow.
 
-            - One Android package contains the Server calling connector and optional SIM SMS gateway.
-            - Server ID creation, Android Telecom setup, and Server-to-Server calling do not require a selected SIM.
-            - The optional gateway sends invitation SMS via the user's own SIM and carrier plan; it does not create PSTN calls.
+            - One Android package contains the customer calling connector and the SMS worker used only on Server-operated gateway handsets.
+            - Customer Server ID creation, Android Telecom setup, and Server-to-Server calling do not require a selected SIM or SMS permission.
+            - Customers never connect a SIM or grant SMS-send permission for invitations. Server-operated gateway handsets use a Server-funded SIM and automatically select Android's system-default SMS subscription.
             - Enable Server under Android Calling accounts when prompted.
             - This is a preview build signed with a CI debug key, not a production Play Store build. It may require uninstalling a prior preview signed with a different key.
             - Server-to-Server calls require both devices online. Calls to people without Server use an internet browser invitation; they do not become PSTN calls.
