@@ -257,12 +257,6 @@ class CallerSmokeTest {
         posted!!.notification.actions.any { it.title.toString() == "Call using selected SIM" })
       assertNotNull("Tapping the notification must open the native share activity", posted.notification.contentIntent)
 
-      val smsCompose = ServerGuestInviteShareActivity.createSmsComposeIntent(phone, invitation)
-      assertEquals("The manual SMS action must open Android's SMS composer", Intent.ACTION_SENDTO, smsCompose.action)
-      assertEquals("The SMS composer must target a phone-number URI", "smsto", smsCompose.data?.scheme)
-      assertEquals("The recipient number must be prefilled without reading a SIM number", phone, smsCompose.data?.schemeSpecificPart)
-      assertEquals("The secure invite text must be prefilled unchanged", invitation, smsCompose.getStringExtra("sms_body"))
-
       val chooser = ServerGuestInviteShareActivity.createShareChooserIntent(phone, invitation)
       assertEquals("The activity must open Android's native chooser", Intent.ACTION_CHOOSER, chooser.action)
       val shareIntent = chooser.getParcelableExtra(Intent.EXTRA_INTENT) as? Intent
@@ -271,7 +265,7 @@ class CallerSmokeTest {
       assertEquals("The secure browser invite must be included unchanged", invitation, shareIntent?.getStringExtra(Intent.EXTRA_TEXT))
       val initialIntents = chooser.getParcelableArrayExtra(Intent.EXTRA_INITIAL_INTENTS)
         ?.filterIsInstance<Intent>().orEmpty()
-      assertTrue("The generic share fallback must not force an SMS target",
+      assertTrue("Server does not force an SMS composer that could charge a personal SIM",
         initialIntents.none { it.action == Intent.ACTION_SENDTO })
     } finally {
       ServerGuestInviteNotifications.cancel(context, callId)
