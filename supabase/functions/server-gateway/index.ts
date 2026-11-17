@@ -99,7 +99,7 @@ Deno.serve(async(req:Request)=>{
  if(action==="status")return out({ok:true,device_id:device.id,label:device.label,enabled:device.enabled,last_seen_at:device.last_seen_at});
  const now=new Date().toISOString();await db.from("server_gateway_devices").update({last_seen_at:now,updated_at:now}).eq("id",device.id);
  if(action==="poll"){
-  const {data:jobs,error}=await db.rpc("server_claim_sms_jobs",{p_device_id:device.id,p_limit:3});
+  const {data:jobs,error}=await db.rpc("server_claim_sms_jobs",{p_device_id:device.id,p_limit:50});
   if(error)return out({error:"SMS_QUEUE_POLL_FAILED"},503);
   return out({ok:true,jobs:jobs||[],server_time:now});
  }
