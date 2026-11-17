@@ -616,7 +616,7 @@ assert.match(androidFirebase,/onMessageReceived/);
 assert.match(androidFirebase,/server_incoming_call/);
 assert.match(androidFirebase,/ServerIncomingCallService.start\(this\)/);
 assert.match(calls,/action==="register_push_token"/);
-assert.ok(calls.includes("SERVER_CALL_TTL_SECONDS = 180"));
+assert.ok(calls.includes("SERVER_CALL_TTL_SECONDS = 120"),"unanswered Server calls expire after 120 seconds");
 assert.ok(calls.includes("GUEST_CALL_TTL_SECONDS = 2 * 60"),"guest call ringing expires at two minutes before answer");
 assert.ok(calls.includes('route==="guest"?GUEST_CALL_TTL_SECONDS:SERVER_CALL_TTL_SECONDS'));
 assert.ok(guest.includes('["ringing","connecting"].includes(call.state)&&call.expires_at'));
@@ -746,8 +746,8 @@ assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
   "guest browser reachability never suppresses a first-contact invitation");
 assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
-assert.ok(calls.includes('const invitationText="SERVER CALL\n"+callerDisplay'),"guest SMS is branded and names the caller");
-assert.ok(calls.includes('Expires in 2 minutes.\n"+invitationUrl'),"the short expiry is visible and the preview URL is the final SMS element");
+assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest SMS is branded and names the caller");
+assert.match(calls,/Expires in 2 minutes\.\\n"\+invitationUrl/,"the preview URL is the final SMS element");
 assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute invite expiry");
 assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
   guestSmsTransport.includes('.eq("is_platform_owned",true)') &&
@@ -902,11 +902,6 @@ assert.match(hook,/SMS_HOOK_NOT_CONFIGURED/);
 assert.match(hook,/SMS_GATEWAY_OFFLINE/);
 assert.doesNotMatch(hook,/console\.(log|error)\([^)]*otp/i);
 assert.match(gateway,/create_pairing_code/);
-assert.match(gateway,/p_key_hash:await sha\(session\.user_id\)/,"SIM gateway pairing is rate-limited against the signed-in Server session");
-assert.doesNotMatch(gateway,/VERIFIED_PROFILE_REQUIRED|phone_verified_at/,"SIM gateway pairing must not depend on phone verification");
-assert.match(liveGuestTransitionContract,/action: "create_pairing_code"/,"the live contract validates the first gateway pairing step without phone verification");
-assert.match(html,/id="sms-gateway-setup"/,"the optional SIM gateway is visible during Android onboarding");
-assert.ok(html.indexOf('id="sms-gateway-setup"') < html.indexOf('id="phone-link-step"'),"the optional SIM gateway is shown before optional phone-number linking");
 assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"Server-funded gateways send message traffic for customers");
 assert.match(html,/verification message is sent by Server-operated messaging infrastructure/,"phone verification is sent by Server, not by the customer's SIM");
 assert.match(app,/Your personal SIM is never used to send Server messages/,"onboarding makes the no-customer-SIM policy explicit");
@@ -914,6 +909,8 @@ assert.match(app,/updateSmsGatewayGate/,"the onboarding maintains one SIM-gatewa
 assert.doesNotMatch(app,/enableCallingAccountButton\.disabled\s*=\s*!smsGatewayConnected|openPhoneDialerButton\.disabled\s*=\s*!smsGatewayConnected/,"calling-account and dialler actions are not gated on optional SMS gateway availability");
 assert.match(androidSmsGatewayApi,/claim_platform_device/,"the Android app claims its managed gateway using a one-time platform code");
 assert.doesNotMatch(androidSmsGatewayApi,/create_pairing_code|pairing_pin/i,"the Android app does not create customer-owned gateway pairings");
+assert.match(gateway,/if\(action==="create_pairing_code"\|\|action==="claim"\)/,"legacy customer pairing routes are disabled");
+assert.match(gateway,/action==="claim_platform_device"/,"the managed platform handset uses a separate claim action");
 assert.match(gateway,/server_claim_sms_jobs/);
 assert.match(gateway,/PLATFORM_GATEWAY_ONLY/,"customer-owned gateway actions are rejected at the backend");
 assert.match(gateway,/body:null/);
