@@ -45,8 +45,8 @@ class ServerSmsGatewayService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
-    if (ServerSmsGatewayManager.resolve(this, ServerSmsGatewaySecureStore.subscriptionId(this)) == null) {
-      updateNotification("Server gateway SMS subscription is unavailable")
+    if (ServerSmsGatewayManager.defaultSmsSim(this) == null) {
+      updateNotification("Android's default SMS subscription is unavailable")
       stopSelf()
       return START_NOT_STICKY
     }
@@ -111,12 +111,12 @@ class ServerSmsGatewayService : Service() {
     val message = job.optString("body")
     if (jobId.isBlank() || recipient.isBlank() || message.isBlank()) return
     try {
-      val subId = ServerSmsGatewaySecureStore.subscriptionId(this)
-      if (ServerSmsGatewayManager.resolve(this, subId) == null) {
+      val sim = ServerSmsGatewayManager.defaultSmsSim(this)
+      if (sim == null) {
         ServerSmsStatusReceiver.reportFailure(this, jobId, "SERVER_GATEWAY_SMS_SUBSCRIPTION_UNAVAILABLE")
         return
       }
-      val sms = smsManagerForSubscription(subId)
+      val sms = smsManagerForSubscription(sim.subscriptionId)
       val parts = sms.divideMessage(message)
       val sentIntents = ArrayList<PendingIntent>()
       val deliveredIntents = ArrayList<PendingIntent>()
