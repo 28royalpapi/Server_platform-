@@ -927,9 +927,8 @@ assert.match(androidMain,/val sharedPhone = call\.optString\("caller_phone_e164"
 assert.match(calls,/action==="accept"/);
 assert.match(calls,/action==="end"/);
 assert.doesNotMatch(calls,/server_rate_limit_allow|recipient_availability|CALL_START_RATE_LIMITED/,"call and availability flows are not blocked by user-level attempt quotas");
-  "recipient availability is not restricted by a caller-level rate cap");
 assert.doesNotMatch(calls,/GUEST_INVITE_RATE_LIMITED/,
-  "guest invites do not impose a separate recipient quota beyond the caller-wide safety limit");
+  "guest invitations do not have an additional hourly or per-recipient product quota");
 assert.match(atomicCallMigration,/token_hash/,
   "guest invite links remain stored as token hashes inside the database transaction");
 assert.match(atomicCallMigration,/p_invite_expires_at/,
