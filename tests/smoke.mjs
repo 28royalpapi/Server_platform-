@@ -1095,7 +1095,8 @@ assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute i
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
-assert.doesNotMatch(calls,/p_scope:"recipient_availability"|RECIPIENT_AVAILABILITY_RATE_LIMITED/,"recipient availability does not impose a caller-level attempts-per-minute cap");
+assert.doesNotMatch(calls,/server_rate_limit_allow|p_scope:"recipient_availability"|RECIPIENT_AVAILABILITY_RATE_LIMITED|CALL_START_RATE/,
+  "call and availability endpoints contain no per-caller minute/hour attempt quota");
 assert.match(calls,/guestStatus==="online"\?"recent_guest_browser_connection":"unknown"/,
   "only a browser heartbeat can classify a non-Server recipient as currently online");
 assert.match(calls,/guestPushRegistered/,
