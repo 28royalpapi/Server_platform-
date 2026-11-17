@@ -864,11 +864,11 @@ assert.match(html,/Ask every time/,
 assert.match(html,/id="download-android-connector"/,
   "public website provides one Android Server installation action");
 assert.ok(html.includes("releases/download/server-android-combined-preview/Server-Android-Connector-preview.apk"), "the only onboarding download targets the combined Server connector preview asset");
-assert.match(html,/Download Server — ARM64 \(calling \+ SMS gateway\)/,
+assert.match(html,/Download Server — ARM64/,"customer download is the single Server Android app; gateway service is internal to Server-owned devices");
   "the sole Android download is explicitly identified as the combined calling and SMS app");
 assert.doesNotMatch(html,/server-android-armv7\.apk|download-android-connector-armv7/,
   "onboarding does not offer a second architecture download or separate gateway installer");
-assert.match(html,/website cannot access SIM slots before an Android app is installed/,
+assert.match(html,/No SIM selection or SMS permission is needed/,"customer onboarding does not request SIM enumeration or SMS sending");
   "the site explains why SIM detection happens after installing the combined app");
 assert.match(html,/I'?ve installed Server — continue setup/,
   "website offers the return-to-this-page hand-off after connector installation");
