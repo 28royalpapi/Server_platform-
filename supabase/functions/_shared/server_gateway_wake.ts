@@ -1,5 +1,5 @@
 /**
- * Wakes a caller-owned Server SIM Gateway over Supabase Realtime.
+ * Wakes a Server-operated SMS gateway handset over Supabase Realtime.
  *
  * The topic is derived from the gateway's SHA-256 token hash. The broadcast
  * contains no phone number, SMS body, invitation URL or job identifier.
