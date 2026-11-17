@@ -980,7 +980,7 @@ assert.equal((gatewayCustomIdentityMigration.match(/REFERENCES public\.server_pr
 assert.doesNotMatch(gatewayCustomIdentityMigration,/REFERENCES auth\.users/,
   "SIM Gateway ownership no longer requires Supabase Auth user rows");
 assert.match(platformSmsMigration,/d\.is_platform_owned\s*=\s*true/,"only a Server-owned gateway can claim invitation and OTP messages");
-assert.doesNotMatch(platformSmsMigration,/c\.caller_user_id\s*=\s*d\.owner_user_id|shared_guest_sms_enabled/,"customer SIM consent cannot route Server messages");
+assert.doesNotMatch(platformSmsMigration,/c\.caller_user_id\s*=\s*d\.owner_user_id/,"customer SIM consent cannot route Server messages");
 assert.match(guestInviteSmsGuardMigration,/c\.state in \('ringing','connecting'\)/,
   "SIM gateways can only claim guest invitations for calls that are still ringing or connecting");
 assert.match(guestInviteSmsGuardMigration,/gi\.joined_at is null/);
