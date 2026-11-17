@@ -100,5 +100,4 @@ internal object ServerSmsGatewayManager {
     // Android system default to be set instead of asking the Server user to choose.
     return sims.singleOrNull()
   }
-
-
+}
