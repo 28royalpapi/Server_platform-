@@ -767,7 +767,7 @@ assert.match(gateway,/action==="status"/,"the gateway exposes a backend status c
 assert.match(auth,/p_user_id:session.user_id/,"SMS verification jobs are created for the authenticated Server identity");
 assert.match(integratedGatewayMigration,/server_issue_otp\s*\(\s*p_user_id uuid/s,"OTP issuance binds the job to the requesting identity");
 assert.match(platformSmsMigration,/add column if not exists is_platform_owned boolean not null default false/);
-assert.match(platformSmsMigration,/owner_user_id\s*=\s*null[\s\S]*is_platform_owned\s*=\s*true/,"platform gateway records have no customer owner");
+assert.match(platformSmsMigration,/insert into public\.server_gateway_devices\([\s\S]*?owner_user_id,label,token_hash,enabled,shared_guest_sms_enabled,[\s\S]*?values\(\s*null,v_label,p_token_hash,true,false[\s\S]*?is_platform_owned/,"platform gateway records are inserted without a customer owner");
 assert.match(platformSmsMigration,/d\.is_platform_owned\s*=\s*true/,"only platform-owned handsets can claim Server SMS jobs");
 assert.doesNotMatch(platformSmsMigration,/j\.auth_user_id\s*=\s*d\.owner_user_id/s,"OTP delivery is not tied to a customer's SIM");
 assert.match(integratedGatewayMigration,/sim_subscription_id/);
