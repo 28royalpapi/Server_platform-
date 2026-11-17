@@ -441,12 +441,12 @@ class CallerSmokeTest {
     assertFalse("Server IDs must bypass E.164 phone normalisation", phoneNormalizationAttempted)
   }
 
-  @Test fun outgoingServerAndGuestCallsRequestFrameworkRingbackUntilAnswered() {
-    assertTrue("Server-to-Server calls should request Android framework ringback",
+  @Test fun outgoingServerAndGuestCallsEnableRingbackUntilAnswered() {
+    assertTrue("Server-to-Server calls should enable the app-managed ringback path",
       shouldRequestTelecomRingback("server"))
-    assertTrue("SMS/browser guest calls should also ring while awaiting the recipient",
+    assertTrue("Guest calls should enable the app-managed ringback path while awaiting the recipient",
       shouldRequestTelecomRingback("guest"))
-    assertFalse("Unknown routes must not request a ringing tone",
+    assertFalse("Unknown routes must not enable a ringing tone",
       shouldRequestTelecomRingback("unknown"))
   }
 
