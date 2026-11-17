@@ -616,9 +616,8 @@ Deno.serve(async(req:Request)=>{
    // 202-555-0100 through 202-555-0199 are reserved fictional NANP test numbers.
    // Automated browser/WebRTC acceptance tests use this range and must never
    // submit carrier SMS, even when a Server-operated gateway is online.
-   const reservedGuestTestNumber=/^\\+120255501[0-9]{2}$/.test(to);
+   const reservedGuestTestNumber=to.startsWith("+120255501") && to.length===12;
    if(!reservedGuestTestNumber){
-    let simSmsGatewayOnline=false;
     const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
     const platformGatewayLookup=await db.from("server_gateway_devices")
      .select("id,token_hash")
@@ -653,11 +652,13 @@ Deno.serve(async(req:Request)=>{
  
    }
    const deliveryMode=simSmsQueued?"sim_sms_queued":hasPushAccepted?"web_push":"manual_share";
-   const deliveryMessage=simSmsQueued
-    ?"Server queued the invitation through a Server-operated SMS gateway. Queueing is not proof of handset delivery."
-    :hasPushAccepted
-     ?"Browser push was accepted, but no Server-operated SMS gateway is currently available. Share the secure invitation manually if needed."
-     :"No Server-operated SMS gateway is currently available, so Server could not queue the SMS. Share the secure invitation manually.";
+   const deliveryMessage=reservedGuestTestNumber
+    ?"SMS was deliberately suppressed for this reserved fictional test number; no carrier message was sent."
+    :simSmsQueued
+     ?"Server queued the invitation through a Server-operated SMS gateway. Queueing is not proof of handset delivery."
+     :hasPushAccepted
+      ?"Browser push was accepted, but no Server-operated SMS gateway is currently available. Share the secure invitation manually if needed."
+      :"No Server-operated SMS gateway is currently available, so Server could not queue the SMS. Share the secure invitation manually.";
 
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
@@ -678,8 +679,8 @@ Deno.serve(async(req:Request)=>{
        :"The recipient has not enrolled a guest browser receiver. The phone's internet state is unknown, not offline."
     },
     sim_sms_delivery:{
-     channel:"caller_sim_sms",queued:simSmsQueued,gateway_online:simSmsGatewayOnline,
-     carrier_charges_possible:true,device_delivery_confirmed:false
+      channel:"server_platform_sms",queued:simSmsQueued,gateway_online:simSmsGatewayOnline,
+      carrier_charges_possible:true,carrier_charges_paid_by:"Server",device_delivery_confirmed:false
     },
     push_delivery:{
      channel:"web_push",registered_devices:guestPush.registered,
