@@ -15,28 +15,17 @@ internal data class ServerSmsGatewaySim(
 )
 
 /**
- * Select the Android system's default SMS subscription for a Server-operated
- * gateway handset. Consumer phones are not enrolled as Server SMS senders.
- *
- * Do not gate this on FEATURE_TELEPHONY_MESSAGING: several Android builds do
- * not advertise that optional package-manager feature consistently even when
- * the modem and active subscriptions are available.
+ * Resolves the Android system-default SMS subscription for a Server-operated
+ * gateway handset. Customer phones never use this sender capability.
  */
 internal object ServerSmsGatewayManager {
   private fun phoneSlotCount(context: Context): Int {
-    val telephony = try {
-      context.getSystemService(TelephonyManager::class.java)
+    return try {
+      val telephony = context.getSystemService(TelephonyManager::class.java)
+      (telephony?.phoneCount ?: 1).coerceIn(1, 8)
     } catch (_: Exception) {
-      null
+      1
     }
-    return try { (telephony?.phoneCount ?: 1).coerceIn(1, 8) } catch (_: Exception) { 1 }
-  }
-
-  private fun subscriptionManager(context: Context): SubscriptionManager? = try {
-    context.getSystemService(SubscriptionManager::class.java)
-      ?: (context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager)
-  } catch (_: Exception) {
-    null
   }
 
   fun activeSims(context: Context): List<ServerSmsGatewaySim> {
@@ -44,60 +33,64 @@ internal object ServerSmsGatewayManager {
       return emptyList()
     }
 
-    val manager = subscriptionManager(context) ?: return emptyList()
-    // The active-list call is the normal multi-SIM path. Some OEM builds
-    // transiently omit one or all entries from this list, so also query each
-    // physical SIM slot and merge by subscription ID.
-    val discovered = linkedMapOf<Int, Pair<SubscriptionInfo, Int?>>()
+    val manager = try {
+      context.getSystemService(SubscriptionManager::class.java)
+        ?: (context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager)
+    } catch (_: Exception) {
+      null
+    } ?: return emptyList()
+
+    val discovered = linkedMapOf<Int, ServerSmsGatewaySim>()
+
     fun add(info: SubscriptionInfo?, slotHint: Int? = null) {
       if (info == null || info.subscriptionId < 0) return
-      val reportedSlot = info.simSlotIndex.takeIf { it >= 0 } ?: slotHint
-      val previous = discovered[info.subscriptionId]
-      if (previous == null || (previous.second == null && reportedSlot != null)) {
-        discovered[info.subscriptionId] = info to reportedSlot
-      }
+      val slot = info.simSlotIndex.takeIf { it >= 0 } ?: slotHint ?: return
+      val carrier = info.carrierName?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        ?: info.displayName?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        ?: "Mobile network"
+      discovered[info.subscriptionId] = ServerSmsGatewaySim(
+        subscriptionId = info.subscriptionId,
+        slotIndex = slot,
+        carrier = carrier.take(80),
+        label = "SIM ${slot + 1} · ${carrier.take(60)}"
+      )
     }
 
     try {
-      manager.activeSubscriptionInfoList.orEmpty().forEach { info -> add(info) }
-    } catch (_: SecurityException) {
-      // Continue with per-slot lookup; the final result will remain empty if
-      // the platform does not permit either form of SIM discovery.
+      manager.activeSubscriptionInfoList.orEmpty().forEach { add(it) }
     } catch (_: Exception) {
-      // Some vendor telephony services throw while the radio is initializing.
+      // The per-slot fallback below handles OEM radio/service startup gaps.
     }
 
     for (slot in 0 until phoneSlotCount(context)) {
       try {
         add(manager.getActiveSubscriptionInfoForSimSlotIndex(slot), slot)
-      } catch (_: SecurityException) {
-        // Keep any subscriptions returned by the active-list query.
       } catch (_: Exception) {
-        // One unavailable slot must not hide the other active SIM.
+        // One missing or restricted slot must not hide another active SIM.
       }
     }
 
-    return discovered.values.mapNotNull { (info, slotHint) ->
-      val slot = info.simSlotIndex.takeIf { it >= 0 } ?: slotHint ?: return@mapNotNull null
-      val carrier = info.carrierName?.toString()?.trim()?.takeIf { it.isNotBlank() }
-        ?: info.displayName?.toString()?.trim()?.takeIf { it.isNotBlank() }
-        ?: "Mobile network"
-      ServerSmsGatewaySim(
-        info.subscriptionId,
-        slot,
-        carrier.take(80),
-        "SIM ${slot + 1} · ${carrier.take(60)}"
-      )
-    }.sortedWith(compareBy<ServerSmsGatewaySim> { it.slotIndex }.thenBy { it.carrier })
+    return discovered.values.sortedWith(
+      compareBy<ServerSmsGatewaySim> { it.slotIndex }.thenBy { it.carrier }
+    )
   }
 
   fun defaultSmsSim(context: Context): ServerSmsGatewaySim? {
-    val sims = activeSims(context)
-    if (sims.isEmpty()) return null
-    val defaultId = try { SubscriptionManager.getDefaultSmsSubscriptionId() } catch (_: Exception) { -1 }
-    if (defaultId >= 0) return sims.firstOrNull { it.subscriptionId == defaultId }
-    // A single active SIM is unambiguous. On a dual-SIM device, require the
-    // Android system default to be set instead of asking the Server user to choose.
-    return sims.singleOrNull()
+    val active = activeSims(context)
+    if (active.isEmpty()) return null
+
+    val defaultId = try {
+      SubscriptionManager.getDefaultSmsSubscriptionId()
+    } catch (_: Exception) {
+      SubscriptionManager.INVALID_SUBSCRIPTION_ID
+    }
+
+    if (defaultId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+      return active.firstOrNull { it.subscriptionId == defaultId }
+    }
+
+    // A single active subscription is unambiguous. On multi-SIM devices the
+    // operator must set Android's default SMS SIM in system settings.
+    return active.singleOrNull()
   }
 }
