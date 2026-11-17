@@ -388,15 +388,6 @@ Deno.serve(async(req:Request)=>{
   if(action==="availability"){
    // Availability lookups are authenticated and rate-limited. They never claim
    // to know a stranger's mobile-data state from a phone number alone.
-   const {data:checkAllowed,error:checkRateError}=await db.rpc("server_rate_limit_allow",{
-    p_scope:"recipient_availability",
-    p_key_hash:await sha(uid),
-    p_window_seconds:60,
-    p_max_hits:30
-   });
-   if(checkRateError)return out({error:"RECIPIENT_AVAILABILITY_RATE_LIMIT_UNAVAILABLE"},503);
-   if(checkAllowed!==true)return out({error:"RECIPIENT_AVAILABILITY_RATE_LIMITED",retry_after_seconds:60},429);
-
    const serverTarget=typeof b.to_server_id==="string"?b.to_server_id.trim().toUpperCase():"";
    const to=phone(b.to_phone);
    if(!serverTarget&&!to)return out({error:"RECIPIENT_REQUIRED"},400);
@@ -606,7 +597,7 @@ Deno.serve(async(req:Request)=>{
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
    const callerDisplay=callerDisplayName;
    const invitationUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
-   const invitationText="SERVER CALL\\n"+callerDisplay+" is calling you.\\nAnswer over the internet. Expires in 2 minutes.\\n"+invitationUrl;
+   const invitationText="SERVER CALL\n"+callerDisplay+" is calling you.\nAnswer over the internet. Expires in 2 minutes.\n"+invitationUrl;
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
    const guestPush=await sendGuestBrowserPush(db,to,{
     call_id:call.id,caller_label:callerDisplay,
