@@ -695,10 +695,8 @@ assert.match(androidMain,/Intent\.createChooser\(share, "Share Server invitation
   "MainActivity uses Android's general Sharesheet for guest-call links");
 assert.doesNotMatch(androidMain,/Intent\(Intent\.ACTION_SENDTO|smsto:|putExtra\("sms_body"|EXTRA_INITIAL_INTENTS/,
   "Server does not promote or pre-address SMS as a guest-call invitation action");
-assert.doesNotMatch(androidGuestShare,/Intent\\(Intent\\.ACTION_SENDTO|smsto|sms_body/,
 assert.doesNotMatch(androidGuestShare,/Intent\(Intent\.ACTION_SENDTO|smsto|sms_body/,
   "Server does not route guest invitations through the customer's personal SMS composer");
-assert.match(androidGuestShare,/Intent\\.createChooser\\(share, "Share Server call preview"\\)/,
 assert.match(androidGuestShare,/Intent\.createChooser\(share, "Share Server call preview"\)/,
   "manual sharing opens the generic Android share sheet rather than selecting a carrier SMS sender");
 assert.doesNotMatch(androidGuestShare,/sendTextMessage|SmsManager\.send/,"the caller app delegates SMS transmission to the paired SIM gateway, not its own process");
