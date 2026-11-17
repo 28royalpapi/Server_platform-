@@ -139,7 +139,7 @@ class ServerSetupWebActivity : Activity() {
   private fun showPlatformGatewaySetupDialog() {
     val codeInput = EditText(this).apply {
       hint = "32-character one-time code"
-      singleLine = true
+      setSingleLine(true)
       inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
       filters = arrayOf(android.text.InputFilter.LengthFilter(32))
     }
