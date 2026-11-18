@@ -753,7 +753,6 @@ assert.match(calls,/sendGuestBrowserPush/,"each batch invitation wakes every enr
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
   "guest browser reachability never suppresses a first-contact invitation");
 assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
-assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
 assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest invitation text is branded and names the caller");
 assert.match(calls,/Expires in 2 minutes/,"guest invitation advertises its two-minute expiry");
 assert.match(calls,/guest_invite_url:invitationUrl/,"each guest receives an independently generated invitation URL");
@@ -904,7 +903,7 @@ assert.match(hook,/SMS_GATEWAY_OFFLINE/);
 assert.doesNotMatch(hook,/console\.(log|error)\([^)]*otp/i);
 assert.match(gateway,/create_pairing_code/,"legacy customer pairing is blocked explicitly before dispatch");
 assert.match(html,/Guest invitations use free internet notifications/,"guest invitations use free internet delivery rather than carrier SMS");
-assert.match(html,/phone verification is optional/,"phone verification remains separate from guest invitation delivery");
+assert.match(html,/This optional step links a verified phone number/,"phone verification remains separate from guest invitation delivery");
 assert.match(app,/Guest invitations never use carrier SMS/,"onboarding makes the no-carrier-charge invitation policy explicit");
 assert.doesNotMatch(app,/enableCallingAccountButton\.disabled\s*=\s*!smsGatewayConnected|openPhoneDialerButton\.disabled\s*=\s*!smsGatewayConnected/,"calling-account and dialler actions are not gated on optional SMS gateway availability");
 assert.match(androidSmsGatewayApi,/claim_platform_device/,"the Android app claims its managed gateway using a one-time platform code");
