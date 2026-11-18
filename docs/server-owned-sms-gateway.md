@@ -46,12 +46,11 @@ A device is considered online for invitation routing only when its heartbeat is 
 
 ## Message and queue behaviour
 
-- Each distinct unanswered guest call creates a unique invitation job. Calling the same recipient again creates a new job; there is no per-caller hourly or daily invitation allowance in the application.
-- The worker claims batches of 50 and immediately asks for the next batch when it has drained a full batch. The batch is a database/network processing size, not a user quota.
-- The SMS body is branded and puts the URL last so compatible messaging clients can inspect its preview metadata.
-- The `/c/<token>` URL is rewritten to `server-guest-preview`. That endpoint returns Open Graph metadata and a caller-specific 1200×630 image in the initial HTML response before the secure guest-call page opens.
-- Guest links and unanswered call records expire after two minutes. Expired, revoked or already-answered invitations are rejected by the queue claim function rather than sent late.
-- If no fresh Server-owned gateway is available, Server must not fall back to the caller's personal SIM. It reports that the SMS could not be queued and uses browser push or the manual share link where available.
+- This carrier-SMS queue is restricted to `auth_otp` and explicitly approved operator workflows.
+- Guest-call invitations are excluded at two levels: `server-calls` does not enqueue them, and `server_claim_sms_jobs` rejects/clears any legacy `guest_invite` job before claiming. The worker claims only `auth_otp`.
+- Each guest call independently creates its own invitation record and URL. Web Push is attempted for every unexpired, consented browser subscription with bounded concurrency and retries, even if its last foreground heartbeat is stale.
+- If no browser receiver accepts the notification, the unique secure link is returned for the caller to share through an internet messaging app. There is no carrier-SMS fallback.
+- Guest URLs and unanswered call records expire after two minutes. Expired, revoked or already-answered invitations cannot be delivered as push alerts.
 
 ## Important operational limits
 
