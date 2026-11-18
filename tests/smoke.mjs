@@ -743,9 +743,13 @@ assert.match(androidSetup,/ServerPushRegistration\.syncFcmToken\(this\)/,
   "first-time website onboarding registers the FCM token after a Server session is saved");
 assert.doesNotMatch(calls,/b\.source==="android_telecom"&&route!=="server"/,
   "a system Phone call may use the secure guest browser route when the recipient does not have Server");
-const guestSmsTransport=calls.slice(calls.indexOf("// Invitations are sent only through Server-operated"),calls.indexOf("const deliveryMode=",calls.indexOf("// Invitations are sent only through Server-operated")));
-assert.match(calls,/deliveryMode=simSmsQueued\?"sim_sms_queued":hasPushAccepted\?"web_push":"manual_share"/,
-  "a guest invitation is marked queued only after a Server-owned gateway job is created");
+assert.match(calls,/deliveryMode=hasPushAccepted\?"web_push":"manual_share"/,
+  "guest invitations use free Web Push when enrolled and otherwise return a manual share link");
+assert.match(calls,/carrier_sms_used:false/,"guest invitations never use carrier SMS or deduct SIM credit");
+assert.match(calls,/action==="start_guest_batch"/,"the backend creates recipient-specific guest invitations in a batch");
+assert.match(calls,/recipients\.length>10/,"a guest invitation batch is bounded to ten recipients per request");
+assert.match(calls,/server_create_call_atomic/,"each batch guest invitation is committed through the atomic call-and-invite transaction");
+assert.match(calls,/sendGuestBrowserPush/,"each batch invitation wakes every enrolled browser receiver");
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
   "guest browser reachability never suppresses a first-contact invitation");
 assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
@@ -799,7 +803,9 @@ assert.match(calls,/guestInternetReachable=guestPush\.recent_online>0/);
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,"guest browser reachability never suppresses platform SMS invitations");
 assert.match(calls,/internet_status:guestInternetReachable\?"internet_on":"unknown"/);
 assert.match(calls,/phone's internet state is unknown, not offline/);
-assert.match(guestWebPushSender,/await Promise\.all\(freshDevices\.map/,"stale subscriptions are not counted as live guest internet connections");
+assert.match(guestWebPushSender,/const workerCount = Math\.min\(4, eligibleDevices\.length\)/,"guest push fans out to opted-in devices with bounded concurrency");
+assert.match(guestWebPushSender,/attempt < 3/,"guest push retries transient delivery failures");
+assert.match(guestWebPushSender,/index >= eligibleDevices\.length/,"background subscriptions are attempted even when their live heartbeat is stale");
 assert.match(projectReadme,/Server digital address/);
 assert.match(projectReadme,/Server Backend URL/);
 assert.match(projectReadme,/first-party source remains in/ ,
@@ -807,11 +813,8 @@ assert.match(projectReadme,/first-party source remains in/ ,
 assert.match(projectReadme,/one Android download|one Android app/i,"README documents the single combined consumer APK");
 assert.match(projectReadme,/gateway is \*\*not required\*\*/i,"README makes SMS Gateway optional for calling");
 assert.match(projectReadme,/does not use the hosted TextBee API/i,"the setup guide distinguishes reference source code from a hosted TextBee API dependency");
-assert.match(calls,/eq\("is_platform_owned",true\)/,"only Server-operated gateways may send invitations");
-assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
-assert.match(calls,/category:"guest_invite"/);
-assert.match(calls,/select\("id,token_hash(?:,shared_guest_sms_enabled)?"\)/,"the server retrieves only the hash and Gateway consent metadata needed for wake routing");
-assert.match(calls,/sendServerGatewayWake\(gateway\.token_hash\)/,"a queued caller SMS triggers a Supabase Realtime wake-up");
+assert.doesNotMatch(calls,/server_sms_jobs|sendServerGatewayWake|simSmsQueued|sim_sms_queued/,
+  "guest invitations never enter a paid carrier-SMS queue");
 assert.ok(gatewayWake.includes("/realtime/v1/api/broadcast/") && gatewayWake.includes("/events/gateway_wake?private=false"),"gateway wake-ups use the verified direct public Realtime REST endpoint");
 assert.ok(gatewayWake.includes("/events/gateway_wake?private=false"),"the wake-up event is explicitly named in the Realtime endpoint");
 assert.doesNotMatch(gatewayWake,/recipient_e164|invitation_text|sms_body|guest_invite_url/,"Realtime wake-up payloads contain no recipient, SMS body or invitation URL");
@@ -832,8 +835,10 @@ assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest
 assert.doesNotMatch(calls,/CALL_START_RATE_MAX = 20|CALL_START_RATE_LIMITED/,
   "the call-start endpoint has no fixed per-user attempts-per-minute quota");
 assert.match(calls,/guest_invite_id:created\.invite_id/);
-assert.match(androidMain,/deliveryMode == "sim_sms_queued"/,
-  "Android reports when the first-contact SMS invitation is queued through a Server-operated gateway");
+assert.match(androidMain,/deliveryMode == "manual_share"/,
+  "Android opens the internet share sheet when no enrolled browser push receiver exists");
+assert.doesNotMatch(androidMain,/sim_sms_queued|Server SIM Gateway/,
+  "ordinary guest invitations never depend on a carrier-SMS gateway");
 assert.doesNotMatch(androidMain,/textbee/i,"Android caller UI has no third-party SMS provider states");
 assert.doesNotMatch(iosModel,/textbee/i,"iOS caller UI has no third-party SMS provider states");
 assert.match(androidTelecom,/override fun onDisconnect\(\) \{\s*setRingbackRequested\(false\)/,
@@ -904,7 +909,7 @@ assert.match(hook,/SMS_HOOK_NOT_CONFIGURED/);
 assert.match(hook,/SMS_GATEWAY_OFFLINE/);
 assert.doesNotMatch(hook,/console\.(log|error)\([^)]*otp/i);
 assert.match(gateway,/create_pairing_code/,"legacy customer pairing is blocked explicitly before dispatch");
-assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"Server-funded gateways send message traffic for customers");
+assert.match(html,/Guest invitations use free internet notifications/,"guest invitations use free internet delivery rather than carrier SMS");
 assert.match(html,/verification message is sent by Server-operated messaging infrastructure/,"phone verification is sent by Server, not by the customer's SIM");
 assert.match(app,/Your personal SIM is never used to send Server messages/,"onboarding makes the no-customer-SIM policy explicit");
 assert.match(app,/Your personal SIM is never used to send Server messages/,"customer onboarding documents that Server sends from managed gateways");
@@ -1093,8 +1098,8 @@ assert.ok(iosView.includes("ShareLink(item: model.guestInviteMessage"));
 assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
-assert.ok(calls.includes('const invitationText="SERVER CALL\\n"+callerDisplay'),"guest SMS is branded and names the caller");
-assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute invite expiry");
+assert.ok(calls.includes('const invitationText="SERVER CALL\\n"+callerDisplay'),"guest invitation text is branded and names the caller");
+assert.match(calls,/Expires in 2 minutes/,"guest invitation advertises its two-minute expiry");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
@@ -1106,8 +1111,8 @@ assert.match(calls,/guestPushRegistered/,
   "a number with no live browser heartbeat can still be classified as background-reachable when a guest push receiver is enrolled");
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
-assert.match(html,/Server sends invitations and verification codes from Server-operated gateway devices/,"onboarding explains that Server funds the SMS gateway");
-assert.match(html,/your personal SIM is never used to send them/,"onboarding promises that customers do not pay for Server SMS");
+assert.match(html,/Free internet notifications are sent to enrolled guest browsers/,"onboarding explains the no-carrier-charge guest invitation transport");
+assert.match(html,/No carrier SMS is sent for guest invitations/,"onboarding guarantees that guest invitations do not debit any SIM");
 assert.doesNotMatch(html,/id="sms-gateway-sim"|id="connect-sms-gateway"|id="disconnect-sms-gateway"|>Connect my SIM<|>Disconnect SIM</i,"customer onboarding contains no SIM picker or personal-SIM connect/disconnect controls");
 assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
