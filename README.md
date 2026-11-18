@@ -62,19 +62,23 @@ A Server ID does not require a phone number or SMS OTP. Users may optionally ver
 4. Successful verification links the number to the existing Server identity. Number-based incoming Server calls remain disabled until the user separately opts in.
 5. Private Server session tokens are not put into website-to-app deep links.
 
-## Branded invitation SMS and Open Graph preview
+## Guest invitation links and Open Graph previews
 
-Classic SMS is still plain text; it cannot render custom fonts, HTML buttons, colours or a custom message bubble. Server uses a distinctive text layout and a link at the end:
+A non-Server recipient receives an internet-call invitation, not an ordinary SMS or cellular call. The backend creates a unique, single-use, two-minute URL:
 
 ```text
 SERVER CALL
-[Caller display name] is calling you.
-Answer over the internet. Expires in 2 minutes.
+[Caller display name] is inviting you to an internet call.
+Open this secure link to answer. Expires in 2 minutes.
 https://server-onboarding-ochre.vercel.app/c/[secure-token]
 ```
 
-The `/c/[secure-token]` route is rewritten to `server-guest-preview`, which returns Open Graph metadata and a caller-specific 1200×630 incoming-call image in the initial HTML response. The page then opens the secure browser call. Compatible messaging apps may show the preview card; the app can suppress previews, so the SMS text remains understandable without it. RCS rich cards can provide genuine image-and-action cards, but they require an RCS-capable recipient and a separately configured RCS for Business channel; they are not a guaranteed property of ordinary SMS.
+If the recipient previously enrolled a browser call-alert subscription, Server attempts free Web Push over Wi-Fi or mobile data, including subscriptions whose page heartbeat is stale because the browser is suspended. Provider acceptance is not proof that the device displayed the alert. If no enrolled receiver accepts the push, the caller shares the unique link through WhatsApp or another internet messaging app. Guest invitations never enter the carrier-SMS queue and never deduct SMS airtime.
 
+The `/c/[secure-token]` route returns caller-specific Open Graph metadata and a preview image, then opens the secure browser call. Compatible messaging apps may display the preview card. The recipient still needs internet access, a compatible browser and microphone permission to answer.
+
+Phone-verification OTP is a separate operation. It uses a Server-operated Android SMS gateway and carrier subscription; carrier charges may apply to that Server-funded line. It is not the free guest-invitation transport.
+ 
 ## Global calling and platform limits
 
 - **Server-to-Server:** both users can call across countries over the internet, subject to internet reachability, supported app versions, regional signalling and media relay availability.
