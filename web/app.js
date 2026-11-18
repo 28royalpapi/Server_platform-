@@ -51,7 +51,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     if (enableCallingAccountButton) enableCallingAccountButton.disabled = false;
     if (openPhoneDialerButton) openPhoneDialerButton.disabled = false;
     if (callingAccountNote) {
-      callingAccountNote.textContent = "Server calls use mobile data or Wi-Fi. Server-operated gateways send invitations; this phone's SIM is never used to send SMS.";
+      callingAccountNote.textContent = "Server calls and guest invitations use mobile data or Wi-Fi. Enrolled browsers receive free internet notifications; first-contact links are shared through an internet messaging app. Guest invitations never use carrier SMS or deduct SIM airtime.";
     }
   };
   updateSmsGatewayGate();
