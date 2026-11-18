@@ -490,6 +490,112 @@ Deno.serve(async(req:Request)=>{
     }
    });
   }
+  if(action==="start_guest_batch"){
+   // Fan out up to ten separate, one-use guest invitations. Each recipient
+   // gets an independent call row, invite token and browser URL. No SMS/SIM
+   // transport is used: subscribed browsers receive free Web Push, and all
+   // other recipients receive a link for the caller to share manually.
+   if(b.source==="android_telecom")return out({error:"BATCH_INVITE_REQUIRES_APP_UI"},400);
+   if(!Array.isArray(b.recipients)||b.recipients.length<1||b.recipients.length>10){
+    return out({error:"RECIPIENTS_MUST_BE_1_TO_10"},400);
+   }
+   const recipients:string[]=[];
+   for(const raw of b.recipients){
+    const normalized=phone(raw);
+    if(!normalized)return out({error:"INVALID_RECIPIENT_PHONE"},400);
+    recipients.push(normalized);
+   }
+   if(new Set(recipients).size!==recipients.length)return out({error:"DUPLICATE_RECIPIENTS"},400);
+   if(profile.phone_verified_at&&recipients.includes(phone(profile.phone_e164)||"")){
+    return out({error:"CANNOT_INVITE_SELF"},400);
+   }
+   const {data:knownProfiles,error:knownProfilesError}=await db.from("server_profiles")
+    .select("phone_e164,phone_verified_at,allow_number_based_server_calls")
+    .in("phone_e164",recipients);
+   if(knownProfilesError)return out({error:"RECIPIENT_LOOKUP_FAILED"},503);
+   const discoverableServerNumbers=new Set((knownProfiles||[])
+    .filter((row:any)=>row.phone_verified_at&&row.allow_number_based_server_calls===true)
+    .map((row:any)=>phone(row.phone_e164)).filter(Boolean));
+   const callerLabel=callerDisplayName;
+   const createdItems:any[]=[];
+   for(const to of recipients){
+    if(discoverableServerNumbers.has(to)){
+     createdItems.push({ok:false,recipient_e164:to,error:"RECIPIENT_IS_SERVER_USER",message:"This number belongs to a Server user. Start a normal Server call using their Server ID."});
+     continue;
+    }
+    try{
+     const now=new Date().toISOString();
+     const expiresAt=new Date(Date.now()+GUEST_CALL_TTL_SECONDS*1000).toISOString();
+     const token=Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map(x=>x.toString(16).padStart(2,"0")).join("");
+     const inviteExpiresAt=new Date(Date.now()+GUEST_INVITE_TTL_SECONDS*1000).toISOString();
+     const {data:created,error:createError}=await db.rpc("server_create_call_atomic",{
+      p_caller_user_id:uid,
+      p_callee_user_id:null,
+      p_callee_phone_e164:to,
+      p_route:"guest",
+      p_expires_at:expiresAt,
+      p_invite_phone_e164:to,
+      p_invite_token_hash:await sha(token),
+      p_invite_expires_at:inviteExpiresAt
+     });
+     if(createError||!created?.call||!created?.invite_id){
+      createdItems.push({ok:false,recipient_e164:to,error:"GUEST_INVITATION_CREATE_FAILED"});
+      continue;
+     }
+     const inviteUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
+     const browserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
+     const invitationText="SERVER CALL\n"+callerLabel+" is inviting you to an internet call.\nOpen this secure link to answer. Expires in 2 minutes.\n"+inviteUrl;
+     createdItems.push({
+      ok:true,recipient_e164:to,call_id:created.call.id,invite_id:created.invite_id,
+      invite_expires_at:inviteExpiresAt,guest_invite_url:inviteUrl,
+      invitation_text:invitationText,guest_browser_url:browserUrl
+     });
+    }catch{
+     createdItems.push({ok:false,recipient_e164:to,error:"GUEST_INVITATION_CREATE_FAILED"});
+    }
+   }
+
+   let cursor=0;
+   const senders=Array.from({length:Math.min(3,createdItems.filter((x:any)=>x.ok).length)},async()=>{
+    while(true){
+     const index=cursor++;
+     if(index>=createdItems.length)return;
+     const item=createdItems[index];
+     if(!item.ok)continue;
+     try{
+      const push=await sendGuestBrowserPush(db,item.recipient_e164,{
+       call_id:item.call_id,caller_label:callerLabel,
+       title:callerLabel+" is inviting you to a Server call",
+       body:callerLabel+" sent you a secure Server internet-call invitation. Tap to answer in your browser.",
+       url:item.guest_browser_url
+      });
+      const accepted=push.accepted>0;
+      item.delivery={
+       mode:accepted?"web_push":"manual_share",
+       push_registered:push.registered,
+       push_accepted_by_provider:push.accepted,
+       push_failed:push.failed,
+       recent_browser_connections:push.recent_online,
+       device_delivery_confirmed:false,
+       first_contact_requires_user_share:!accepted
+      };
+     }catch{
+      item.delivery={mode:"manual_share",push_registered:0,push_accepted_by_provider:0,push_failed:1,
+       recent_browser_connections:0,device_delivery_confirmed:false,first_contact_requires_user_share:true};
+     }
+    }
+   });
+   await Promise.all(senders);
+   const createdCount=createdItems.filter((x:any)=>x.ok).length;
+   const pushAcceptedCount=createdItems.filter((x:any)=>x.ok&&x.delivery?.push_accepted_by_provider>0).length;
+   return out({
+    ok:true,requested_count:recipients.length,created_count:createdCount,
+    failed_count:recipients.length-createdCount,web_push_submitted_count:pushAcceptedCount,
+    carrier_sms_used:false,carrier_charges_possible:false,
+    results:createdItems
+   });
+  }
   if(action==="start"){
    await touchSessionPresence(db,session);
    const serverTarget=typeof b.to_server_id==="string"?b.to_server_id.trim().toUpperCase():"";
