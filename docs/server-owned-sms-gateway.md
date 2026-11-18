@@ -1,8 +1,8 @@
-# Server-owned SMS gateway operations
+# Server-owned SMS gateway — OTP/operator workflows only operations
 
 ## Purpose and billing boundary
 
-Server invitation and phone-verification SMS must be transmitted only by a physical Android gateway handset owned or controlled by Server and using a carrier plan paid for by Server. A customer phone is never selected, used, or treated as a fallback sender. Do not mark a customer's device as platform-owned.
+Guest-call invitations must not be transmitted as carrier SMS. They use free Web Push for opted-in browser receivers and a shareable secure link for first contact. This Android SMS gateway is a separate carrier-SMS transport for OTP or operator-controlled workflows only. It uses SmsManager and a mobile subscription; every SMS may consume the Server-funded carrier bundle or incur a network charge. A customer phone is never selected or used as a sender.
 
 The same Server Android APK contains this internal gateway capability. Customer onboarding does not display a SIM picker, request SMS-send permission, or start the gateway service. The internal setup flow uses Android's **system default SMS subscription** automatically.
 
@@ -63,7 +63,7 @@ A recipient normally does not pay for receiving an SMS, but incoming-message and
 
 - [ ] Device record shows `is_platform_owned = true` and `owner_user_id IS NULL`.
 - [ ] Fresh heartbeat is present.
-- [ ] A controlled recipient receives the `SERVER CALL` invitation from the Server-funded gateway SIM.
+- [ ] A controlled recipient receives the intended OTP/operator SMS. This checklist does not apply to free guest-call invitations, which must never use this SIM transport.
 - [ ] The caller's personal SIM balance and SMS history do not change.
 - [ ] A second call to the same recipient creates a new invitation job and is sent again.
 - [ ] A burst of more than 50 queued jobs drains across consecutive batches without a user/hour/day limit.
