@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'apps/android-sim-gateway/**'
       - 'apps/android-caller/**'
       - '.github/workflows/server-rea-apk-audit.yml'
 
@@ -12,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  rea-inspect-mobile:
-    name: Inspect compiled Android apps with REA
+  rea-inspect-integrated-server:
+    name: Inspect the one integrated Server Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -35,12 +34,14 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Install Android build components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Build the exact debug APKs to inspect
+      - name: Build only the integrated Server Android app
+        shell: bash
         run: |
-          gradle -p apps/android-sim-gateway assembleDebug --no-daemon
-          gradle -p apps/android-caller assembleDebug --no-daemon
+          set -euo pipefail
+          gradle -p apps/android-caller assembleDebug --no-daemon --console=plain
+          test -s apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
 
       - name: Install the pinned JADX engine used by REA
         shell: bash
@@ -53,100 +54,73 @@ jobs:
           echo '6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75  tools/jadx-headless-mcp-0.7.1-all.jar' | sha256sum --check
           echo "REA_JADX_MCP_JAR=$GITHUB_WORKSPACE/tools/jadx-headless-mcp-0.7.1-all.jar" >> "$GITHUB_ENV"
 
-      - name: Decode the compiled gateway manifest with REA
+      - name: Inspect the integrated SIM discovery, registration and SMS delivery methods
         shell: bash
         run: |
           set -euo pipefail
-          APK="$GITHUB_WORKSPACE/apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk"
-          npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-gateway-package.json
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const input = JSON.parse(fs.readFileSync('artifacts/rea-gateway-package.json', 'utf8'));
-          const strings = [];
-          const visit = value => {
-            if (typeof value === 'string') strings.push(value);
-            else if (Array.isArray(value)) value.forEach(visit);
-            else if (value && typeof value === 'object') Object.values(value).forEach(visit);
-          };
-          visit(input);
-          const text = strings.join('\n');
-          const required = [
-            'com.server.gateway.MainActivity',
-            'com.server.gateway.SmsGatewayService',
-            'com.server.gateway.SmsStatusReceiver'
-          ];
-          const missing = required.filter(name => !text.includes(name));
-          if (missing.length) {
-            console.error('REA did not find compiled gateway components:', missing.join(', '));
-            process.exit(1);
-          }
-          console.log('REA_GATEWAY_MANIFEST_PASS: launcher, SMS service and delivery receiver are present in the compiled APK.');
-          NODE
-
-      - name: Inspect gateway startup, pairing and real SIM SMS code with REA
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="$GITHUB_WORKSPACE/apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk"
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity onCreate --json > artifacts/rea-gateway-startup-method.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.MainActivity pairGateway --json > artifacts/rea-gateway-pairing-method.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.gateway.SmsGatewayService sendJob --json > artifacts/rea-gateway-sms-method.json
-          : > artifacts/rea-gateway-dex-strings.txt
+          APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
+          npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-server-package.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerSmsGatewayManager defaultSmsSim --json > artifacts/rea-default-sms-subscription.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerSmsGatewayApi claimPlatformDevice --json > artifacts/rea-platform-gateway-claim.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerSmsGatewayService sendJob --json > artifacts/rea-sms-send-job.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerSmsStatusReceiver onReceive --json > artifacts/rea-sms-delivery-callbacks.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateOutgoingConnection --json > artifacts/rea-telecom-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerConnectionService onCreateIncomingConnection --json > artifacts/rea-telecom-incoming.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine startOutgoing --json > artifacts/rea-telecom-start-outgoing.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine answerIncoming --json > artifacts/rea-telecom-answer-incoming.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerTelecomCallEngine onIceConnectionChange --json > artifacts/rea-telecom-ice-state.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteNotifications show --json > artifacts/rea-guest-invite-notification.json
+          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.ServerGuestInviteShareActivity onCreate --json > artifacts/rea-guest-invite-share.json
+          : > artifacts/rea-server-dex-strings.txt
           while IFS= read -r dex; do
-            unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-gateway-dex-strings.txt
+            unzip -p "$APK" "$dex" | strings -n 6 >> artifacts/rea-server-dex-strings.txt
           done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
+
           for value in \
-            'https://hzuovekqsjtpvmbuybxs.supabase.co' \
-            'sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E' \
-            'Pair this gateway'
+            'ServerSmsGatewayManager' \
+            'ServerSmsGatewayApi' \
+            'ServerSmsGatewayService' \
+            'ServerSmsStatusReceiver' \
+            'ServerSmsGatewaySecureStore' \
+            'sendMultipartTextMessage' \
+            'createForSubscriptionId' \
+            'getDefaultSmsSubscriptionId' \
+            'claim_platform_device'
           do
-            if ! grep -Fq "$value" artifacts/rea-gateway-dex-strings.txt; then
-              echo "Compiled gateway DEX does not contain expected startup constant: $value" >&2
+            grep -Fq "$value" artifacts/rea-server-dex-strings.txt || {
+              echo "Integrated Server APK is missing SMS gateway component: $value" >&2
+              exit 1
+            }
+          done
+
+          # The old standalone Gateway's manual URL/eight-character pairing UX
+          # must not be packaged into the one Server caller app.
+          for forbidden in \
+            'Pair this gateway' \
+            'Enter this one-time code' \
+            'Project URL' \
+            'Server SIM Gateway app'
+          do
+            if grep -Fq "$forbidden" artifacts/rea-server-dex-strings.txt; then
+              echo "Legacy separate-gateway setup text is present in the integrated APK: $forbidden" >&2
               exit 1
             fi
           done
-          echo 'REA_GATEWAY_CODE_PASS: decoded startup/pairing/SMS methods and verified the compiled project defaults.'
 
-      - name: Inspect caller WebRTC and connected-call state code with REA
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="$GITHUB_WORKSPACE/apps/android-caller/app/build/outputs/apk/debug/app-debug.apk"
-          npx --yes rea-agents@6.7.0 inspect-android-package "$APK" --json > artifacts/rea-caller-package.json
-          npx --yes rea-agents@6.7.0 inspect-android-class "$APK" com.server.caller.MainActivity --json > artifacts/rea-caller-main-class.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity startCall --json > artifacts/rea-caller-start-call.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity preparePeer --json > artifacts/rea-caller-prepare-peer.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" com.server.caller.MainActivity handleSignal --json > artifacts/rea-caller-handle-signal.json
-          npx --yes rea-agents@6.7.0 inspect-android-method "$APK" 'com.server.caller.MainActivity$onIceConnectionChange$1$1' invokeSuspend --json > artifacts/rea-caller-ice-state-sync.json
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const input = JSON.parse(fs.readFileSync('artifacts/rea-caller-ice-state-sync.json', 'utf8'));
-          const source = input?.normalized_result?.source?.text || '';
-          if (input?.normalized_result?.body_status !== 'available' || !source.includes('set_active')) {
-            console.error('REA did not confirm that the compiled ICE-connected coroutine syncs the active call state.');
-            process.exit(1);
-          }
-          console.log('REA_CALL_STATE_PASS: the compiled connected-call coroutine requests backend state active.');
-          NODE
-          echo 'REA inspected the compiled caller entry, WebRTC setup, offer/answer/ICE handling and connected-call state update.'
+          unzip -l "$APK" > artifacts/rea-server-apk-entries.txt
+          grep -Fq 'lib/arm64-v8a/libjingle_peerconnection_so.so' artifacts/rea-server-apk-entries.txt
+          grep -Fq 'ServerConnectionService' artifacts/rea-server-dex-strings.txt
+          grep -Fq 'ServerTelecomCallEngine' artifacts/rea-server-dex-strings.txt
+          echo 'REA_ONE_SERVER_APP_SMS_GATEWAY_PASS: Server-owned gateway claim, Android default SMS subscription, SMS send and delivery callbacks are compiled into the same Server APK; customer SIM pairing UI is not packaged.'
 
-      - name: Upload compiled APKs and REA evidence
+      - name: Upload the integrated APK and decompilation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: server-rea-mobile-audit
+          name: server-rea-integrated-android-audit
           path: |
-            artifacts/rea-gateway-package.json
-            artifacts/rea-gateway-startup-method.json
-            artifacts/rea-gateway-dex-strings.txt
-            artifacts/rea-gateway-pairing-method.json
-            artifacts/rea-gateway-sms-method.json
-            artifacts/rea-caller-package.json
-            artifacts/rea-caller-main-class.json
-            artifacts/rea-caller-start-call.json
-            artifacts/rea-caller-prepare-peer.json
-            artifacts/rea-caller-handle-signal.json
-            artifacts/rea-caller-ice-state-sync.json
-            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
-            apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+            artifacts/rea-*.json
+            artifacts/rea-*-dex-strings.txt
+            artifacts/rea-server-apk-entries.txt
+            apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: warn

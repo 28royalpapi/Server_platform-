@@ -1,59 +1,254 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
+import { callRealtimeChannel, deferRealtime, issueRealtimeToken, publishRealtime } from "../_shared/centrifugo.ts";
+import { getGuestPushVapidKeys } from "../_shared/guest_web_push.ts";
 const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,GET,OPTIONS","content-type":"application/json","cache-control":"no-store"};
 const out=(x:unknown,s=200)=>new Response(JSON.stringify(x),{status:s,headers:cors});
+const BASE_ICE_SERVERS = [
+ {urls:"stun:stun.cloudflare.com:3478"},
+ {urls:"stun:stun.l.google.com:19302"}
+];
+type IceServerConfig = {
+ ice_servers:any[];
+ ice_server_mode:"cloudflare-turn"|"coturn-turn"|"stun-only";
+};
+
+async function cloudflareTurnIceServers(ttlSeconds:number) {
+ const keyId=Deno.env.get("CLOUDFLARE_TURN_KEY_ID")||"";
+ const apiToken=Deno.env.get("CLOUDFLARE_TURN_API_TOKEN")||"";
+ if(!keyId||!apiToken)return null;
+ const ttl=Math.max(300,Math.min(3600,ttlSeconds));
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),8000);
+ try {
+  const response=await fetch(
+   "https://rtc.live.cloudflare.com/v1/turn/keys/"+encodeURIComponent(keyId)+"/credentials/generate-ice-servers",
+   {
+    method:"POST",
+    headers:{"authorization":"Bearer "+apiToken,"content-type":"application/json"},
+    body:JSON.stringify({ttl}),
+    signal:controller.signal
+   }
+  );
+  if(!response.ok) {
+   console.error("CLOUDFLARE_TURN_CREDENTIALS_HTTP_"+response.status);
+   return null;
+  }
+  const payload=await response.json();
+  const rows=Array.isArray(payload?.iceServers)?payload.iceServers:[];
+  const turnRows=rows.filter((row:any)=>{
+   const urls=Array.isArray(row?.urls)?row.urls:[row?.urls];
+   return urls.some((url:any)=>typeof url==="string"&&/^turns?:turn\.cloudflare\.com:/i.test(url))&&
+    typeof row.username==="string"&&row.username.length>0&&
+    typeof row.credential==="string"&&row.credential.length>0;
+  });
+  if(!turnRows.length) {
+   console.error("CLOUDFLARE_TURN_RESPONSE_INVALID");
+   return null;
+  }
+  return [...turnRows,...BASE_ICE_SERVERS];
+ } catch(_error) {
+  console.error("CLOUDFLARE_TURN_CREDENTIALS_UNAVAILABLE");
+  return null;
+ } finally {
+  clearTimeout(timeout);
+ }
+}
+
+async function coturnIceServers(identity:string, ttlSeconds:number) {
+ const rawUrls=Deno.env.get("SERVER_TURN_URLS")||"";
+ const sharedSecret=Deno.env.get("SERVER_TURN_SHARED_SECRET")||"";
+ if(!rawUrls||sharedSecret.length<32)return null;
+ const turnUrls=rawUrls.split(",").map((url:string)=>url.trim())
+  .filter((url:string)=>/^turns?:[^\s@]+$/i.test(url)).slice(0,8);
+ if(!turnUrls.length)return null;
+ const safeIdentity=identity.replace(/[^A-Za-z0-9_.-]/g,"").slice(0,80)||"server";
+ const expires=Math.floor(Date.now()/1000)+Math.max(300,Math.min(3600,ttlSeconds+120));
+ const username=expires+":"+safeIdentity;
+ const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(sharedSecret),
+  {name:"HMAC",hash:"SHA-1"},false,["sign"]);
+ const signature=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(username)));
+ const credential=btoa(String.fromCharCode(...signature));
+ return [{urls:turnUrls,username,credential},...BASE_ICE_SERVERS];
+}
+
+async function iceServersForCall(identity:string, ttlSeconds:number):Promise<IceServerConfig> {
+ const cloudflare=await cloudflareTurnIceServers(ttlSeconds);
+ if(cloudflare)return {ice_servers:cloudflare,ice_server_mode:"cloudflare-turn"};
+ const coturn=await coturnIceServers(identity,ttlSeconds);
+ if(coturn)return {ice_servers:coturn,ice_server_mode:"coturn-turn"};
+ return {ice_servers:BASE_ICE_SERVERS,ice_server_mode:"stun-only"};
+}
 const sha=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)))).map(x=>x.toString(16).padStart(2,"0")).join("");
 function client(){const url=Deno.env.get("SUPABASE_URL")||"";let key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||Deno.env.get("SUPABASE_SECRET_KEY")||"";if(!key){try{const k=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}");key=k.default||Object.values(k)[0]||"";}catch{}}if(!url||!key)throw new Error("SERVER_NOT_CONFIGURED");return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});}
-Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("ok",{status:204,headers:cors});if(!["POST","GET"].includes(req.method))return out({error:"METHOD_NOT_ALLOWED"},405);
+Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response(null,{status:204,headers:cors});if(!["POST","GET"].includes(req.method))return out({error:"METHOD_NOT_ALLOWED"},405);
 let b:any={},u=new URL(req.url);if(req.method==="POST"){try{b=await req.json();if(!b||typeof b!=="object"||Array.isArray(b))throw 0;}catch{return out({error:"INVALID_JSON"},400)}}
 const raw=(req.headers.get("authorization")||"").match(/^Bearer\s+(.+)$/i)?.[1]||b.token||u.searchParams.get("token")||"";
 if(typeof raw!=="string"||raw.length<48||raw.length>256)return out({error:"INVALID_INVITE"},401);
 let db:any;try{db=client()}catch{return out({error:"SERVER_NOT_CONFIGURED"},503)}
-const {data:invite,error:ie}=await db.from("server_guest_invites").select("id,call_id,phone_e164,expires_at,joined_at,revoked_at").eq("token_hash",await sha(raw)).is("revoked_at",null).gt("expires_at",new Date().toISOString()).maybeSingle();
+const {data:invite,error:ie}=await db.from("server_guest_invites").select("id,call_id,phone_e164,expires_at,joined_at,revoked_at").eq("token_hash",await sha(raw)).is("revoked_at",null).maybeSingle();
 if(ie||!invite)return out({error:"GUEST_INVITE_EXPIRED_OR_INVALID"},401);
+// The link is valid for joining only during its two-minute invitation window.
+// A guest who joined in time may continue WebRTC signalling after that window.
+if(Date.parse(invite.expires_at)<=Date.now()&&!invite.joined_at)return out({error:"GUEST_INVITE_EXPIRED_OR_INVALID"},401);
 const action=String(b.action||"");
-if(req.method==="GET"||action==="inspect"){
- const {data:call}=await db.from("server_calls").select("id,state,route,created_at,updated_at").eq("id",invite.call_id).maybeSingle();
- return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,call});
+const validGuestPushEndpoint=(value:unknown):value is string=>{
+ if(typeof value!=="string"||value.length>2048)return false;
+ try{
+  const host=new URL(value).hostname.toLowerCase();
+  return new URL(value).protocol==="https:"&&(
+   host==="fcm.googleapis.com"||host==="push.services.mozilla.com"||
+   host.endsWith(".push.services.mozilla.com")||host==="web.push.apple.com"||
+   host==="push.apple.com"||host.endsWith(".push.apple.com")
+  );
+ }catch{return false;}
+};
+function transitionFailure(transition:any){
+ const code=String(transition?.error||"CALL_TRANSITION_FAILED");
+ const status=code==="GUEST_INVITE_EXPIRED_OR_INVALID"?401:code==="CALL_NOT_FOUND"?404:
+  code==="JOIN_REQUIRED"?403:code==="INVALID_SIGNAL"||code==="INVALID_GUEST_TRANSITION"?400:
+  code==="PAYLOAD_TOO_LARGE"?413:code==="CALL_NOT_ANSWERABLE"||code==="GUEST_ALREADY_JOINED"?409:503;
+ return out({error:code,...(transition?.state?{state:transition.state}:{})},status);
 }
-if(action==="join"){
+
+if(action==="push_config"){
+ const keys=await getGuestPushVapidKeys(db);
+ if(!keys)return out({error:"GUEST_PUSH_CONFIGURATION_UNAVAILABLE"},503);
+ return out({ok:true,vapid_public_key:keys.publicKey});
+}
+if(action==="push_subscribe"){
+ if(b.consent!==true)return out({error:"GUEST_PUSH_CONSENT_REQUIRED"},400);
+ if(typeof invite.phone_e164!=="string"||!/^\+[1-9][0-9]{7,14}$/.test(invite.phone_e164))return out({error:"GUEST_PUSH_PHONE_REQUIRED"},409);
+ const subscription=b.subscription;
+ const endpoint=subscription?.endpoint;
+ const p256dh=subscription?.keys?.p256dh;
+ const auth=subscription?.keys?.auth;
+ if(!validGuestPushEndpoint(endpoint)||typeof p256dh!=="string"||!/^[A-Za-z0-9_-]{80,160}$/.test(p256dh)||
+    typeof auth!=="string"||!/^[A-Za-z0-9_-]{16,80}$/.test(auth)){
+  return out({error:"INVALID_GUEST_PUSH_SUBSCRIPTION"},400);
+ }
  const now=new Date().toISOString();
- const {error}=await db.from("server_guest_invites").update({joined_at:invite.joined_at||now}).eq("id",invite.id);
- if(error)return out({error:"INVITE_JOIN_FAILED"},503);
- await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",invite.call_id).in("state",["ringing","connecting"]);
- const {data:call,error:ce}=await db.from("server_calls").select("id,state,route,created_at,updated_at").eq("id",invite.call_id).maybeSingle();
- if(ce||!call)return out({error:"CALL_NOT_FOUND"},404);
- return out({ok:true,invite_id:invite.id,call,ice_servers:[{urls:"stun:stun.l.google.com:19302"}],media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
+ const expiration=Number(subscription.expirationTime);
+ const expirationAt=Number.isFinite(expiration)&&expiration>0?new Date(expiration).toISOString():null;
+ const {error:saveError}=await db.from("server_guest_push_devices").upsert({
+  phone_e164:invite.phone_e164,endpoint,p256dh,auth,expiration_at:expirationAt,
+  last_seen_at:now,updated_at:now,revoked_at:null
+ },{onConflict:"endpoint"});
+ if(saveError)return out({error:"GUEST_PUSH_SUBSCRIPTION_SAVE_FAILED"},503);
+ return out({ok:true,subscribed:true,receiver:"browser"});
+}
+if(action==="push_presence"){
+ const endpoint=b.endpoint;
+ if(!validGuestPushEndpoint(endpoint))return out({error:"INVALID_GUEST_PUSH_ENDPOINT"},400);
+ const now=new Date().toISOString();
+ const {data:updated,error:updateError}=await db.from("server_guest_push_devices")
+  .update({last_seen_at:now,updated_at:now})
+  .eq("phone_e164",invite.phone_e164).eq("endpoint",endpoint).is("revoked_at",null)
+  .or("expiration_at.is.null,expiration_at.gt."+now)
+  .select("id").maybeSingle();
+ if(updateError)return out({error:"GUEST_PUSH_PRESENCE_FAILED"},503);
+ return out({ok:!!updated,online:!!updated,last_seen_at:updated?now:null});
+}
+if(action==="push_unsubscribe"){
+ const endpoint=b.endpoint;
+ if(!validGuestPushEndpoint(endpoint))return out({error:"INVALID_GUEST_PUSH_ENDPOINT"},400);
+ const now=new Date().toISOString();
+ const {error:revokeError}=await db.from("server_guest_push_devices")
+  .update({revoked_at:now,updated_at:now})
+  .eq("phone_e164",invite.phone_e164).eq("endpoint",endpoint).is("revoked_at",null);
+ if(revokeError)return out({error:"GUEST_PUSH_UNSUBSCRIBE_FAILED"},503);
+ return out({ok:true,subscribed:false});
+}
+async function loadGuestCall(){
+ const {data:call,error}=await db.from("server_calls")
+  .select("id,state,route,caller_user_id,created_at,updated_at,expires_at")
+  .eq("id",invite.call_id).maybeSingle();
+ if(error||!call)return {call:null,error};
+ if(["ringing","connecting"].includes(call.state)&&call.expires_at&&Date.parse(call.expires_at)<=Date.now()){
+  const now=new Date().toISOString();
+  const {data:expired,error:updateError}=await db.from("server_calls")
+   .update({state:"missed",ended_at:now,updated_at:now})
+   .eq("id",invite.call_id).in("state",["ringing","connecting"])
+   .select("id,state,route,caller_user_id,created_at,updated_at,expires_at").maybeSingle();
+  if(updateError)return {call:null,error:updateError};
+  if(expired)return {call:expired,error:null};
+  const {data:latest,error:reloadError}=await db.from("server_calls")
+   .select("id,state,route,caller_user_id,created_at,updated_at,expires_at")
+   .eq("id",invite.call_id).maybeSingle();
+  return {call:latest||null,error:reloadError};
+ }
+ return {call,error:null};
+}
+if(req.method==="GET"||action==="inspect"){
+ const {call,error:callError}=await loadGuestCall();
+ if(callError)return out({error:"CALL_LOOKUP_FAILED"},503);
+ if(!call)return out({error:"CALL_NOT_FOUND"},404);
+ const {data:caller,error:callerError}=await db.from("server_profiles")
+  .select("server_id,display_name,phone_e164,phone_verified_at,allow_number_based_server_calls")
+  .eq("user_id",call.caller_user_id).maybeSingle();
+ if(callerError)return out({error:"CALLER_PROFILE_LOOKUP_FAILED"},503);
+ const mayShowPhone=caller?.phone_verified_at&&caller?.allow_number_based_server_calls===true&&
+  typeof caller.phone_e164==="string"&&/^\+[1-9][0-9]{7,14}$/.test(caller.phone_e164);
+ const callerLabel=(typeof caller?.display_name==="string"&&caller.display_name.trim())?caller.display_name.trim():(caller?.server_id||"SERVER CALLER");
+ return out({call_id:invite.call_id,expires_at:invite.expires_at,joined:!!invite.joined_at,
+  caller_server_id:callerLabel,caller_label:callerLabel,caller_display_name:callerLabel,caller_phone:mayShowPhone?caller.phone_e164:null,
+  call:{id:call.id,state:call.state,route:call.route,created_at:call.created_at,updated_at:call.updated_at}});
+}
+if(action==="realtime_token"){
+ if(!invite.joined_at)return out({error:"GUEST_JOIN_REQUIRED"},403);
+ const {call,error:callError}=await loadGuestCall();
+ if(callError)return out({error:"CALL_LOOKUP_FAILED"},503);
+ if(!call||!["connecting","active"].includes(call.state))return out({error:"CALL_NOT_ANSWERABLE"},409);
+ const issued=await issueRealtimeToken("guest:"+invite.id,[callRealtimeChannel(invite.call_id)],900);
+ if(!issued)return out({ok:true,realtime_available:false,reason:"CENTRIFUGO_NOT_CONFIGURED"});
+ return out({ok:true,realtime_available:true,url:issued.url,token:issued.token,expires_in:900});
+}
+if(action==="decline"||action==="join"){
+ const {data:transition,error:transitionError}=await db.rpc("server_guest_transition_atomic",{
+  p_invite_id:invite.id,p_action:action,p_kind:null,p_payload:{}
+ });
+ if(transitionError||!transition)return out({error:"CALL_TRANSITION_FAILED"},503);
+ if(transition.error)return transitionFailure(transition);
+ if(action==="decline")return out({ok:true,state:transition.state,seq:transition.seq});
+ const call=transition.call;
+ if(!call?.id||!call.expires_at)return out({error:"CALL_TRANSITION_RESPONSE_INVALID"},503);
+ deferRealtime(publishRealtime(callRealtimeChannel(call.id),{
+  type:"call_state",call_id:call.id,state:"connecting",action:"guest_join"
+ },"guest-join:"+invite.id));
+ const remaining=Math.max(300,Math.ceil((Date.parse(call.expires_at)-Date.now())/1000));
+ const iceConfig=await iceServersForCall(invite.id,remaining);
+ return out({ok:true,invite_id:invite.id,call,ice_servers:iceConfig.ice_servers,
+  ice_server_mode:iceConfig.ice_server_mode,
+  media_requirement:"HTTPS, internet access and microphone permission are required. This is an internet call, not a cellular/PSTN call."});
 }
 if(action==="poll"){
  const after=Math.max(0,Number.isSafeInteger(b.after_seq)?Number(b.after_seq):Number(b.after)||0);
  const {data:signals,error}=await db.from("server_call_signals").select("seq,from_user_id,kind,payload,created_at").eq("call_id",invite.call_id).is("from_guest_invite_id",null).gt("seq",after).order("seq",{ascending:true}).limit(100);
  if(error)return out({error:"SIGNAL_POLL_FAILED"},503);
- const {data:call,error:ce}=await db.from("server_calls").select("id,state,route,updated_at").eq("id",invite.call_id).maybeSingle();
- if(ce||!call)return out({error:"CALL_NOT_FOUND"},404);
+ const {call,error:ce}=await loadGuestCall();
+ if(ce)return out({error:"CALL_LOOKUP_FAILED"},503);
+ if(!call)return out({error:"CALL_NOT_FOUND"},404);
  const rows=signals||[];
  return out({signals:rows,call,next_after_seq:rows.length?rows[rows.length-1].seq:after});
 }
-if(action==="signal"){
- if(!invite.joined_at)return out({error:"JOIN_REQUIRED"},403);
+if(action==="signal"||action==="leave"){
+ const kind=action==="leave"?"hangup":String(b.kind||"");
  const callId=typeof b.call_id==="string"?b.call_id:invite.call_id;
- const kind=String(b.kind||"");
  const payload=b.payload&&typeof b.payload==="object"&&!Array.isArray(b.payload)?b.payload:{};
- if(callId!==invite.call_id||!["offer","answer","ice","hangup","state"].includes(kind))return out({error:"INVALID_SIGNAL"},400);
+ if(callId!==invite.call_id)return out({error:"INVALID_SIGNAL"},400);
+ if(action==="signal"&&!["offer","answer","ice","hangup","state"].includes(kind))return out({error:"INVALID_SIGNAL"},400);
  if(JSON.stringify(payload).length>18000)return out({error:"PAYLOAD_TOO_LARGE"},413);
- const {data:signal,error}=await db.from("server_call_signals").insert({call_id:invite.call_id,from_guest_invite_id:invite.id,kind,payload}).select("seq,created_at").single();
- if(error||!signal)return out({error:"SIGNAL_SAVE_FAILED"},503);
- const now=new Date().toISOString();
- if(kind==="hangup")await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",invite.call_id);
- else if(kind==="offer"||kind==="answer")await db.from("server_calls").update({state:"connecting",updated_at:now}).eq("id",invite.call_id).in("state",["ringing","connecting"]);
- else if(kind==="state"&&payload.state==="active")await db.from("server_calls").update({state:"active",updated_at:now}).eq("id",invite.call_id).in("state",["ringing","connecting"]);
- return out({ok:true,seq:signal.seq,created_at:signal.created_at});
-}
-if(action==="leave"){
- const now=new Date().toISOString();
- await db.from("server_call_signals").insert({call_id:invite.call_id,from_guest_invite_id:invite.id,kind:"hangup",payload:{}});
- await db.from("server_calls").update({state:"ended",ended_at:now,updated_at:now}).eq("id",invite.call_id);
- return out({ok:true});
+ const {data:transition,error:transitionError}=await db.rpc("server_guest_transition_atomic",{
+  p_invite_id:invite.id,p_action:action==="leave"?"leave":"signal",p_kind:kind,p_payload:payload
+ });
+ if(transitionError||!transition)return out({error:"SIGNAL_SAVE_FAILED"},503);
+ if(transition.error)return transitionFailure(transition);
+ deferRealtime(publishRealtime(callRealtimeChannel(invite.call_id),{
+  type:kind==="hangup"?"call_state":"signal",
+  call_id:invite.call_id,seq:transition.seq,kind,payload,
+  from_guest_invite_id:invite.id,created_at:transition.created_at,state:transition.state
+ },invite.call_id+":"+transition.seq));
+ return out({ok:true,seq:transition.seq,created_at:transition.created_at,state:transition.state});
 }
 return out({error:"UNKNOWN_ACTION"},400);
 });

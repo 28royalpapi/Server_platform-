@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1000" viewBox="0 0 600 1000" role="img">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#123528"/><stop offset="1" stop-color="#07110f"/></linearGradient><linearGradient id="screen" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10251d"/><stop offset="1" stop-color="#07120f"/></linearGradient></defs>
+<rect x="12" y="12" width="576" height="976" rx="58" fill="#020706" stroke="#668879" stroke-width="4"/>
+<rect x="32" y="34" width="536" height="932" rx="42" fill="url(#screen)"/>
+<rect x="232" y="22" width="136" height="12" rx="6" fill="#020706"/>
+<text x="62" y="76" fill="#dbe8e1" font-size="20" font-family="Arial">9:41</text><circle cx="494" cy="66" r="9" fill="#dbe8e1"/><path d="M518 56l18 20h-36z" fill="#dbe8e1"/><rect x="544" y="56" width="12" height="20" rx="3" fill="none" stroke="#dbe8e1" stroke-width="2"/>
+
+<rect x="50" y="110" width="500" height="830" rx="22" fill="#f1f3f7"/>
+<rect x="50" y="110" width="500" height="94" rx="22" fill="#fff"/><path d="M50 184h500v20H50z" fill="#fff"/>
+<path d="M93 153l-17 0m0 0 12-12m-12 12 12 12" stroke="#34495a" stroke-width="4" fill="none" stroke-linecap="round"/>
+<text x="125" y="162" fill="#273744" font-size="26" font-family="Arial">Calling accounts</text>
+<text x="82" y="260" fill="#627382" font-size="15" font-family="Arial">INTERNET CALLING ACCOUNTS</text>
+<rect x="76" y="294" width="448" height="174" rx="16" fill="#fff" stroke="#d8dfe6" stroke-width="2"/>
+<circle cx="128" cy="350" r="34" fill="#123d2b"/><text x="128" y="361" fill="#9af0bd" font-size="32" font-weight="bold" text-anchor="middle" font-family="Arial">S</text>
+<text x="184" y="344" fill="#243442" font-size="23" font-weight="bold" font-family="Arial">Server</text><text x="184" y="375" fill="#5f6f7d" font-size="15" font-family="Arial">Internet calling account</text>
+<rect x="438" y="336" width="58" height="32" rx="16" fill="#278b5b"/><circle cx="478" cy="352" r="12" fill="#fff"/>
+<path d="M108 417h310" stroke="#dfe5eb" stroke-width="2"/><text x="108" y="449" fill="#278453" font-size="14" font-family="Arial">Server enabled</text>
+<text x="82" y="540" fill="#627382" font-size="15" font-family="Arial">OUTGOING CALL PREFERENCE</text>
+<rect x="76" y="574" width="448" height="136" rx="16" fill="#fff" stroke="#d8dfe6" stroke-width="2"/>
+<text x="106" y="622" fill="#243442" font-size="21" font-family="Arial">Ask every time</text><text x="106" y="654" fill="#5f6f7d" font-size="15" font-family="Arial">Lets you choose Server or your SIM</text>
+<circle cx="482" cy="635" r="12" fill="#278b5b"/><circle cx="482" cy="635" r="5" fill="#fff"/>
+<rect x="76" y="754" width="448" height="110" rx="16" fill="#e2eaf0"/><text x="102" y="796" fill="#364a58" font-size="16" font-family="Arial">Menu wording and location vary</text><text x="102" y="824" fill="#364a58" font-size="16" font-family="Arial">by Android phone and dialer.</text>
+
+<rect x="244" y="938" width="112" height="7" rx="4" fill="#dce8e1"/>
+</svg>

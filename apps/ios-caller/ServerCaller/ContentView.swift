@@ -181,7 +181,7 @@ struct ContentView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             numberCallConsentToggle
-                            TextField("Phone number, e.g. +2348012345678", text: $model.phoneLinkPhone)
+                            TextField("International number, e.g. +919876543210", text: $model.phoneLinkPhone)
                                 .keyboardType(.phonePad)
                                 .textContentType(.telephoneNumber)
                                 .textInputAutocapitalization(.never)
