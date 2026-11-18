@@ -1029,7 +1029,7 @@ assert.doesNotMatch(androidGuestNotifications,/ServerCarrierDialActivity/,
   "the guest notification cannot launch the legacy carrier handoff Activity");
 assert.doesNotMatch(androidMain,/button\("Call using selected SIM"\)|handoffToCarrierDialer/,
   "the main caller app cannot silently or manually convert the Server route to a SIM call");
-assert.match(html,/Server-operated gateway devices/);
+assert.match(html,/Free internet invitations/,"the completed setup page describes internet invitation delivery instead of SMS gateway delivery");
 assert.doesNotMatch(html,/same Server app contains the calling connector and SMS gateway|Connect my SIM|Disconnect SIM|Choose a SIM/);
 assert.doesNotMatch(html,/download-server-sim-gateway|server-sim-gateway\.apk|create-sms-gateway-pairing-code/);
 assert.doesNotMatch(nativeWorkflow,/apps\/android-sim-gateway/, "the native build no longer creates a separate Gateway APK");
