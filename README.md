@@ -15,7 +15,7 @@ The **Server digital address** is the onboarding website. The SMS gateway uses S
 | Component | Responsibility |
 |---|---|
 | `server-auth` | Device-bound Server ID registration, optional phone OTP verification/linking, session renewal and revocation |
-| `server-calls` | Authenticated call creation, WebRTC signalling, guest invitations and push/SMS delivery orchestration |
+| `server-calls` | Authenticated call creation, WebRTC signalling, guest invitations and free Web Push delivery |
 | `server-gateway` | Secure device registration, per-device gateway tokens, durable SMS queue claiming, device presence and delivery callbacks |
 | `server-guest` | Secure, time-limited guest browser invitations and WebRTC signalling |
 | `server-send-sms` | Optional Supabase Auth Send SMS Hook adapter; not required for Server's custom OTP flow |
@@ -32,7 +32,7 @@ The website provides one Android download. That same APK contains:
 
 There is no separate consumer Gateway APK, no gateway URL, and no SIM-picker step in customer onboarding. The gateway service is not a customer feature: the company handset uses Android's default SMS subscription automatically, and the device is registered as platform-owned before it can claim message jobs. The first-party source remains in `apps/android-caller/app/src/main/java/com/server/caller/ServerSmsGatewayService.kt`.
 
-The gateway is **not required** to create a Server ID, enable a customer's Android calling account, or make Server-to-Server internet calls. Customers never connect their SIM to send invitations. A Server-owned gateway fleet is required for automatic SMS invitations and phone-verification OTPs. If every platform gateway is offline, Server does not silently fall back to the caller's SIM: it reports that SMS was not sent and offers browser push or the share sheet instead.
+The SMS gateway is **not required** to create a Server ID, enable a customer's Android calling account, make Server-to-Server calls, or invite a guest. Guest invitations never use carrier SMS. Enrolled browsers receive free Web Push over their existing internet connection; first-contact links are shared through an internet messaging app. The physical SMS gateway is a separate carrier-SMS transport for OTP or operator-controlled workflows only, and each carrier SMS may incur a mobile-network charge even when sent by a Server-owned SIM.
 
 The managed gateway uses Android's visible foreground-service notification, a realtime wake channel, a queue-recovery poll and batched queue draining. Android can still stop a gateway because of force-stop, OEM battery restrictions, permission revocation, reboot or network loss. Server operations must keep its managed gateway handsets powered, connected and permitted to run in the background.
 
@@ -43,12 +43,12 @@ A call to a non-member is a **guest browser call**, not an ordinary carrier voic
 The available first-contact alert paths are:
 
 1. **Enrolled browser push:** Server can send a push alert if the recipient previously enrolled their browser and granted notification permission.
-2. **Server-operated SMS gateway:** Server queues the invitation for a company-owned/managed Android gateway phone and a Server-funded SIM to send. The caller's phone is never selected as the sender.
-3. **Manual share:** if no platform gateway is online and no browser push is available, the app returns a secure invitation link for the caller to share using an app they already use.
+2. **Free browser push:** if a recipient previously enrolled a browser call-alert subscription, Server sends a caller-identified internet push. The service attempts every unexpired opted-in endpoint, including suspended browsers with stale page heartbeats.
+3. **First-contact share:** if no browser receiver is enrolled or accepts the push, Server still creates a unique two-minute invitation URL and returns its share text. The caller shares it through WhatsApp or another internet messaging app. There is no carrier SMS fallback.
 
 An invitation SMS only alerts the recipient and carries the link. It does **not** ring their ordinary cellular phone app, make a PSTN call, or allow an offline recipient to answer. An SMS can be submitted by Android and still fail or be delayed by the mobile operator. The system distinguishes Android's send result from the operator delivery report where supported.
 
-The gateway sends using a Server-funded carrier plan. The caller's and recipient's personal SIM balances are not used to send Server's invitation. No hourly or daily message allowance is imposed by the Server application: every distinct call attempt creates its own invitation job, including a repeat call to the same recipient a few minutes later. The queue claims batches and drains them continuously; batch size is a processing detail, not a per-user quota. Carrier throughput, account bundle limits, destination-country rules and anti-spam enforcement remain outside the app's control and are paid/managed by Server.
+Guest invitations are not placed in the SMS queue, so no customer or Server-owned SIM is used and no carrier airtime is consumed for that message. Web Push is an internet transport; a push provider accepting a notification is not proof the recipient's device displayed it. First contact still requires the caller to share the generated URL once and the recipient to open it and enable browser call alerts. Phone-verification OTP is a separate SMS function; an SMS delivered through a carrier can still incur a carrier charge and must not be described as free.
 
 Each invitation expires after two minutes. Expired, revoked or already-answered invitations are discarded instead of being sent late. The queue deduplicates the same event/job; it does not deduplicate separate call attempts to the same number.
 
