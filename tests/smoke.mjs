@@ -753,16 +753,10 @@ assert.match(calls,/sendGuestBrowserPush/,"each batch invitation wakes every enr
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
   "guest browser reachability never suppresses a first-contact invitation");
 assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
-assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest SMS is branded and names the caller");
-assert.match(calls,/Expires in 2 minutes\.\\n"\+invitationUrl/,"the preview URL is the final SMS element");
-assert.match(calls,/Expires in 2 minutes/,"guest SMS advertises the two-minute invite expiry");
-assert.ok(guestSmsTransport.includes('from("server_gateway_devices")') &&
-  guestSmsTransport.includes('.eq("is_platform_owned",true)') &&
-  guestSmsTransport.includes('from("server_sms_jobs").insert') &&
-  guestSmsTransport.includes("sendServerGatewayWake(gateway.token_hash)"),
-  "the backend queues invitation SMS only for a Server-owned Android gateway");
-assert.doesNotMatch(guestSmsTransport,/owner_user_id|shared_guest_sms_enabled/,
-  "the call invitation path never selects a customer's SIM gateway");
+assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
+assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest invitation text is branded and names the caller");
+assert.match(calls,/Expires in 2 minutes/,"guest invitation advertises its two-minute expiry");
+assert.match(calls,/guest_invite_url:invitationUrl/,"each guest receives an independently generated invitation URL");
 assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
 assert.match(auth,/x-server-session-token/,"Server auth reads its opaque Server session from a dedicated header");
 assert.match(calls,/x-server-session-token/,"Server calls read the opaque Server session from a dedicated header");
@@ -910,9 +904,8 @@ assert.match(hook,/SMS_GATEWAY_OFFLINE/);
 assert.doesNotMatch(hook,/console\.(log|error)\([^)]*otp/i);
 assert.match(gateway,/create_pairing_code/,"legacy customer pairing is blocked explicitly before dispatch");
 assert.match(html,/Guest invitations use free internet notifications/,"guest invitations use free internet delivery rather than carrier SMS");
-assert.match(html,/verification message is sent by Server-operated messaging infrastructure/,"phone verification is sent by Server, not by the customer's SIM");
-assert.match(app,/Your personal SIM is never used to send Server messages/,"onboarding makes the no-customer-SIM policy explicit");
-assert.match(app,/Your personal SIM is never used to send Server messages/,"customer onboarding documents that Server sends from managed gateways");
+assert.match(html,/phone verification is optional/,"phone verification remains separate from guest invitation delivery");
+assert.match(app,/Guest invitations never use carrier SMS/,"onboarding makes the no-carrier-charge invitation policy explicit");
 assert.doesNotMatch(app,/enableCallingAccountButton\.disabled\s*=\s*!smsGatewayConnected|openPhoneDialerButton\.disabled\s*=\s*!smsGatewayConnected/,"calling-account and dialler actions are not gated on optional SMS gateway availability");
 assert.match(androidSmsGatewayApi,/claim_platform_device/,"the Android app claims its managed gateway using a one-time platform code");
 assert.doesNotMatch(androidSmsGatewayApi,/create_pairing_code|pairing_pin/i,"the Android app does not create customer-owned gateway pairings");
@@ -964,10 +957,8 @@ assert.match(guest,/SERVER_TURN_URLS/,"guest calls use the same optional TURN re
 assert.match(iosModel,/stun:stun\.cloudflare\.com:3478/,"iOS fallback matches Android and browser STUN discovery");
 assert.match(androidTelecom,/ServerTelecomCallEngine/,
   "the Android caller uses the Telecom-bound native WebRTC engine");
-assert.match(calls,/is_platform_owned/,"only platform-owned gateways are selected for SMS invitations");
-assert.match(calls,/from\("server_sms_jobs"\)\.insert/);
-assert.match(calls,/category:"guest_invite"/);
-assert.match(calls,/source_event_id:"server-guest-invite:"/);
+assert.doesNotMatch(calls,/server_sms_jobs|sendServerGatewayWake|simSmsQueued|sim_sms_queued/,
+  "guest invitations never enter a carrier-SMS queue");
 assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest invitation SMS has no arbitrary hourly per-recipient or per-sender quota");
 assert.doesNotMatch(calls,/CALL_START_RATE_MAX = 20|CALL_START_RATE_LIMITED/,
   "the call-start endpoint has no fixed per-user attempts-per-minute quota");
@@ -1102,6 +1093,10 @@ assert.ok(calls.includes('const invitationText="SERVER CALL\\n"+callerDisplay'),
 assert.match(calls,/Expires in 2 minutes/,"guest invitation advertises its two-minute expiry");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
+assert.match(calls,/action==="start_guest_batch"/,"the backend supports up to ten separate guest invitation links in one request");
+assert.match(calls,/results:createdItems/,"the batch response returns one delivery result per destination");
+assert.match(calls,/created_count:createdCount/,"the batch response distinguishes created invitations from failed destinations");
+assert.match(calls,/carrier_sms_used:false/,"the batch route guarantees it does not use carrier SMS");
 assert.match(calls,/action==="availability"/,"callers can check recipient availability before creating a call");
 assert.doesNotMatch(calls,/server_rate_limit_allow|p_scope:"recipient_availability"|RECIPIENT_AVAILABILITY_RATE_LIMITED|CALL_START_RATE/,
   "call and availability endpoints contain no per-caller minute/hour attempt quota");
