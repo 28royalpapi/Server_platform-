@@ -1,3 +1,10 @@
+/*
+ * Audio-only media path is based on the WebRTC Project's public
+ * peerconnection/audio sample (BSD-style license), inspected at
+ * https://github.com/webrtc/samples/tree/6bd116932df29815b39ebcbba3415366a6202662/src/content/peerconnection/audio
+ * Server adds authenticated signalling, call authorization and its own ICE
+ * configuration; the sample's local loopback is not treated as handset proof.
+ */
 const cfg=window.SERVER_CONFIG||{};
 const url=new URL(location.href);
 const fragmentToken=url.hash.startsWith("#token=")?decodeURIComponent(url.hash.slice(7)):"";
