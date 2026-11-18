@@ -101,8 +101,8 @@ async function startGuestCall() {
   assert.ok(created.call_id);
   assert.equal(created.call?.state, "ringing");
   assert.ok(created.guest_invite_url);
-  assert.ok((created.invitation_text || "").startsWith("SERVER CALL\n"),"the invitation SMS is branded");
-  assert.ok((created.invitation_text || "").includes("Expires in 2 minutes"),"the SMS advertises its two-minute expiry");
+  assert.ok((created.invitation_text || "").startsWith("SERVER CALL\n"),"the guest invitation text is branded");
+  assert.ok((created.invitation_text || "").includes("Expires in 2 minutes"),"the guest invitation advertises its two-minute expiry");
   assert.ok((created.guest_invite_url || "").includes("/c/"),"the invitation ends with the caller-preview URL");
   const inviteExpiryMs = Date.parse(created.invite_expires_at || "") - Date.now();
   assert.ok(inviteExpiryMs > 0 && inviteExpiryMs <= 125000,
