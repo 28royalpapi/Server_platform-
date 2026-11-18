@@ -142,66 +142,83 @@ export async function sendGuestBrowserPush(
     now - Date.parse(device.last_seen_at) <= FRESH_GUEST_SECONDS * 1000
   );
   const recentOnline = freshDevices.length;
-  if (!freshDevices.length) {
-    return { registered: eligibleDevices.length, recent_online: 0, accepted: 0,
-      failed: devices.length - eligibleDevices.length, configured: true };
-  }
+  // A push subscription is specifically the permission to wake a browser when
+  // its page is not currently visible. Do not gate delivery on a fresh page
+  // heartbeat: suspended/background browsers normally have stale heartbeats.
   const keys = await getGuestPushVapidKeys(db);
   if (!keys) {
     return { registered: eligibleDevices.length, recent_online: recentOnline, accepted: 0,
-      failed: devices.length - eligibleDevices.length + freshDevices.length, configured: false };
+      failed: devices.length - eligibleDevices.length + eligibleDevices.length, configured: false };
   }
   let accepted = 0;
   let failed = devices.length - eligibleDevices.length;
-  await Promise.all(freshDevices.map(async (device: any) => {
-    if (!validPushEndpoint(device.endpoint) || !device.p256dh || !device.auth) {
-      await db.from("server_guest_push_devices")
-        .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("id", device.id);
-      failed++;
-      return;
-    }
-    const subscription = {
-      endpoint: device.endpoint,
-      expirationTime: device.expiration_at ? Date.parse(device.expiration_at) : null,
-      keys: { p256dh: device.p256dh, auth: device.auth }
-    };
-    const pushMessage = {
-      data: JSON.stringify({
-        type: "server_guest_incoming_call",
-        call_id: notification.call_id,
-        caller_label: notification.caller_label,
-        title: notification.title,
-        body: notification.body,
-        url: notification.url
-      }),
-      options: { ttl: 120, urgency: "high" }
-    };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    try {
-      const request = await buildPushPayload(pushMessage as any, subscription as any, {
-        subject: keys.subject,
-        publicKey: keys.publicKey,
-        privateKey: keys.privateKey
-      });
-      const response = await fetch(device.endpoint, { ...request, signal: controller.signal });
-      if (response.status === 201 || response.status === 202) {
-        accepted++;
-      } else {
+  let cursor = 0;
+  const workerCount = Math.min(4, eligibleDevices.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= eligibleDevices.length) return;
+      const device: any = eligibleDevices[index];
+      if (!validPushEndpoint(device.endpoint) || !device.p256dh || !device.auth) {
+        await db.from("server_guest_push_devices")
+          .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", device.id);
         failed++;
-        if (response.status === 404 || response.status === 410) {
-          await db.from("server_guest_push_devices")
-            .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-            .eq("id", device.id);
+        continue;
+      }
+      const subscription = {
+        endpoint: device.endpoint,
+        expirationTime: device.expiration_at ? Date.parse(device.expiration_at) : null,
+        keys: { p256dh: device.p256dh, auth: device.auth }
+      };
+      const pushMessage = {
+        data: JSON.stringify({
+          type: "server_guest_incoming_call",
+          call_id: notification.call_id,
+          caller_label: notification.caller_label,
+          title: notification.title,
+          body: notification.body,
+          url: notification.url
+        }),
+        options: { ttl: 120, urgency: "high" }
+      };
+      let delivered = false;
+      let permanentFailure = false;
+      for (let attempt = 0; attempt < 3 && !delivered && !permanentFailure; attempt++) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        try {
+          const request = await buildPushPayload(pushMessage as any, subscription as any, {
+            subject: keys.subject,
+            publicKey: keys.publicKey,
+            privateKey: keys.privateKey
+          });
+          const response = await fetch(device.endpoint, { ...request, signal: controller.signal });
+          if (response.status === 201 || response.status === 202) {
+            accepted++;
+            delivered = true;
+          } else if (response.status === 404 || response.status === 410) {
+            await db.from("server_guest_push_devices")
+              .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq("id", device.id);
+            permanentFailure = true;
+          } else if (response.status !== 408 && response.status !== 429 && response.status < 500) {
+            permanentFailure = true;
+          }
+        } catch {
+          // Retry network resets/timeouts with bounded backoff; never fall back
+          // to a carrier SMS that could charge a SIM.
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (!delivered && !permanentFailure && attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 200 : 600));
         }
       }
-    } catch {
-      failed++;
-    } finally {
-      clearTimeout(timeout);
+      if (!delivered) failed++;
     }
-  }));
+  });
+  await Promise.all(workers);
 
   return {
     registered: eligibleDevices.length,
