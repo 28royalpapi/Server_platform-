@@ -1106,7 +1106,7 @@ assert.match(calls,/guestPushRegistered/,
 assert.match(html,/Every call is registered in Server/,"onboarding explains that call attempts are recorded in Server before the voice route is selected");
 assert.match(html,/A number alone does not reveal whether an unregistered phone has internet/,"onboarding explains why a non-member needs a browser receiver enrollment before Server can confirm reachability");
 assert.match(html,/Free internet notifications are sent to enrolled guest browsers/,"onboarding explains the no-carrier-charge guest invitation transport");
-assert.match(html,/No carrier SMS is sent for guest invitations/,"onboarding guarantees that guest invitations do not debit any SIM");
+assert.match(html,/Guest invitations never use carrier SMS or deduct airtime/,"onboarding guarantees that guest invitations do not debit any SIM");
 assert.doesNotMatch(html,/id="sms-gateway-sim"|id="connect-sms-gateway"|id="disconnect-sms-gateway"|>Connect my SIM<|>Disconnect SIM</i,"customer onboarding contains no SIM picker or personal-SIM connect/disconnect controls");
 assert.match(html,/Contacts access is optional/,"onboarding explains optional, on-device contact matching");
 assert.match(androidTests,/serverReachabilityRequiresFreshHeartbeatAndConfirmsPushWake/,
