@@ -1,6 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 import { sendGuestBrowserPush } from "../_shared/guest_web_push.ts";
-import { sendServerGatewayWake } from "../_shared/server_gateway_wake.ts";
 const encoder = new TextEncoder();
 
 function base64Url(bytes: Uint8Array): string {
@@ -609,56 +608,14 @@ Deno.serve(async(req:Request)=>{
    const guestInternetReachable=guestPush.recent_online>0;
    const guestAvailabilityStatus=guestInternetReachable?"online":"unknown_guest";
 
-   // Invitations are sent only through Server-operated gateway hardware.
-   // A customer's personal SIM must never be used as Server's SMS transport.
-   let simSmsQueued=false;
-   let simSmsGatewayOnline=false;
-   // 202-555-0100 through 202-555-0199 are reserved fictional NANP test numbers.
-   // Automated browser/WebRTC acceptance tests use this range and must never
-   // submit carrier SMS, even when a Server-operated gateway is online.
-   const reservedGuestTestNumber=to.startsWith("+120255501") && to.length===12;
-   if(!reservedGuestTestNumber){
-    const gatewayFreshAfter=new Date(Date.now()-90000).toISOString();
-    const platformGatewayLookup=await db.from("server_gateway_devices")
-     .select("id,token_hash")
-     .eq("is_platform_owned",true)
-     .eq("enabled",true)
-     .gte("last_seen_at",gatewayFreshAfter)
-     .order("last_seen_at",{ascending:false})
-     .limit(1)
-     .maybeSingle();
-    const gateway=platformGatewayLookup.error?null:platformGatewayLookup.data;
-    if(platformGatewayLookup.error){
-     console.warn("PLATFORM_SMS_GATEWAY_LOOKUP_FAILED");
-    }else if(gateway){
-     simSmsGatewayOnline=true;
-     const {data:queuedJob,error:queueError}=await db.from("server_sms_jobs").insert({
-      category:"guest_invite",
-      recipient_e164:to,
-      body:invitationText,
-      call_id:call.id,
-      guest_invite_id:created.invite_id,
-      source_event_id:"server-guest-invite:"+call.id,
-      status:"queued"
-     }).select("id").maybeSingle();
-     if(!queueError&&queuedJob){
-      simSmsQueued=true;
-      deferRealtime(sendServerGatewayWake(gateway.token_hash));
-     }else{
-      console.warn("PLATFORM_SMS_QUEUE_FAILED");
-     }
-    }
- 
- 
-   }
-   const deliveryMode=simSmsQueued?"sim_sms_queued":hasPushAccepted?"web_push":"manual_share";
-   const deliveryMessage=reservedGuestTestNumber
-    ?"SMS was deliberately suppressed for this reserved fictional test number; no carrier message was sent."
-    :simSmsQueued
-     ?"Server queued the invitation through a Server-operated SMS gateway. Queueing is not proof of handset delivery."
-     :hasPushAccepted
-      ?"Browser push was accepted, but no Server-operated SMS gateway is currently available. Share the secure invitation manually if needed."
-      :"No Server-operated SMS gateway is currently available, so Server could not queue the SMS. Share the secure invitation manually.";
+   // Guest invitations never use a carrier-SMS gateway. Even a Server-owned
+   // handset still sends SMS through a mobile operator and may incur a charge.
+   // The free path is Web Push to a recipient-enrolled browser; first contact
+   // without an enrolled internet receiver is a user-shared secure link.
+   const deliveryMode=hasPushAccepted?"web_push":"manual_share";
+   const deliveryMessage=hasPushAccepted
+    ?"Server submitted a free internet notification to an enrolled guest browser. Push-service acceptance is not proof the device displayed it."
+    :"No enrolled guest browser receiver accepted an internet notification. The unique invitation link is ready to share through an internet messaging app; no carrier SMS was sent.";
 
    return out({
     ok:true,call_id:call.id,route,ice_servers:callIceServers,ice_server_mode:iceConfig.ice_server_mode,call,
@@ -671,16 +628,19 @@ Deno.serve(async(req:Request)=>{
      server_reachable:guestInternetReachable,
      internet_status:guestInternetReachable?"internet_on":"unknown",
      push_receiver_registered:guestPush.registered>0,
-     background_wake_possible:guestInternetReachable,
+     background_wake_possible:guestPush.registered>0,
      explanation:guestInternetReachable
       ?"The guest browser sent a heartbeat within the 35-second freshness window; internet reachability is confirmed."
       :guestPush.registered>0
        ?"A browser push subscription exists, but its last heartbeat is stale. The phone's internet state is unknown, not offline."
        :"The recipient has not enrolled a guest browser receiver. The phone's internet state is unknown, not offline."
     },
-    sim_sms_delivery:{
-      channel:"server_platform_sms",queued:simSmsQueued,gateway_online:simSmsGatewayOnline,
-      carrier_charges_possible:true,carrier_charges_paid_by:"Server",device_delivery_confirmed:false
+    message_delivery:{
+     carrier_sms_used:false,
+     carrier_charges_possible:false,
+     web_push_submitted:hasPushAccepted,
+     device_delivery_confirmed:false,
+     first_contact_requires_user_share:!hasPushAccepted
     },
     push_delivery:{
      channel:"web_push",registered_devices:guestPush.registered,
