@@ -827,7 +827,7 @@ assert.doesNotMatch(calls,/CALL_START_RATE_MAX = 20|CALL_START_RATE_LIMITED/,
 assert.doesNotMatch(calls,/guest_invite_sms_pair|guest_invite_sms_sender/,"guest invitation SMS has no arbitrary hourly per-recipient or per-sender quota");
 assert.doesNotMatch(calls,/CALL_START_RATE_MAX = 20|CALL_START_RATE_LIMITED/,
   "the call-start endpoint has no fixed per-user attempts-per-minute quota");
-assert.match(calls,/guest_invite_id:created\.invite_id/);
+assert.match(calls,/invite_id:created\.invite_id/,"the batch returns the atomic guest-invite id for every created recipient");
 assert.match(androidMain,/deliveryMode == "manual_share"/,
   "Android opens the internet share sheet when no enrolled browser push receiver exists");
 assert.doesNotMatch(androidMain,/sim_sms_queued|Server SIM Gateway/,
