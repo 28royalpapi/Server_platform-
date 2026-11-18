@@ -76,6 +76,24 @@ async function chooseFreshGuestNumber() {
   throw new Error("No unused fictional guest number was found for this run: " + lastStatus);
 }
 
+async function chooseFreshGuestNumbers(count) {
+  const startIndex = randomInt(100);
+  const chosen = [];
+  for (let offset = 0; offset < 100 && chosen.length < count; offset++) {
+    const candidate = "+120255501" + String((startIndex + offset) % 100).padStart(2, "0");
+    const availability = await request("server-calls", {
+      action: "availability", to_phone: candidate
+    });
+    if (availability.ok === true &&
+        availability.recipient_availability?.status === "unknown_guest" &&
+        availability.recipient_availability?.internet_status === "unknown") {
+      chosen.push(candidate);
+    }
+  }
+  assert.equal(chosen.length, count, "must find " + count + " unused, unregistered fictional guest numbers");
+  return chosen;
+}
+
 async function startGuestCall() {
   const created = await request("server-calls", { action: "start", to_phone: destination });
   assert.equal(created.ok, true);
@@ -325,6 +343,45 @@ try {
     row.kind === "hangup" && row.payload?.reason === "declined");
   assert.equal(declinedSignals.length, 1, "exactly one decline signal must be persisted");
   pass("concurrent decline serialization", "one success, one HTTP 409, exactly one hang-up signal");
+
+  // Ten-recipient guest batch: each destination must receive a separate,
+  // single-use link and atomic call/invitation record. The destinations are
+  // reserved fictional NANP numbers, so no real person, carrier SMS or push
+  // subscription is contacted by this test.
+  const batchDestinations = await chooseFreshGuestNumbers(10);
+  const batch = await request("server-calls", {
+    action: "start_guest_batch",
+    recipients: batchDestinations
+  });
+  assert.equal(batch.ok, true);
+  assert.equal(batch.requested_count, 10);
+  assert.equal(batch.created_count, 10);
+  assert.equal(batch.failed_count, 0);
+  assert.equal(batch.results?.length, 10);
+  assert.equal(batch.carrier_sms_used, false);
+  assert.equal(batch.carrier_charges_possible, false);
+  const batchCallIds = batch.results.map(item => item.call_id);
+  const batchUrls = batch.results.map(item => item.guest_invite_url);
+  const batchTokens = batchUrls.map(guestTokenFrom);
+  assert.equal(new Set(batchCallIds).size, 10, "every recipient must have a distinct call record");
+  assert.equal(new Set(batchUrls).size, 10, "every recipient must have a distinct preview URL");
+  assert.equal(new Set(batchTokens).size, 10, "every recipient must have a distinct one-time token");
+  for (let i = 0; i < batch.results.length; i++) {
+    const item = batch.results[i];
+    assert.equal(item.ok, true);
+    assert.equal(item.recipient_e164, batchDestinations[i]);
+    assert.ok(item.invite_id);
+    assert.ok(item.invitation_text.includes(callerName));
+    assert.equal(item.delivery?.mode, "manual_share",
+      "fictional destinations without an enrolled receiver must receive a shareable link, never carrier SMS");
+    assert.equal(item.delivery?.device_delivery_confirmed, false);
+    assert.equal(item.delivery?.first_contact_requires_user_share, true);
+    createdCallIds.add(item.call_id);
+  }
+  pass("ten-recipient batch created ten independent guest invitations",
+    "10 unique call IDs, 10 unique preview links and 10 unique invitation tokens");
+  pass("ten-recipient batch stayed on free internet/manual-share transport",
+    "carrier_sms_used=false; carrier_charges_possible=false; no carrier queue");
 
   process.stdout.write("\nLive guest transition integration: " + checks + "/" + checks + " checks passed.\n");
 } finally {
