@@ -79,6 +79,10 @@ The `/c/[secure-token]` route returns caller-specific Open Graph metadata and a 
 
 Phone-verification OTP is a separate operation. It uses a Server-operated Android SMS gateway and carrier subscription; carrier charges may apply to that Server-funded line. It is not the free guest-invitation transport.
  
+## Audio engine and verification
+
+The browser and native audio media pipeline is based on the official WebRTC audio-only peer-connection sample. The upstream reference, code mapping and exact limits of the separate Android-emulator/guest-browser RTP audio test are recorded in [`docs/webrtc-audio-reference.md`](docs/webrtc-audio-reference.md). A physical two-phone speech test is still required before claiming handset audio acceptance.
+
 ## Global calling and platform limits
 
 - **Server-to-Server:** both users can call across countries over the internet, subject to internet reachability, supported app versions, regional signalling and media relay availability.
