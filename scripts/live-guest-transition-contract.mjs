@@ -366,6 +366,9 @@ try {
   assert.equal(new Set(batchCallIds).size, 10, "every recipient must have a distinct call record");
   assert.equal(new Set(batchUrls).size, 10, "every recipient must have a distinct preview URL");
   assert.equal(new Set(batchTokens).size, 10, "every recipient must have a distinct one-time token");
+  const batchInspections = await Promise.all(batch.results.map(item =>
+    inspect(guestTokenFrom(item.guest_invite_url))
+  ));
   for (let i = 0; i < batch.results.length; i++) {
     const item = batch.results[i];
     assert.equal(item.ok, true);
@@ -376,6 +379,10 @@ try {
       "fictional destinations without an enrolled receiver must receive a shareable link, never carrier SMS");
     assert.equal(item.delivery?.device_delivery_confirmed, false);
     assert.equal(item.delivery?.first_contact_requires_user_share, true);
+    assert.equal(batchInspections[i].call_id, item.call_id,
+      "each returned bearer token must inspect to its own call record");
+    assert.equal(batchInspections[i].call?.state, "ringing");
+    assert.equal(batchInspections[i].caller_label, callerName);
     createdCallIds.add(item.call_id);
   }
   pass("ten-recipient batch created ten independent guest invitations",
