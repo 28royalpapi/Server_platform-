@@ -745,6 +745,10 @@ if (ServerRecipientReachability.isFresh(availability)) {
     }
   }
 
+  // Media source/track setup follows the WebRTC Project audio-only
+  // peerconnection sample pattern: capture microphone audio, publish an audio
+  // track, and require remote RTP/audio-energy evidence before marking ACTIVE.
+  // Upstream reference is pinned in docs/webrtc-audio-reference.md.
   private suspend fun preparePeer(serversJson: JSONArray) {
     iceConnected = false
     remoteAudioTrackReady = false
