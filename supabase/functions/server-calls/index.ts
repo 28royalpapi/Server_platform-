@@ -335,6 +335,32 @@ Deno.serve(async(req:Request)=>{
  const uid=profile.user_id; const action=typeof b.action==="string"?b.action:"";
  const callerDisplayName=(typeof profile.display_name==="string"&&profile.display_name.trim())?profile.display_name.trim():(profile.server_id||"SERVER USER");
  try{
+  if(action==="create_receiver_invite"){
+   const to=phone(b.to_phone);
+   if(!to)return out({error:"INVALID_PHONE_FORMAT"},400);
+   if(profile.phone_verified_at&&phone(profile.phone_e164)===to)return out({error:"CANNOT_RECEIVE_ON_CALLER_NUMBER"},400);
+   const since=new Date(Date.now()-60*60*1000).toISOString();
+   const {count:recentCount,error:limitError}=await db.from("server_receiver_invites")
+    .select("id",{count:"exact",head:true}).eq("created_by_user_id",uid).gte("created_at",since);
+   if(limitError)return out({error:"RECEIVER_INVITE_LIMIT_CHECK_FAILED"},503);
+   if((recentCount||0)>=8)return out({error:"RECEIVER_INVITE_RATE_LIMITED"},429);
+   const {data:known,error:knownError}=await db.from("server_profiles")
+    .select("user_id,phone_verified_at,allow_number_based_server_calls").eq("phone_e164",to).maybeSingle();
+   if(knownError)return out({error:"RECIPIENT_LOOKUP_FAILED"},503);
+   if(known&&known.user_id!==uid&&known.phone_verified_at&&known.allow_number_based_server_calls===true)
+    return out({error:"RECIPIENT_ALREADY_ON_SERVER"},409);
+   const token=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
+   const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();
+   const {data:created,error:createError}=await db.from("server_receiver_invites").insert({
+    token_hash:await sha(token),created_by_user_id:uid,phone_e164:to,caller_label:callerDisplayName.slice(0,80),expires_at:expiresAt
+   }).select("id,expires_at").single();
+   if(createError||!created)return out({error:"RECEIVER_INVITE_CREATE_FAILED"},503);
+   const url="https://server-onboarding-ochre.vercel.app/receiver.html#token="+encodeURIComponent(token);
+   return out({ok:true,receiver_invite_id:created.id,receiver_invite_url:url,expires_at:created.expires_at,
+    phone_hint:"ending in "+to.slice(-4),
+    invitation_text:"SERVER RECEIVER SETUP\n"+callerDisplayName+" invited this phone to receive Server internet calls.\nOpen this one-time setup link and tap Enable call alerts. No Server account, caller app, phone-number entry or SMS code is required on supported browsers.\n"+url,
+    carrier_sms_used:false});
+  }
   if(action==="realtime_token"){
    const requestedCallId=typeof b.call_id==="string"?b.call_id.trim():"";
    const channels=[userRealtimeChannel(uid)];
