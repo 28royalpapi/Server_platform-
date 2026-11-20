@@ -68,6 +68,11 @@ Deno.serve(async(req:Request)=>{
     typeof auth!=="string"||!/^[A-Za-z0-9_-]{16,80}$/.test(auth)||!/^[0-9a-f]{64}$/i.test(deviceSecret))
   return out({error:"RECEIVER_SUBSCRIPTION_INVALID"},400);
  const now=new Date().toISOString(),endpointHash=await sha(endpoint),secretHash=await sha(deviceSecret);
+ const {data:bound,error:boundError}=await db.from("server_guest_push_devices")
+  .select("phone_e164,receiver_secret_hash").eq("endpoint",endpoint).is("revoked_at",null).maybeSingle();
+ if(boundError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
+ if(bound?.receiver_secret_hash&&bound.phone_e164!==invite.phone_e164)
+  return out({error:"RECEIVER_DEVICE_ALREADY_BOUND",message:"This browser is already connected to Server for a different phone number."},409);
  if(invite.claimed_at){
   if(invite.claimed_endpoint_hash!==endpointHash)return out({error:"RECEIVER_INVITE_ALREADY_USED"},409);
   const {data:existing,error}=await db.from("server_guest_push_devices").select("id")
