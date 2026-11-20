@@ -17,6 +17,8 @@ assert.match(edge,/crypto\.subtle\.digest\("SHA-256"/);
 assert.match(edge,/\.is\("claimed_at",null\)/);
 assert.match(edge,/b\.consent!==true/);
 assert.match(edge,/receiver_secret_hash/);
+assert.match(edge,/RECEIVER_DEVICE_ALREADY_BOUND/);
+assert.match(edge,/ignoreDuplicates:true/);
 assert.match(edge,/action==="revoke"/);
 assert.match(edge,/server_guest_push_config/);
 assert.doesNotMatch(edge,/\.\/_shared\//);
