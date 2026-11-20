@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 const [migration,edge,calls,page,client,sw,manifest,android,config,pkg]=await Promise.all([
- readFile("supabase/migrations/20261120190000_server_receiver_persistent_enrolment.sql","utf8"),
+ readFile("supabase/migrations/20261120190906_server_receiver_persistent_enrolment.sql","utf8"),
  readFile("supabase/functions/server-receiver/index.ts","utf8"),
  readFile("supabase/functions/server-calls/index.ts","utf8"),
  readFile("web/receiver.html","utf8"),readFile("web/receiver.js","utf8"),
