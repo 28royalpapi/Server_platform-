@@ -2,7 +2,7 @@ name: Build Server native clients and emulator previews
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, android-finish]
     paths:
       - 'apps/android-caller/**'
       - 'apps/ios-caller/**'
