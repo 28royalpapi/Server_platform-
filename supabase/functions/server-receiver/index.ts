@@ -71,8 +71,8 @@ Deno.serve(async(req:Request)=>{
  const {data:bound,error:boundError}=await db.from("server_guest_push_devices")
   .select("phone_e164,receiver_secret_hash").eq("endpoint",endpoint).is("revoked_at",null).maybeSingle();
  if(boundError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
- if(bound?.receiver_secret_hash&&bound.phone_e164!==invite.phone_e164)
-  return out({error:"RECEIVER_DEVICE_ALREADY_BOUND",message:"This browser is already connected to Server for a different phone number."},409);
+ if(bound&&bound.phone_e164!==invite.phone_e164)
+  return out({error:"RECEIVER_DEVICE_ALREADY_BOUND",message:"This browser is already connected to Server for a different phone number. Turn off its existing receiver first, or use another browser."},409);
  if(invite.claimed_at){
   if(invite.claimed_endpoint_hash!==endpointHash)return out({error:"RECEIVER_INVITE_ALREADY_USED"},409);
   const {data:existing,error}=await db.from("server_guest_push_devices").select("id")
@@ -88,16 +88,30 @@ Deno.serve(async(req:Request)=>{
  }).eq("id",invite.id).is("claimed_at",null).is("revoked_at",null).gt("expires_at",now).select("id").maybeSingle();
  if(claimError)return out({error:"RECEIVER_CLAIM_FAILED"},503);
  if(!claimed)return out({error:"RECEIVER_INVITE_ALREADY_USED"},409);
- const expiry=Number(subscription.expirationTime);
- const expirationAt=Number.isFinite(expiry)&&expiry>0?new Date(expiry).toISOString():null;
- const {error:saveError}=await db.from("server_guest_push_devices").upsert({
-  phone_e164:invite.phone_e164,endpoint,p256dh,auth,expiration_at:expirationAt,
-  last_seen_at:now,updated_at:now,revoked_at:null,receiver_secret_hash:secretHash,receiver_invite_id:invite.id
- },{onConflict:"endpoint"});
- if(saveError){
+ const rollbackClaim=async()=>{
   await db.from("server_receiver_invites").update({claimed_at:null,claimed_endpoint_hash:null})
    .eq("id",invite.id).eq("claimed_endpoint_hash",endpointHash).eq("claimed_at",now);
-  return out({error:"RECEIVER_SUBSCRIPTION_SAVE_FAILED"},503);
+ };
+ const expiry=Number(subscription.expirationTime);
+ const expirationAt=Number.isFinite(expiry)&&expiry>0?new Date(expiry).toISOString():null;
+ // Insert without overwriting an existing endpoint. This also protects against
+ // two different number invitations being claimed on the same browser at once.
+ const {error:insertError}=await db.from("server_guest_push_devices").upsert({
+  phone_e164:invite.phone_e164,endpoint,p256dh,auth,expiration_at:expirationAt,
+  last_seen_at:now,updated_at:now,revoked_at:null
+ },{onConflict:"endpoint",ignoreDuplicates:true});
+ if(insertError){await rollbackClaim();return out({error:"RECEIVER_SUBSCRIPTION_SAVE_FAILED"},503);}
+ const {data:device,error:deviceError}=await db.from("server_guest_push_devices")
+  .select("id,phone_e164").eq("endpoint",endpoint).maybeSingle();
+ if(deviceError||!device){await rollbackClaim();return out({error:"RECEIVER_SUBSCRIPTION_LOOKUP_FAILED"},503);}
+ if(device.phone_e164!==invite.phone_e164){
+  await rollbackClaim();
+  return out({error:"RECEIVER_DEVICE_ALREADY_BOUND",message:"This browser is already connected to Server for a different phone number. Turn off its existing receiver first, or use another browser."},409);
  }
+ const {error:saveError}=await db.from("server_guest_push_devices").update({
+  p256dh,auth,expiration_at:expirationAt,last_seen_at:now,updated_at:now,revoked_at:null,
+  receiver_secret_hash:secretHash,receiver_invite_id:invite.id
+ }).eq("id",device.id).eq("phone_e164",invite.phone_e164);
+ if(saveError){await rollbackClaim();return out({error:"RECEIVER_SUBSCRIPTION_SAVE_FAILED"},503);}
  return out({ok:true,registered:true,phone_hint:phoneHint(invite.phone_e164)});
 });
