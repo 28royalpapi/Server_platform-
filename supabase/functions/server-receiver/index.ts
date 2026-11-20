@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
-import { getGuestPushVapidKeys } from "../_shared/guest_web_push.ts";
 const cors={"access-control-allow-origin":"*","access-control-allow-headers":"authorization,apikey,content-type","access-control-allow-methods":"POST,OPTIONS","content-type":"application/json; charset=utf-8","cache-control":"no-store"};
 const out=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:cors});
 const sha=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))).map(x=>x.toString(16).padStart(2,"0")).join("");
@@ -57,9 +56,9 @@ Deno.serve(async(req:Request)=>{
   expires_at:invite.expires_at,already_claimed:!!invite.claimed_at});
  if(action==="push_config"){
   if(invite.claimed_at)return out({error:"RECEIVER_INVITE_ALREADY_USED"},409);
-  const keys=await getGuestPushVapidKeys(db);
-  if(!keys)return out({error:"RECEIVER_PUSH_CONFIGURATION_UNAVAILABLE"},503);
-  return out({ok:true,vapid_public_key:keys.publicKey});
+  const {data:keys,error}=await db.from("server_guest_push_config").select("public_key").eq("id",1).maybeSingle();
+  if(error||!keys?.public_key)return out({error:"RECEIVER_PUSH_CONFIGURATION_UNAVAILABLE"},503);
+  return out({ok:true,vapid_public_key:keys.public_key});
  }
  if(action!=="claim")return out({error:"ACTION_NOT_SUPPORTED"},400);
  if(b.consent!==true)return out({error:"RECEIVER_CONSENT_REQUIRED"},400);
