@@ -242,6 +242,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     })
     callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
+    callPanel.addView(button("Connect this phone as a Server Receiver") { createReceiverInvite() }, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
 callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
@@ -624,6 +625,59 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
    * Shares a guest invitation through an app the caller already has.
    * Server does not silently send paid SMS or place a carrier voice call.
    */
+  /** Create a one-use receiver link bound to the number already entered by the caller. */
+  private fun createReceiverInvite(): Job = lifecycleScope.launch {
+    val rawTarget = targetInput.text.toString().trim()
+    if (Regex("^SVR-[0-9A-F]{10}$", RegexOption.IGNORE_CASE).matches(rawTarget)) {
+      setStatus("Enter the recipient's mobile number to create a Server Receiver invitation.", true)
+      return@launch
+    }
+    val number = normalizePhoneForServer(rawTarget)
+    if (number == null) {
+      setStatus("Enter a valid phone number, including its country code if needed. No invitation was created.", true)
+      return@launch
+    }
+    try {
+      setStatus("Preparing a secure Server Receiver link…")
+      val result = api("create_receiver_invite", JSONObject().put("to_phone", number))
+      val invitation = result.optString("invitation_text")
+      if (result.optBoolean("ok") != true || invitation.isBlank()) throw IllegalStateException("Server could not create the receiver link.")
+      shareReceiverInvitation(invitation, number)
+    } catch (error: Exception) {
+      val apiError = error as? ServerCallApiException
+      val message = when (apiError?.errorCode) {
+        "RECEIVER_INVITE_RATE_LIMITED" -> "Too many receiver links have been created recently. Please try again later."
+        "RECIPIENT_ALREADY_ON_SERVER" -> "This number is already registered as a discoverable Server user. Call their Server identity instead."
+        else -> "Could not create the Server Receiver link: " + error.message.orEmpty()
+      }
+      setStatus(message, true)
+    }
+  }
+
+  /** Shares a setup link; this does not send SMS or trigger a carrier call. */
+  private fun shareReceiverInvitation(body: String, recipientPhone: String) {
+    val share = Intent(Intent.ACTION_SEND).apply {
+      type = "text/plain"
+      putExtra(Intent.EXTRA_TEXT, body)
+    }
+    val chooser = Intent.createChooser(share, "Share Server Receiver setup")
+    AlertDialog.Builder(this)
+      .setTitle("Connect this phone to Server")
+      .setMessage("Share this one-time setup link with the person using " + mask(recipientPhone) +
+        ". They open it, confirm the number ending in " + recipientPhone.takeLast(4) +
+        ", and tap Enable call alerts. They do not need a Server account, the Server caller app, an SMS code or a phone-number form. Future Server calls can alert this phone when it has internet access.")
+      .setPositiveButton("Share setup link") { _, _ ->
+        try {
+          startActivity(chooser)
+          setStatus("Receiver setup link created. The recipient needs to open it once and enable call alerts.")
+        } catch (_: Exception) {
+          setStatus("The setup link was created, but Android could not open a sharing app.", true)
+        }
+      }
+      .setNegativeButton("Cancel", null)
+      .show()
+  }
+
   private fun shareGuestInvitation(body: String, recipientPhone: String) {
     val share = Intent(Intent.ACTION_SEND).apply {
       type = "text/plain"
