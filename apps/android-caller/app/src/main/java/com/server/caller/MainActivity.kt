@@ -811,6 +811,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         "pending" -> "AWAITING REGISTRATION"
         "expired" -> "NOT REGISTERED · invitation expired"
         "revoked" -> "DISCONNECTED · receiver turned off"
+        "needs_attention" -> "DEVICE NEEDS RECONNECTING · create a fresh setup link"
         else -> state.uppercase()
       }
       row.addView(TextView(this).apply {
