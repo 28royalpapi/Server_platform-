@@ -625,6 +625,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
    * Shares a guest invitation through an app the caller already has.
    * Server does not silently send paid SMS or place a carrier voice call.
    */
+  // Bulk setup and this backend registry are the one-time Receiver workflow.
   /** Receiver is enrolled once per number. The backend keeps the durable registry. */
   private fun showReceiverManager() {
     val content = LinearLayout(this).apply {
