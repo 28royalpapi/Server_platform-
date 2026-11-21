@@ -50,7 +50,7 @@ assert.match(client,/Add Server Receiver to your Home Screen/);
 assert.match(sw,/server-guest-shell-v3/);
 assert.match(sw,/receiver\.html/);
 assert.match(sw,/server_guest_incoming_call/);
-assert.match(android,/Connect this phone as a Server Receiver/);
+assert.match(android,/Manage Server Receivers/);
 assert.match(android,/create_receiver_invite/);
 assert.match(config,/\[functions\.server-receiver\]/);
 assert.equal(JSON.parse(manifest).start_url,"/receiver.html");
