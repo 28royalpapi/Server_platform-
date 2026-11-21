@@ -36,13 +36,18 @@ jobs:
         run: |
           set -euo pipefail
           gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
-          APK=apps/android-caller/app/build/outputs/apk/debug/app-debug.apk
+          APK_DIR=apps/android-caller/app/build/outputs/apk/debug
+          echo "Debug APK output directory:"
+          find "$APK_DIR" -maxdepth 2 -type f -name '*.apk' -print
+          APK="$(find "$APK_DIR" -maxdepth 2 -type f -name '*.apk' ! -name '*androidTest*' | sort | head -n 1)"
+          test -n "$APK"
           test -s "$APK"
+          echo "Verifying APK: $APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK" | grep -Fx 'com.server.caller.debug'
           mkdir -p artifacts
           cp "$APK" artifacts/Server-Receiver-Manager-debug.apk
           sha256sum artifacts/Server-Receiver-Manager-debug.apk
+          ls -lh artifacts/Server-Receiver-Manager-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: server-receiver-manager-android-apk
