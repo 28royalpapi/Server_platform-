@@ -242,6 +242,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     })
     callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
+    callPanel.addView(button("Manage Server Receivers") { showReceiverManager() }, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
 callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
@@ -624,6 +625,250 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
    * Shares a guest invitation through an app the caller already has.
    * Server does not silently send paid SMS or place a carrier voice call.
    */
+  // Bulk setup and this backend registry are the one-time Receiver workflow.
+  /** Receiver is enrolled once per number. The backend keeps the durable registry. */
+  private fun showReceiverManager() {
+    val content = LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      setPadding(dp(18), dp(12), dp(18), dp(8))
+    }
+    content.addView(TextView(this).apply {
+      text = "Add several people at once. Server creates one private setup link per number. Each person opens their own link once and taps Enable call alerts. When their phone is registered, you can call that number whenever you need to — you do not send Receiver setup again."
+      textSize = 13f
+      setTextColor(0xFF9AABBC.toInt())
+      setPadding(0, 0, 0, dp(14))
+    }, matchWrap())
+    content.addView(button("Add people as Receivers") { promptReceiverBatch() }, matchWrap())
+    content.addView(button("View my Receiver list") { loadReceiverRegistry() }, matchWrap())
+    AlertDialog.Builder(this)
+      .setTitle("Server Receivers")
+      .setView(content)
+      .setNegativeButton("Close", null)
+      .show()
+  }
+
+  private fun promptReceiverBatch() {
+    val numbersInput = EditText(this).apply {
+      hint = "One phone number per line\n+2348012345678\n+2348098765432"
+      setSingleLine(false)
+      minLines = 4
+      maxLines = 9
+      gravity = Gravity.TOP or Gravity.START
+      inputType = android.text.InputType.TYPE_CLASS_TEXT or
+        android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+        android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+      setTextColor(0xFFF3F7FB.toInt())
+      setHintTextColor(0xFF718096.toInt())
+      setPadding(dp(13), dp(12), dp(13), dp(12))
+      setBackgroundColor(0xFF1A2B3E.toInt())
+    }
+    val content = LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      setPadding(dp(18), dp(10), dp(18), dp(4))
+      addView(TextView(this@MainActivity).apply {
+        text = "Paste up to 20 numbers. Nigerian local numbers can be entered normally; Server normalises them before saving. Each invitation is unique to its recipient."
+        textSize = 12f
+        setTextColor(0xFF9AABBC.toInt())
+        setPadding(0, 0, 0, dp(12))
+      }, matchWrap())
+      addView(numbersInput, matchWrap())
+    }
+    AlertDialog.Builder(this)
+      .setTitle("Add Receiver numbers")
+      .setView(content)
+      .setNegativeButton("Cancel", null)
+      .setPositiveButton("Create invitations") { _, _ ->
+        val rawItems = numbersInput.text.toString()
+          .split(Regex("[,;\\n\\r]+"))
+          .map { it.trim() }
+          .filter { it.isNotBlank() }
+        val normalised = mutableListOf<String>()
+        var invalidCount = 0
+        rawItems.forEach { raw ->
+          val number = normalizePhoneForServer(raw)
+          if (number == null) invalidCount++ else normalised.add(number)
+        }
+        val uniqueNumbers = normalised.distinct()
+        when {
+          rawItems.isEmpty() -> setStatus("Enter at least one phone number.", true)
+          invalidCount > 0 -> setStatus("I could not recognise " + invalidCount + " number(s). Check the list and try again.", true)
+          uniqueNumbers.size > 20 -> setStatus("Add up to 20 recipients per batch.", true)
+          else -> createReceiverInvites(uniqueNumbers)
+        }
+      }
+      .show()
+  }
+
+  private fun createReceiverInvites(numbers: List<String>): Job = lifecycleScope.launch {
+    try {
+      setStatus("Checking your Receiver list and preparing individual links…")
+      val recipients = JSONArray()
+      numbers.forEach { recipients.put(it) }
+      val result = receiverApiAsync("create_invites", JSONObject().put("recipients", recipients))
+      if (result.optBoolean("ok") != true) throw IllegalStateException(result.optString("message", result.optString("error", "Receiver invitations could not be created.")))
+      showReceiverInvitationResults(result.optJSONArray("results") ?: JSONArray())
+      setStatus(
+        "Receiver check complete. " + result.optInt("registered_count") + " already registered; " +
+          result.optInt("invitation_count") + " new invitation(s) ready to share."
+      )
+    } catch (error: Exception) {
+      setStatus("Could not create Receiver invitations: " + error.message.orEmpty(), true)
+    }
+  }
+
+  private fun showReceiverInvitationResults(results: JSONArray) {
+    val content = LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      setPadding(dp(16), dp(10), dp(16), dp(6))
+    }
+    content.addView(TextView(this).apply {
+      text = "Share each invitation privately with the matching person. Do not put these individual links into a group chat. Registered people need no new setup link."
+      textSize = 12f
+      setTextColor(0xFF9AABBC.toInt())
+      setPadding(0, 0, 0, dp(12))
+    }, matchWrap())
+    for (index in 0 until results.length()) {
+      val item = results.optJSONObject(index) ?: continue
+      val number = item.optString("phone_e164")
+      val state = item.optString("status")
+      val row = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(12), dp(11), dp(12), dp(11))
+        setBackgroundColor(0xFF152334.toInt())
+      }
+      val label = when (state) {
+        "registered" -> "REGISTERED · ending " + number.takeLast(4) + " · ready to call"
+        "server_user" -> "SERVER MEMBER · ending " + number.takeLast(4) + " · use their Server identity"
+        "invitation_created" -> "SETUP LINK READY · ending " + number.takeLast(4)
+        else -> "NOT CREATED · ending " + number.takeLast(4) + " · " + item.optString("message")
+      }
+      row.addView(TextView(this).apply {
+        text = label
+        textSize = 12f
+        setTextColor(if (state == "registered") 0xFF8DE9B9.toInt() else 0xFFF3F7FB.toInt())
+      }, matchWrap())
+      if (state == "invitation_created") {
+        val invitation = item.optString("invitation_text")
+        row.addView(button("Share this person's setup link") {
+          shareReceiverInvitation(invitation, number)
+        }, matchWrap())
+      }
+      content.addView(row, matchWrap())
+    }
+    val scroll = ScrollView(this).apply { addView(content) }
+    AlertDialog.Builder(this)
+      .setTitle("Receiver invitations")
+      .setView(scroll)
+      .setPositiveButton("Done", null)
+      .show()
+  }
+
+  private fun loadReceiverRegistry() {
+    lifecycleScope.launch {
+      try {
+        setStatus("Loading your saved Server Receivers…")
+        val result = receiverApiAsync("list")
+        if (result.optBoolean("ok") != true) throw IllegalStateException(result.optString("message", result.optString("error", "Receiver list could not be loaded.")))
+        showReceiverRegistry(result.optJSONArray("receivers") ?: JSONArray())
+        setStatus(
+          result.optInt("registered_count").toString() + " registered · " +
+            result.optInt("pending_count") + " awaiting setup"
+        )
+      } catch (error: Exception) {
+        setStatus("Could not load your Receiver list: " + error.message.orEmpty(), true)
+      }
+    }
+  }
+
+  private fun showReceiverRegistry(receivers: JSONArray) {
+    val content = LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      setPadding(dp(16), dp(10), dp(16), dp(6))
+    }
+    content.addView(TextView(this).apply {
+      text = "This list is saved in Server's backend. A registered receiver remains available for later calls; setup invitations are only needed for numbers that have not completed registration."
+      textSize = 12f
+      setTextColor(0xFF9AABBC.toInt())
+      setPadding(0, 0, 0, dp(12))
+    }, matchWrap())
+    if (receivers.length() == 0) {
+      content.addView(TextView(this).apply {
+        text = "No receivers yet. Choose Add people as Receivers to start."
+        textSize = 13f
+        setTextColor(0xFFF3F7FB.toInt())
+      }, matchWrap())
+    }
+    for (index in 0 until receivers.length()) {
+      val item = receivers.optJSONObject(index) ?: continue
+      val number = item.optString("phone_e164")
+      val state = item.optString("status")
+      val row = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(12), dp(11), dp(12), dp(11))
+        setBackgroundColor(0xFF152334.toInt())
+      }
+      val statusLabel = when (state) {
+        "registered" -> "REGISTERED · ready for future Server calls"
+        "pending" -> "AWAITING REGISTRATION"
+        "expired" -> "NOT REGISTERED · invitation expired"
+        "revoked" -> "DISCONNECTED · receiver turned off"
+        "needs_attention" -> "DEVICE NEEDS RECONNECTING · create a fresh setup link"
+        else -> state.uppercase()
+      }
+      row.addView(TextView(this).apply {
+        text = mask(number) + "\n" + statusLabel +
+          (if (item.optInt("active_device_count") > 0) "\n" + item.optInt("active_device_count") + " active device(s)" else "")
+        textSize = 12f
+        setTextColor(if (state == "registered") 0xFF8DE9B9.toInt() else 0xFFF3F7FB.toInt())
+      }, matchWrap())
+      if (state != "registered") {
+        row.addView(button("Create a fresh setup link") {
+          createReceiverInvites(listOf(number))
+        }, matchWrap())
+      }
+      content.addView(row, matchWrap())
+    }
+    val scroll = ScrollView(this).apply { addView(content) }
+    AlertDialog.Builder(this)
+      .setTitle("My Server Receivers")
+      .setView(scroll)
+      .setPositiveButton("Close", null)
+      .show()
+  }
+
+  /** Open Android's normal share chooser directly; Server never sends carrier SMS. */
+  private fun shareReceiverInvitation(body: String, recipientPhone: String) {
+    val share = Intent(Intent.ACTION_SEND).apply {
+      type = "text/plain"
+      putExtra(Intent.EXTRA_TEXT, body)
+    }
+    try {
+      startActivity(Intent.createChooser(share, "Share Receiver link for " + mask(recipientPhone)))
+      setStatus("Share the Receiver link with this person. Their registration will appear in My Server Receivers after they enable alerts.")
+    } catch (_: Exception) {
+      setStatus("The invitation exists in Server, but Android could not open a sharing app.", true)
+    }
+  }
+
+  private suspend fun receiverApiAsync(action: String, payload: JSONObject = JSONObject()): JSONObject {
+    ensureFreshSession()
+    val requestBody = JSONObject(payload.toString()).put("action", action)
+    return try {
+      http("/functions/v1/server-receiver", requestBody, true)
+    } catch (error: ServerCallApiException) {
+      if (error.httpStatus != 401) throw error
+      val recovered = withContext(Dispatchers.IO) {
+        ServerDeviceSessionManager.ensureFresh(
+          this@MainActivity, accessToken, accessExpiry, prefs, forceRefresh = true
+        )
+      }
+      accessToken = recovered.accessToken
+      accessExpiry = recovered.expiresAtEpochSeconds
+      recovered.serverId?.let { currentServerId = it }
+      http("/functions/v1/server-receiver", requestBody, true)
+    }
+  }
+
   private fun shareGuestInvitation(body: String, recipientPhone: String) {
     val share = Intent(Intent.ACTION_SEND).apply {
       type = "text/plain"
