@@ -70,6 +70,7 @@ Deno.serve(async(req:Request)=>{
    const receivers=[...latest.values()].map((row:any)=>{
     const active=activeByPhone.get(row.phone_e164)||[];
     const status=active.length?"registered":row.revoked_at?"revoked":
+     row.claimed_at?"needs_attention":
      Date.parse(row.expires_at)<=Date.now()?"expired":"pending";
     const lastConnected=active.map((d:any)=>d.last_seen_at).filter(Boolean).sort().at(-1)||null;
     return {
@@ -81,7 +82,7 @@ Deno.serve(async(req:Request)=>{
    });
    return out({ok:true,receiver_count:receivers.length,
     registered_count:receivers.filter((r:any)=>r.status==="registered").length,
-    pending_count:receivers.filter((r:any)=>r.status==="pending").length,
+    pending_count:receivers.filter((r:any)=>r.status!=="registered").length,
     receivers});
   }
 
