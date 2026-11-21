@@ -174,8 +174,14 @@ Deno.serve(async(req:Request)=>{
   const secretHash=await sha(secret),now=new Date().toISOString();
   if(action==="revoke"){
    const {data,error}=await db.from("server_guest_push_devices").update({revoked_at:now,updated_at:now})
-    .eq("endpoint",endpoint).eq("receiver_secret_hash",secretHash).is("revoked_at",null).select("id").maybeSingle();
+    .eq("endpoint",endpoint).eq("receiver_secret_hash",secretHash).is("revoked_at",null)
+    .select("id,receiver_invite_id").maybeSingle();
    if(error)return out({error:"RECEIVER_REVOKE_FAILED"},503);
+   if(data?.receiver_invite_id){
+    const {error:inviteRevokeError}=await db.from("server_receiver_invites")
+     .update({revoked_at:now}).eq("id",data.receiver_invite_id).is("revoked_at",null);
+    if(inviteRevokeError)return out({error:"RECEIVER_REVOKE_SYNC_FAILED"},503);
+   }
    return out({ok:true,revoked:!!data});
   }
   if(action==="presence"){
