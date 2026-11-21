@@ -51,7 +51,7 @@ assert.match(sw,/server-guest-shell-v3/);
 assert.match(sw,/receiver\.html/);
 assert.match(sw,/server_guest_incoming_call/);
 assert.match(android,/Manage Server Receivers/);
-assert.match(android,/create_receiver_invite/);
+assert.match(android,/receiverApiAsync\("create_invites"/);
 assert.match(config,/\[functions\.server-receiver\]/);
 assert.equal(JSON.parse(manifest).start_url,"/receiver.html");
 assert.match(JSON.parse(pkg).scripts.check,/server-receiver-contract/);
