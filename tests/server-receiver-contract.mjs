@@ -78,7 +78,7 @@ assert.match(config,/\[functions\.server-receiver\]/);
 assert.equal(JSON.parse(manifest).start_url,"/receiver.html");
 assert.match(JSON.parse(pkg).scripts.check,/server-receiver-contract/);
 assert.match(android,/Invite from phone contacts/);
-assert.match(android,/ContactsContract\\.CommonDataKinds\\.Phone/);
+assert.match(android,/ContactsContract\.CommonDataKinds\.Phone/);
 assert.match(android,/showReceiverContactsPicker/);
 assert.match(android,/rememberReceiverContactNames/);
 console.log("PASS Server Receiver static contract — invite, consent, persistence, contacts, push reuse, revocation and Android caller entry point.");
