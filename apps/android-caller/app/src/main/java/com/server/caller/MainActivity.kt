@@ -763,7 +763,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
           }
           val check = android.widget.CheckBox(this).apply {
             isChecked = selected.contains(contact.phone)
-            text = contact.name + "\\n" + contact.phone
+            text = contact.name + "\n" + contact.phone
             textSize = 12f; setTextColor(0xFFF3F7FB.toInt())
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             setOnCheckedChangeListener { _, checked ->
@@ -796,6 +796,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         createReceiverInvites(numbers)
       }
     }
+    generate.isEnabled = false
     body.addView(generate, matchWrap())
     search.addTextChangedListener(object : TextWatcher {
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
