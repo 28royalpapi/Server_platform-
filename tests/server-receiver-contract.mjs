@@ -58,6 +58,8 @@ assert.doesNotMatch(edge,/\.\/_shared\//);
 assert.doesNotMatch(edge,/7\*24\*60\*60\*1000/);
 assert.match(edge,/const expiresAt=null/);
 assert.match(edge,/expires_at\.is\.null/);
+assert.ok(edge.includes('pending_count:receivers.filter((r:any)=>r.status==="pending").length'));
+assert.ok(edge.includes('attention_count:receivers.filter((r:any)=>["expired","revoked","needs_attention"].includes(r.status)).length'));
 assert.match(edge,/token_hash:await sha\(token\)/);
 assert.match(edge,/receiver\.html#token=/);
 assert.doesNotMatch(calls,/create_receiver_invite/);
