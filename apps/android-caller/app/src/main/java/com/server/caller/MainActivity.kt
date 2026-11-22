@@ -3,6 +3,7 @@ package com.server.caller
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.provider.ContactsContract
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -119,6 +120,11 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     // completed. Launching the chooser from a background Activity is blocked on
     // modern Android and some OEM builds.
     returnToSystemPhoneUi()
+  }
+
+  private val askReceiverContacts = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    if (granted) showReceiverContactsPicker()
+    else setStatus("Contacts permission was not granted. You can allow it in Android Settings and try again.", true)
   }
 
   private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -633,18 +639,177 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       setPadding(dp(18), dp(12), dp(18), dp(8))
     }
     content.addView(TextView(this).apply {
-      text = "Add several people at once. Server creates one private setup link per number. Each person opens their own link once and taps Enable call alerts. When their phone is registered, you can call that number whenever you need to — you do not send Receiver setup again."
+      text = "Choose people from your contacts or enter numbers manually. Server creates a private link for each person. Once connected, their status stays saved here and you do not invite them again."
       textSize = 13f
       setTextColor(0xFF9AABBC.toInt())
       setPadding(0, 0, 0, dp(14))
     }, matchWrap())
-    content.addView(button("Add people as Receivers") { promptReceiverBatch() }, matchWrap())
+    content.addView(button("Invite from phone contacts") { requestReceiverContacts() }, matchWrap())
+    content.addView(button("Enter phone numbers manually") { promptReceiverBatch() }, matchWrap())
     content.addView(button("View my Receiver list") { loadReceiverRegistry() }, matchWrap())
     AlertDialog.Builder(this)
       .setTitle("Server Receivers")
       .setView(content)
       .setNegativeButton("Close", null)
       .show()
+  }
+
+  private fun requestReceiverContacts() {
+    if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+      showReceiverContactsPicker()
+    } else {
+      askReceiverContacts.launch(Manifest.permission.READ_CONTACTS)
+    }
+  }
+
+  private data class ReceiverContactEntry(val name: String, val phone: String)
+
+  private fun readReceiverContactEntries(): List<ReceiverContactEntry> {
+    val projection = arrayOf(
+      ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+      ContactsContract.CommonDataKinds.Phone.NUMBER
+    )
+    val cursor = contentResolver.query(
+      ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+      projection, null, null,
+      ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC"
+    ) ?: return emptyList()
+    val contacts = linkedMapOf<String, ReceiverContactEntry>()
+    val region = ServerPhoneNumberNormalizer.deviceRegion(this)
+    cursor.use { rows ->
+      val nameIndex = rows.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+      val numberIndex = rows.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+      while (rows.moveToNext()) {
+        val name = rows.getString(nameIndex)?.trim().orEmpty()
+        val raw = rows.getString(numberIndex)?.trim().orEmpty()
+        val number = ServerPhoneNumberNormalizer.toE164(raw, region).orEmpty()
+        if (name.isNotBlank() && Regex("^\\+[1-9][0-9]{7,14}$").matches(number)) {
+          contacts.putIfAbsent(number, ReceiverContactEntry(name, number))
+        }
+      }
+    }
+    return contacts.values.toList()
+  }
+
+  private fun rememberReceiverContactNames(numbers: Collection<String>) {
+    try {
+      val contacts = readReceiverContactEntries().associateBy { it.phone }
+      val saved = JSONObject(prefs.getString("server_receiver_contact_names", "{}") ?: "{}")
+      numbers.forEach { number -> contacts[number]?.let { saved.put(number, it.name) } }
+      prefs.edit().putString("server_receiver_contact_names", saved.toString()).apply()
+    } catch (_: Exception) {
+      // The backend still persists connection status; contact labels remain local.
+    }
+  }
+
+  private fun receiverContactLabel(phone: String): String {
+    val name = try {
+      JSONObject(prefs.getString("server_receiver_contact_names", "{}") ?: "{}").optString(phone)
+    } catch (_: Exception) { "" }
+    return name.takeIf { it.isNotBlank() } ?: mask(phone)
+  }
+
+  private fun showReceiverContactsPicker() {
+    val contacts = try { readReceiverContactEntries() } catch (_: Exception) {
+      setStatus("Server could not read your contacts. Check the Android Contacts permission and try again.", true)
+      return
+    }
+    if (contacts.isEmpty()) {
+      setStatus("No contacts with valid phone numbers were found on this phone.", true)
+      return
+    }
+    val selected = linkedSetOf<String>()
+    val body = LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      setPadding(dp(16), dp(8), dp(16), dp(8))
+    }
+    body.addView(TextView(this).apply {
+      text = "Contact names stay on this phone. Only the numbers you invite are sent to Server."
+      textSize = 12f; setTextColor(0xFF9AABBC.toInt())
+    }, matchWrap())
+    val search = EditText(this).apply {
+      hint = "Search contacts"; setSingleLine(true)
+      setTextColor(0xFFF3F7FB.toInt()); setHintTextColor(0xFF718096.toInt())
+      setPadding(dp(12), dp(9), dp(12), dp(9)); setBackgroundColor(0xFF1A2B3E.toInt())
+    }
+    body.addView(search, matchWrap())
+    val count = TextView(this).apply {
+      text = "0 selected · up to 20 per batch"; textSize = 11f
+      setTextColor(0xFF9AABBC.toInt())
+    }
+    body.addView(count, matchWrap())
+    val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    body.addView(ScrollView(this).apply {
+      addView(rows)
+      layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(380))
+    })
+    lateinit var dialog: AlertDialog
+    lateinit var generate: Button
+    fun updateSelection() {
+      count.text = selected.size.toString() + " selected · up to 20 per batch"
+      generate.isEnabled = selected.isNotEmpty()
+    }
+    fun render(query: String) {
+      rows.removeAllViews()
+      val needle = query.trim().lowercase()
+      contacts.asSequence()
+        .filter { needle.isBlank() || (it.name + " " + it.phone).lowercase().contains(needle) }
+        .take(500)
+        .forEach { contact ->
+          val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+          }
+          val check = android.widget.CheckBox(this).apply {
+            isChecked = selected.contains(contact.phone)
+            text = contact.name + "\\n" + contact.phone
+            textSize = 12f; setTextColor(0xFFF3F7FB.toInt())
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnCheckedChangeListener { _, checked ->
+              if (checked && selected.size >= 20) {
+                isChecked = false
+                Toast.makeText(this@MainActivity, "Invite up to 20 people per batch.", Toast.LENGTH_SHORT).show()
+              } else {
+                if (checked) selected.add(contact.phone) else selected.remove(contact.phone)
+                updateSelection()
+              }
+            }
+          }
+          row.addView(check)
+          row.addView(Button(this).apply {
+            text = "Invite"; isAllCaps = false; textSize = 11f
+            setOnClickListener {
+              dialog.dismiss()
+              rememberReceiverContactNames(listOf(contact.phone))
+              createReceiverInvites(listOf(contact.phone))
+            }
+          }, LinearLayout.LayoutParams(dp(76), dp(42)))
+          rows.addView(row, matchWrap())
+        }
+    }
+    generate = button("Generate links for selected people") {
+      if (selected.isNotEmpty()) {
+        val numbers = selected.toList()
+        dialog.dismiss()
+        rememberReceiverContactNames(numbers)
+        createReceiverInvites(numbers)
+      }
+    }
+    body.addView(generate, matchWrap())
+    search.addTextChangedListener(object : TextWatcher {
+      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = render(s?.toString().orEmpty())
+      override fun afterTextChanged(s: Editable?) = Unit
+    })
+    render("")
+    dialog = AlertDialog.Builder(this)
+      .setTitle("Choose people to invite")
+      .setView(body)
+      .setNegativeButton("Close", null)
+      .create()
+    dialog.show()
+    search.requestFocus()
   }
 
   private fun promptReceiverBatch() {
@@ -702,6 +867,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
   private fun createReceiverInvites(numbers: List<String>): Job = lifecycleScope.launch {
     try {
       setStatus("Checking your Receiver list and preparing individual links…")
+      rememberReceiverContactNames(numbers)
       val recipients = JSONArray()
       numbers.forEach { recipients.put(it) }
       val result = receiverApiAsync("create_invites", JSONObject().put("recipients", recipients))
@@ -736,11 +902,12 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         setPadding(dp(12), dp(11), dp(12), dp(11))
         setBackgroundColor(0xFF152334.toInt())
       }
+      val contactName = receiverContactLabel(number)
       val label = when (state) {
-        "registered" -> "REGISTERED · ending " + number.takeLast(4) + " · ready to call"
-        "server_user" -> "SERVER MEMBER · ending " + number.takeLast(4) + " · use their Server identity"
-        "invitation_created" -> "SETUP LINK READY · ending " + number.takeLast(4)
-        else -> "NOT CREATED · ending " + number.takeLast(4) + " · " + item.optString("message")
+        "registered" -> contactName + " · CONNECTED · ready to call"
+        "server_user" -> contactName + " · SERVER MEMBER · use their Server identity"
+        "invitation_created" -> contactName + " · SETUP LINK READY"
+        else -> contactName + " · NOT CREATED · " + item.optString("message")
       }
       row.addView(TextView(this).apply {
         text = label
@@ -816,7 +983,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         else -> state.uppercase()
       }
       row.addView(TextView(this).apply {
-        text = mask(number) + "\n" + statusLabel +
+        text = receiverContactLabel(number) + "\n" + statusLabel +
           (if (item.optInt("active_device_count") > 0) "\n" + item.optInt("active_device_count") + " active device(s)" else "")
         textSize = 12f
         setTextColor(if (state == "registered") 0xFF8DE9B9.toInt() else 0xFFF3F7FB.toInt())
