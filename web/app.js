@@ -304,6 +304,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   const receiverContactsButton = document.querySelector("#load-receiver-contacts");
   const receiverRefreshButton = document.querySelector("#refresh-receiver-list");
   const receiverContactsEl = document.querySelector("#receiver-contacts");
+  const receiverContactSearch = document.querySelector("#receiver-contact-search");
   const receiverStatusEl = document.querySelector("#receiver-management-status");
   const receiverSelectionCount = document.querySelector("#receiver-selection-count");
   const receiverInviteSelectedButton = document.querySelector("#invite-selected-receivers");
@@ -332,7 +333,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
   function loadSavedReceiverNames() {
     try {
       const parsed = JSON.parse(localStorage.getItem(receiverNamesStorageKey) || "[]");
-      return Array.isArray(parsed) ? parsed.filter((item) => item && /^\\+[1-9][0-9]{7,14}$/.test(item.phone_e164 || "") && typeof item.name === "string") : [];
+      return Array.isArray(parsed) ? parsed.filter((item) => item && /^\+[1-9][0-9]{7,14}$/.test(item.phone_e164 || "") && typeof item.name === "string") : [];
     } catch { return []; }
   }
   function saveReceiverNames() {
@@ -367,6 +368,13 @@ if (isNativeSetup && nativeSetup && stepForm) {
       ? [...receiverContactsEl.querySelectorAll("input[data-receiver-phone]:checked")].map((control) => control.dataset.receiverPhone).filter(Boolean)
       : [];
   }
+  function applyReceiverContactFilter() {
+    const query = String(receiverContactSearch && receiverContactSearch.value || "").trim().toLowerCase();
+    if (!receiverContactsEl) return;
+    for (const row of receiverContactsEl.querySelectorAll(".receiver-contact-row")) {
+      row.hidden = !!query && !String(row.dataset.search || "").includes(query);
+    }
+  }
   function updateReceiverSelection() {
     const count = selectedReceiverNumbers().length;
     if (receiverSelectionCount) receiverSelectionCount.textContent = count + (count === 1 ? " person selected" : " people selected") + (count >= 20 ? " · maximum per batch reached" : "");
@@ -389,11 +397,12 @@ if (isNativeSetup && nativeSetup && stepForm) {
       const saved = receiverPendingLinks.find((item) => item.phone_e164 === contact.phone_e164);
       const row = document.createElement("div");
       row.className = "receiver-contact-row";
+      row.dataset.search = (contact.name + " " + contact.phone_e164).toLowerCase();
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.className = "receiver-contact-check";
       checkbox.dataset.receiverPhone = contact.phone_e164;
-      checkbox.disabled = state === "registered" || (!!saved && state === "pending") || receiverInviteBusy;
+      checkbox.disabled = state === "registered" || (!!saved && (state === "pending" || state === "")) || receiverInviteBusy;
       checkbox.addEventListener("change", updateReceiverSelection);
       const copy = document.createElement("div");
       copy.className = "receiver-contact-copy";
@@ -408,10 +417,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
         tag.className = "receiver-status";
         tag.textContent = "CONNECTED";
         row.append(tag);
-      } else if (saved && state === "pending") {
+      } else if (saved && (state === "pending" || state === "")) {
         const tag = document.createElement("span");
         tag.className = "receiver-status pending";
-        tag.textContent = "AWAITING CONNECTION";
+        tag.textContent = state === "pending" ? "AWAITING CONNECTION" : "LINK READY";
         row.append(tag, receiverButton("Share existing link", () => shareReceiverLink(saved)));
       } else {
         const actionLabel = state === "pending" || state === "needs_attention" || state === "revoked" || state === "expired" ? "Create new link" : "Invite";
@@ -419,17 +428,18 @@ if (isNativeSetup && nativeSetup && stepForm) {
       }
       receiverContactsEl.append(row);
     }
+    applyReceiverContactFilter();
     updateReceiverSelection();
   }
   function shareReceiverLink(item) {
-    if (!(!item || !item.invitation_text) || !window.ServerAndroid || typeof window.ServerAndroid.shareReceiverInvitation !== "function") {
+    if (!item || !item.invitation_text || !window.ServerAndroid || typeof window.ServerAndroid.shareReceiverInvitation !== "function") {
       receiverStatus("The saved link is unavailable on this device. Create a replacement link to continue.");
       return;
     }
     window.ServerAndroid.shareReceiverInvitation(item.invitation_text, item.name || receiverContactName(item.phone_e164));
   }
   function copyReceiverLink(item) {
-    if (!(!item || !item.invitation_url) || !window.ServerAndroid || typeof window.ServerAndroid.copyReceiverInvitation !== "function") {
+    if (!item || !item.invitation_url || !window.ServerAndroid || typeof window.ServerAndroid.copyReceiverInvitation !== "function") {
       receiverStatus("The secure setup link could not be copied on this device.");
       return;
     }
@@ -604,6 +614,7 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.loadReceiverContacts();
   });
   receiverRefreshButton && receiverRefreshButton.addEventListener("click", refreshReceiverRegistry);
+  receiverContactSearch && receiverContactSearch.addEventListener("input", applyReceiverContactFilter);
   receiverInviteSelectedButton && receiverInviteSelectedButton.addEventListener("click", () => {
     createReceiverInvitations(selectedReceiverNumbers());
   });

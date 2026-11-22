@@ -409,31 +409,48 @@ class ServerSetupWebActivity : Activity() {
     }
   }
 
-  /** Authenticated calls to the Receiver API, using the existing Server device session. */
+  /** Authenticated Receiver access; recover the same device identity if its session expires. */
   private fun requestServerReceiver(body: JSONObject, accessToken: String): JSONObject {
-    val url = BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-receiver"
-    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-      requestMethod = "POST"
-      connectTimeout = 15000
-      readTimeout = 20000
-      doOutput = true
-      setRequestProperty("content-type", "application/json")
-      setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-      setRequestProperty("x-server-session-token", accessToken)
+    fun send(token: String): JSONObject {
+      val url = BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-receiver"
+      val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 15000
+        readTimeout = 20000
+        doOutput = true
+        setRequestProperty("content-type", "application/json")
+        setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+        setRequestProperty("x-server-session-token", token)
+      }
+      return try {
+        conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        val status = conn.responseCode
+        val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+        val text = stream?.use { input -> BufferedReader(InputStreamReader(input)).readText() }.orEmpty()
+        val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
+        if (status !in 200..299) {
+          if (result.optString("error").isBlank()) result.put("error", "HTTP_" + status)
+          result.put("ok", false)
+        }
+        result.put("http_status", status)
+      } finally {
+        conn.disconnect()
+      }
     }
     return try {
-      conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-      val status = conn.responseCode
-      val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-      val text = stream?.use { input -> BufferedReader(InputStreamReader(input)).readText() }.orEmpty()
-      val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
-      if (status !in 200..299) {
-        if (result.optString("error").isBlank()) result.put("error", "HTTP_" + status)
-        result.put("ok", false)
+      val session = ServerDeviceSessionManager.ensureFresh(
+        this, accessToken, prefs.getLong("access_expiry", 0L), prefs
+      )
+      var result = send(session.accessToken)
+      if (result.optInt("http_status") == 401) {
+        val restored = ServerDeviceSessionManager.ensureFresh(
+          this, session.accessToken, prefs.getLong("access_expiry", 0L), prefs, forceRefresh = true
+        )
+        result = send(restored.accessToken)
       }
-      result.put("http_status", status)
-    } finally {
-      conn.disconnect()
+      result
+    } catch (error: Exception) {
+      JSONObject().put("ok", false).put("error", error.message ?: "SERVER_SESSION_UNAVAILABLE")
     }
   }
 

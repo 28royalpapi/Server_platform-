@@ -59,3 +59,8 @@
 .receiver-link-actions{display:flex;gap:8px;width:100%}
 .receiver-link-actions button{flex:1}
 @media(max-width:480px){.receiver-toolbar{grid-template-columns:1fr}.receiver-contact-row,.receiver-registry-row{align-items:flex-start;flex-wrap:wrap}.receiver-row-action{margin-left:auto}.receiver-registry-heading{align-items:flex-start;flex-direction:column;gap:4px}}
+
+.receiver-contact-search{display:block;width:100%;box-sizing:border-box;margin:8px 0 12px;padding:12px 13px;border:1px solid #31513f;border-radius:10px;background:#091711;color:#eaf8ef;font:inherit;font-size:12px;outline:none}
+.receiver-contact-search::placeholder{color:#789286}
+.receiver-contact-search:focus{border-color:#76c99a}
+.receiver-contact-row[hidden]{display:none}
