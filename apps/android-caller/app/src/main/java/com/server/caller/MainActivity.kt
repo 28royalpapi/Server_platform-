@@ -720,30 +720,30 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
     receiverContactNameCache = contacts.associate { it.phone to it.name }
     if (contacts.isEmpty()) {
       setStatus("No contacts with valid phone numbers were found on this phone.", true)
-      return
+      return@launch
     }
     val selected = linkedSetOf<String>()
-    val body = LinearLayout(this).apply {
+    val body = LinearLayout(this@MainActivity).apply {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(16), dp(8), dp(16), dp(8))
     }
-    body.addView(TextView(this).apply {
+    body.addView(TextView(this@MainActivity).apply {
       text = "Contact names stay on this phone. Only the numbers you invite are sent to Server."
       textSize = 12f; setTextColor(0xFF9AABBC.toInt())
     }, matchWrap())
-    val search = EditText(this).apply {
+    val search = EditText(this@MainActivity).apply {
       hint = "Search contacts"; setSingleLine(true)
       setTextColor(0xFFF3F7FB.toInt()); setHintTextColor(0xFF718096.toInt())
       setPadding(dp(12), dp(9), dp(12), dp(9)); setBackgroundColor(0xFF1A2B3E.toInt())
     }
     body.addView(search, matchWrap())
-    val count = TextView(this).apply {
+    val count = TextView(this@MainActivity).apply {
       text = "0 selected · up to 20 per batch"; textSize = 11f
       setTextColor(0xFF9AABBC.toInt())
     }
     body.addView(count, matchWrap())
-    val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-    body.addView(ScrollView(this).apply {
+    val rows = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+    body.addView(ScrollView(this@MainActivity).apply {
       addView(rows)
       layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(380))
     })
@@ -760,12 +760,12 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         .filter { needle.isBlank() || (it.name + " " + it.phone).lowercase().contains(needle) }
         .take(500)
         .forEach { contact ->
-          val row = LinearLayout(this).apply {
+          val row = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), dp(4), dp(4), dp(4))
           }
-          val check = android.widget.CheckBox(this).apply {
+          val check = android.widget.CheckBox(this@MainActivity).apply {
             isChecked = selected.contains(contact.phone)
             text = contact.name + "\n" + contact.phone
             textSize = 12f; setTextColor(0xFFF3F7FB.toInt())
@@ -781,7 +781,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
             }
           }
           row.addView(check)
-          row.addView(Button(this).apply {
+          row.addView(Button(this@MainActivity).apply {
             text = "Invite"; isAllCaps = false; textSize = 11f
             setOnClickListener {
               dialog?.dismiss()
@@ -809,7 +809,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       override fun afterTextChanged(s: Editable?) = Unit
     })
     render("")
-    dialog = AlertDialog.Builder(this)
+    dialog = AlertDialog.Builder(this@MainActivity)
       .setTitle("Choose people to invite")
       .setView(body)
       .setNegativeButton("Close", null)
