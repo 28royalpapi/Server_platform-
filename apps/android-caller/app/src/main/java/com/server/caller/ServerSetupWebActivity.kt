@@ -377,7 +377,6 @@ class ServerSetupWebActivity : Activity() {
       return JSONObject().put("ok", false).put("error", "CONTACTS_PERMISSION_DENIED")
     }
     return try {
-      val contactPhone = ContactsContract.CommonDataKinds.Phone
       val projection = arrayOf(
         ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
         ContactsContract.CommonDataKinds.Phone.NUMBER
