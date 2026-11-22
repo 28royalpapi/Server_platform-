@@ -82,7 +82,8 @@ Deno.serve(async(req:Request)=>{
    });
    return out({ok:true,receiver_count:receivers.length,
     registered_count:receivers.filter((r:any)=>r.status==="registered").length,
-    pending_count:receivers.filter((r:any)=>r.status!=="registered").length,
+    pending_count:receivers.filter((r:any)=>r.status==="pending").length,
+    attention_count:receivers.filter((r:any)=>["expired","revoked","needs_attention"].includes(r.status)).length,
     receivers});
   }
 
