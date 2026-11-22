@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
   private var refreshToken: String? = null
   private var accessExpiry: Long = 0
   private var currentPhone = ""
+  private var receiverContactNameCache: Map<String, String> = emptyMap()
 
   private var currentServerId = ""
   private var callId: String? = null
@@ -693,9 +694,8 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
 
   private fun rememberReceiverContactNames(numbers: Collection<String>) {
     try {
-      val contacts = readReceiverContactEntries().associateBy { it.phone }
       val saved = JSONObject(prefs.getString("server_receiver_contact_names", "{}") ?: "{}")
-      numbers.forEach { number -> contacts[number]?.let { saved.put(number, it.name) } }
+      numbers.forEach { number -> receiverContactNameCache[number]?.let { saved.put(number, it) } }
       prefs.edit().putString("server_receiver_contact_names", saved.toString()).apply()
     } catch (_: Exception) {
       // The backend still persists connection status; contact labels remain local.
@@ -710,10 +710,14 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
   }
 
   private fun showReceiverContactsPicker() {
-    val contacts = try { readReceiverContactEntries() } catch (_: Exception) {
+    lifecycleScope.launch {
+    val contacts = try {
+      withContext(Dispatchers.IO) { readReceiverContactEntries() }
+    } catch (_: Exception) {
       setStatus("Server could not read your contacts. Check the Android Contacts permission and try again.", true)
-      return
+      return@launch
     }
+    receiverContactNameCache = contacts.associate { it.phone to it.name }
     if (contacts.isEmpty()) {
       setStatus("No contacts with valid phone numbers were found on this phone.", true)
       return
@@ -812,6 +816,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       .create()
     dialog?.show()
     search.requestFocus()
+    }
   }
 
   private fun promptReceiverBatch() {
