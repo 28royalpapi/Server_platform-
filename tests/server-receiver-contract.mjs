@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,config,pkg]=await Promise.all([
+const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,onboarding,onboardingApp,config,pkg]=await Promise.all([
  readFile("supabase/migrations/20261120190906_server_receiver_persistent_enrolment.sql","utf8"),
  readFile("supabase/migrations/20261122080000_server_receiver_invites_do_not_expire.sql","utf8"),
  readFile("supabase/functions/server-receiver/index.ts","utf8"),
@@ -9,6 +9,7 @@ const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,se
  readFile("web/server-guest-sw.js","utf8"),readFile("web/receiver.webmanifest","utf8"),
  readFile("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt","utf8"),
  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt","utf8"),
+ readFile("web/index.html","utf8"),readFile("web/app.js","utf8"),
  readFile("supabase/config.toml","utf8"),readFile("package.json","utf8")
 ]);
 assert.match(migration,/create table if not exists public\.server_receiver_invites/i);
@@ -39,6 +40,16 @@ assert.match(setup,/loadReceiverContacts/);
 assert.match(setup,/ContactsContract\.CommonDataKinds\.Phone/);
 assert.match(setup,/createReceiverInvitations/);
 assert.match(setup,/REQUEST_RECEIVER_CONTACTS/);
+assert.match(setup,/requestServerReceiver/);
+assert.match(setup,/copyReceiverInvitation/);
+assert.match(onboarding,/id="receiver-onboarding"/);
+assert.match(onboarding,/Show my contacts/);
+assert.match(onboarding,/invite-selected-receivers/);
+assert.match(onboardingApp,/onServerReceiverContactsResult/);
+assert.match(onboardingApp,/onServerReceiverRegistryResult/);
+assert.match(onboardingApp,/Share existing link/);
+assert.match(onboardingApp,/Generate links for selected people/);
+assert.doesNotMatch(setup,/needed\.add\(Manifest\.permission\.READ_CONTACTS\)/);
 assert.match(android,/receiverApiAsync\("create_invites"/);
 assert.match(android,/receiverApiAsync\("list"/);
 assert.match(calls,/const guestPush=await sendGuestBrowserPush\(db,to/);

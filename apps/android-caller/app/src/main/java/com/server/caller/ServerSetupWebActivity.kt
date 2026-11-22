@@ -9,6 +9,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.ContactsContract
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.webkit.JavascriptInterface
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -212,6 +215,13 @@ class ServerSetupWebActivity : Activity() {
         val contactsGranted = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, false, $contactsGranted)")
       }
+      REQUEST_RECEIVER_CONTACTS -> {
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+          Thread { callbackToWebsite("onServerReceiverContactsResult", readReceiverContacts()) }.start()
+        } else {
+          callbackToWebsite("onServerReceiverContactsResult", JSONObject().put("ok", false).put("error", "CONTACTS_PERMISSION_DENIED"))
+        }
+      }
       REQUEST_PLATFORM_GATEWAY -> {
         val phoneStateGranted = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
         val smsGranted = checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
@@ -361,6 +371,73 @@ class ServerSetupWebActivity : Activity() {
     runJs("window.$name && window.$name($result)")
   }
 
+  /** Read display names and phone numbers only; contact data is never uploaded. */
+  private fun readReceiverContacts(): JSONObject {
+    if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+      return JSONObject().put("ok", false).put("error", "CONTACTS_PERMISSION_DENIED")
+    }
+    return try {
+      val contactPhone = ContactsContract.CommonDataKinds.Phone
+      val projection = arrayOf(
+        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+        ContactsContract.CommonDataKinds.Phone.NUMBER
+      )
+      val cursor = contentResolver.query(
+        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+        projection,
+        null,
+        null,
+        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC"
+      ) ?: return JSONObject().put("ok", false).put("error", "CONTACTS_READ_UNAVAILABLE")
+      val contacts = org.json.JSONArray()
+      val seenNumbers = HashSet<String>()
+      val region = ServerPhoneNumberNormalizer.deviceRegion(this)
+      cursor.use { rows ->
+        val nameIndex = rows.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+        val numberIndex = rows.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+        while (rows.moveToNext()) {
+          val displayName = rows.getString(nameIndex)?.trim().orEmpty()
+          val rawNumber = rows.getString(numberIndex)?.trim().orEmpty()
+          val e164 = ServerPhoneNumberNormalizer.toE164(rawNumber, region).orEmpty()
+          if (displayName.isNotBlank() && Regex("^\\+[1-9][0-9]{7,14}$").matches(e164) && seenNumbers.add(e164)) {
+            contacts.put(JSONObject().put("name", displayName).put("phone_e164", e164))
+          }
+        }
+      }
+      JSONObject().put("ok", true).put("contacts", contacts).put("contact_count", contacts.length())
+    } catch (_: Exception) {
+      JSONObject().put("ok", false).put("error", "CONTACTS_READ_UNAVAILABLE")
+    }
+  }
+
+  /** Authenticated calls to the Receiver API, using the existing Server device session. */
+  private fun requestServerReceiver(body: JSONObject, accessToken: String): JSONObject {
+    val url = BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-receiver"
+    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+      requestMethod = "POST"
+      connectTimeout = 15000
+      readTimeout = 20000
+      doOutput = true
+      setRequestProperty("content-type", "application/json")
+      setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+      setRequestProperty("x-server-session-token", accessToken)
+    }
+    return try {
+      conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+      val status = conn.responseCode
+      val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+      val text = stream?.use { input -> BufferedReader(InputStreamReader(input)).readText() }.orEmpty()
+      val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
+      if (status !in 200..299) {
+        if (result.optString("error").isBlank()) result.put("error", "HTTP_" + status)
+        result.put("ok", false)
+      }
+      result.put("http_status", status)
+    } finally {
+      conn.disconnect()
+    }
+  }
+
   private fun registerDevice(displayName: String, acceptedTerms: Boolean): JSONObject {
     val normalizedDisplayName = displayName.trim().replace(Regex("\\s+"), " ")
     if (normalizedDisplayName.length !in 2..60 || normalizedDisplayName.any { it.isISOControl() || it == '<' || it == '>' }) {
@@ -431,7 +508,6 @@ class ServerSetupWebActivity : Activity() {
       runOnUiThread {
         val needed = arrayListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.RECORD_AUDIO)
-        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_CONTACTS)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
           needed.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -449,6 +525,90 @@ class ServerSetupWebActivity : Activity() {
         raw,
         ServerPhoneNumberNormalizer.deviceRegion(this@ServerSetupWebActivity)
       ).orEmpty()
+
+    @JavascriptInterface fun loadReceiverContacts() {
+      runOnUiThread {
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+          requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), REQUEST_RECEIVER_CONTACTS)
+        } else {
+          Thread { callbackToWebsite("onServerReceiverContactsResult", readReceiverContacts()) }.start()
+        }
+      }
+    }
+
+    @JavascriptInterface fun createReceiverInvitations(recipientsJson: String) {
+      Thread {
+        val result = try {
+          val parsed = org.json.JSONArray(recipientsJson)
+          if (parsed.length() !in 1..20) throw IllegalArgumentException("Select between 1 and 20 people.")
+          val recipients = org.json.JSONArray()
+          val seen = HashSet<String>()
+          for (index in 0 until parsed.length()) {
+            val phone = parsed.optString(index).trim()
+            if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(phone)) {
+              throw IllegalArgumentException("A selected contact has an invalid phone number. Review the contact and try again.")
+            }
+            if (!seen.add(phone)) throw IllegalArgumentException("The selected contacts contain the same phone number more than once.")
+            recipients.put(phone)
+          }
+          val session = prefs.getString("access_token", null).orEmpty()
+          if (!Regex("^[0-9a-f]{64}$").matches(session)) {
+            JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+          } else {
+            requestServerReceiver(JSONObject().put("action", "create_invites").put("recipients", recipients), session)
+          }
+        } catch (error: Exception) {
+          JSONObject().put("ok", false).put("error", error.message ?: "RECEIVER_INVITATIONS_INVALID")
+        }
+        callbackToWebsite("onServerReceiverInvitesResult", result)
+      }.start()
+    }
+
+    @JavascriptInterface fun listServerReceivers() {
+      Thread {
+        val session = prefs.getString("access_token", null).orEmpty()
+        val result = if (!Regex("^[0-9a-f]{64}$").matches(session)) {
+          JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+        } else try {
+          requestServerReceiver(JSONObject().put("action", "list"), session)
+        } catch (_: Exception) {
+          JSONObject().put("ok", false).put("error", "RECEIVER_REGISTRY_UNAVAILABLE")
+        }
+        callbackToWebsite("onServerReceiverRegistryResult", result)
+      }.start()
+    }
+
+    @JavascriptInterface fun shareReceiverInvitation(invitationText: String, recipientLabel: String) {
+      val trustedUrl = Regex("https://server-onboarding-ochre\\.vercel\\.app/receiver\\.html#token=[0-9a-f]{64}")
+      if (!trustedUrl.containsMatchIn(invitationText) || invitationText.length > 2000) {
+        runOnUiThread { Toast.makeText(this@ServerSetupWebActivity, "The Receiver link is invalid. Generate a new link from Server.", Toast.LENGTH_LONG).show() }
+        return
+      }
+      runOnUiThread {
+        val share = Intent(Intent.ACTION_SEND).apply {
+          type = "text/plain"
+          putExtra(Intent.EXTRA_TEXT, invitationText)
+        }
+        try {
+          startActivity(Intent.createChooser(share, "Share Server Receiver link for " + recipientLabel.take(50)))
+        } catch (_: Exception) {
+          Toast.makeText(this@ServerSetupWebActivity, "No sharing app is available on this phone.", Toast.LENGTH_LONG).show()
+        }
+      }
+    }
+
+    @JavascriptInterface fun copyReceiverInvitation(invitationUrl: String) {
+      val trustedUrl = Regex("^https://server-onboarding-ochre\\.vercel\\.app/receiver\\.html#token=[0-9a-f]{64}$")
+      if (!trustedUrl.matches(invitationUrl)) {
+        runOnUiThread { Toast.makeText(this@ServerSetupWebActivity, "The Receiver link is invalid.", Toast.LENGTH_LONG).show() }
+        return
+      }
+      runOnUiThread {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Server Receiver invitation", invitationUrl))
+        Toast.makeText(this@ServerSetupWebActivity, "Private Receiver link copied.", Toast.LENGTH_SHORT).show()
+      }
+    }
 
     @JavascriptInterface fun completeSetup(displayName: String, acceptedTerms: Boolean) {
       Thread {
@@ -579,6 +739,7 @@ class ServerSetupWebActivity : Activity() {
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
     private const val REQUEST_CALL = 5102
+    private const val REQUEST_RECEIVER_CONTACTS = 5103
     private const val REQUEST_PLATFORM_GATEWAY = 5104
   }
 }
