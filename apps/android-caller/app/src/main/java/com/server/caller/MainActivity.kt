@@ -743,11 +743,11 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       addView(rows)
       layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(380))
     })
-    lateinit var dialog: AlertDialog
-    lateinit var generate: Button
+    var dialog: AlertDialog? = null
+    var generateButton: Button? = null
     fun updateSelection() {
       count.text = selected.size.toString() + " selected · up to 20 per batch"
-      generate.isEnabled = selected.isNotEmpty()
+      generateButton?.isEnabled = selected.isNotEmpty()
     }
     fun render(query: String) {
       rows.removeAllViews()
@@ -780,7 +780,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
           row.addView(Button(this).apply {
             text = "Invite"; isAllCaps = false; textSize = 11f
             setOnClickListener {
-              dialog.dismiss()
+              dialog?.dismiss()
               rememberReceiverContactNames(listOf(contact.phone))
               createReceiverInvites(listOf(contact.phone))
             }
@@ -788,15 +788,16 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
           rows.addView(row, matchWrap())
         }
     }
-    generate = button("Generate links for selected people") {
+    val generate = button("Generate links for selected people") {
       if (selected.isNotEmpty()) {
         val numbers = selected.toList()
-        dialog.dismiss()
+        dialog?.dismiss()
         rememberReceiverContactNames(numbers)
         createReceiverInvites(numbers)
       }
     }
     generate.isEnabled = false
+    generateButton = generate
     body.addView(generate, matchWrap())
     search.addTextChangedListener(object : TextWatcher {
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -809,7 +810,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       .setView(body)
       .setNegativeButton("Close", null)
       .create()
-    dialog.show()
+    dialog?.show()
     search.requestFocus()
   }
 
