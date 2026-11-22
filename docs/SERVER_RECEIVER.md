@@ -3,8 +3,8 @@
 Server Receiver lets a non-member enrol one phone once to receive incoming Server internet calls without creating a Server caller account or installing the caller APK.
 
 ## Flow
-1. A signed-in Server caller opens **Manage Server Receivers**, pastes up to 20 phone numbers (one per line), and asks Server to create their individual setup links.
-2. Server creates a random one-use invitation. Only its SHA-256 hash is stored. It expires after seven days and is shared through the Android Sharesheet; Server does not send SMS.
+1. After creating a Server identity, the caller opens **Connect people to Server** directly inside the same onboarding screen and chooses contacts from the phone address book.
+2. Contact names and numbers remain on the phone until the caller explicitly invites a person. Server receives only the selected E.164 phone numbers, then creates one random, private, one-use link per person. Only each SHA-256 hash is stored. Pending links do not expire; they remain valid until claimed or revoked.
 3. The caller shares each person's unique link privately with that person. The recipient opens it. The number is already bound to the invitation; the page displays only its final four digits. No number form, OTP, password or Server account is required.
 4. They tap **Enable call alerts** and grant browser notification permission. The page creates a Web Push subscription and random per-device management secret.
 5. The backend atomically claims the invitation and stores the number, push endpoint, encryption keys, expiry, invite ID and hashed management secret in the existing \`server_guest_push_devices\` table.
@@ -15,11 +15,11 @@ Server Receiver lets a non-member enrol one phone once to receive incoming Serve
 - \`server_guest_push_devices\`: existing shared push registry, extended with \`receiver_invite_id\` and \`receiver_secret_hash\`. Existing guest-browser rows and delivery logic are preserved.
 - \`server_guest_push_config\`: existing VAPID keypair. No new push provider is introduced.
 
-The receiver API never returns the full destination number. It requires explicit consent, validates push endpoint hosts, and stores only hashes of invitation and device-management secrets. The registered device can revoke its receiver. The caller's **My Server Receivers** list reads the same backend records and reports registered, awaiting setup, expired or disconnected status.
+The receiver API never returns the full destination number in its public setup flow. It requires explicit recipient consent, validates push endpoint hosts, and stores only hashes of invitation and device-management secrets. Pending invitation links have no time expiry, are single-use, and can be revoked by the caller. The registered device can revoke its receiver. The onboarding's **My invited contacts** list reads the same backend records and reports Connected, Awaiting connection, or Disconnected status. Contact names are matched locally and are not uploaded.
 
 ## Device support and limits
 Android Chrome and supported Android browsers: open the link, tap **Enable call alerts**, and accept the browser notification prompt. No APK, account, SIM selection, number typing, OTP or SMS is required.
 iPhone: supported Web Push requires adding the site to the Home Screen and opening it as a web app. The page explains this restriction rather than claiming ordinary Safari tabs can be woken in the background.
-The invitation binds the number selected by the caller to the recipient's push subscription; it does not verify SIM ownership or read a SIM number. Push cannot ring a powered-off phone or a phone with no internet. Expired calls are not replayed as live calls after reconnection.
+The invitation binds the number selected by the caller to the recipient's push subscription; it does not verify SIM ownership or read a SIM number. Push cannot ring a powered-off phone or a phone with no internet. The invitation link itself does not expire, but a browser push subscription can later be revoked or become unusable by the browser; the caller's persistent status list will then show that attention is needed. Expired calls are not replayed as live calls after reconnection.
 
 Run \`npm run check\` and \`npm run check:web\` for static contract and JavaScript syntax checks.

@@ -71,7 +71,7 @@ Deno.serve(async(req:Request)=>{
     const active=activeByPhone.get(row.phone_e164)||[];
     const status=active.length?"registered":row.revoked_at?"revoked":
      row.claimed_at?"needs_attention":
-     Date.parse(row.expires_at)<=Date.now()?"expired":"pending";
+     (row.expires_at&&Date.parse(row.expires_at)<=Date.now())?"expired":"pending";
     const lastConnected=active.map((d:any)=>d.last_seen_at).filter(Boolean).sort().at(-1)||null;
     return {
      receiver_id:row.id,phone_e164:row.phone_e164,status,
@@ -140,7 +140,9 @@ Deno.serve(async(req:Request)=>{
 
    const token=Array.from(crypto.getRandomValues(new Uint8Array(32)))
     .map((x)=>x.toString(16).padStart(2,"0")).join("");
-   const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();
+   // Pending Receiver links have no time-based expiry. They remain one-use and
+   // can be revoked by the caller until the recipient explicitly claims them.
+   const expiresAt=null;
    const {data:created,error:createError}=await db.from("server_receiver_invites").insert({
     token_hash:await sha(token),created_by_user_id:ownerId,phone_e164:to,
     caller_label:callerLabel.slice(0,80),expires_at:expiresAt
@@ -202,7 +204,8 @@ Deno.serve(async(req:Request)=>{
  const {data:invite,error:inviteError}=await db.from("server_receiver_invites")
   .select("id,phone_e164,caller_label,expires_at,claimed_at,claimed_endpoint_hash,revoked_at")
   .eq("token_hash",await sha(token)).is("revoked_at",null).maybeSingle();
- if(inviteError||!invite||Date.parse(invite.expires_at)<=Date.now())return out({error:"RECEIVER_INVITE_INVALID_OR_EXPIRED"},401);
+ if(inviteError||!invite||(invite.expires_at&&Date.parse(invite.expires_at)<=Date.now()))
+  return out({error:"RECEIVER_INVITE_INVALID_OR_REVOKED"},401);
  if(action==="inspect")return out({ok:true,phone_hint:phoneHint(invite.phone_e164),invited_by:invite.caller_label,
   expires_at:invite.expires_at,already_claimed:!!invite.claimed_at});
  if(action==="push_config"){
@@ -236,7 +239,8 @@ Deno.serve(async(req:Request)=>{
  // Conditional claim ensures one setup link cannot enrol two different devices.
  const {data:claimed,error:claimError}=await db.from("server_receiver_invites").update({
   claimed_at:now,claimed_endpoint_hash:endpointHash
- }).eq("id",invite.id).is("claimed_at",null).is("revoked_at",null).gt("expires_at",now).select("id").maybeSingle();
+ }).eq("id",invite.id).is("claimed_at",null).is("revoked_at",null)
+  .or("expires_at.is.null,expires_at.gt."+now).select("id").maybeSingle();
  if(claimError)return out({error:"RECEIVER_CLAIM_FAILED"},503);
  if(!claimed)return out({error:"RECEIVER_INVITE_ALREADY_USED"},409);
  const rollbackClaim=async()=>{
