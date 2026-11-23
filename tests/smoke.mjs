@@ -752,9 +752,9 @@ assert.match(calls,/server_create_call_atomic/,"each batch guest invitation is c
 assert.match(calls,/sendGuestBrowserPush/,"each batch invitation wakes every enrolled browser receiver");
 assert.doesNotMatch(calls,/if\(!guestInternetReachable\)/,
   "guest browser reachability never suppresses a first-contact invitation");
-assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
+assert.match(calls,/const GUEST_INVITE_TTL_SECONDS = 5 \* 60/);
 assert.match(calls,/invitationText="SERVER CALL\\n"\+callerDisplay/,"guest invitation text is branded and names the caller");
-assert.match(calls,/Expires in 2 minutes/,"guest invitation advertises its two-minute expiry");
+assert.match(calls,/Expires in 5 minutes/,"guest invitation advertises its five-minute offline-reconnect window");
 assert.match(calls,/guest_invite_url:invitationUrl/,"each guest receives an independently generated invitation URL");
 assert.doesNotMatch(calls,/textbee/i,"the production call backend has no external TextBee dependency");
 assert.match(auth,/x-server-session-token/,"Server auth reads its opaque Server session from a dedicated header");
