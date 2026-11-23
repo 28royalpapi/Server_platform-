@@ -72,7 +72,7 @@ assert.match(client,/pushManager\.subscribe/);
 assert.match(client,/api\("claim"/);
 assert.match(client,/device_secret/);
 assert.match(client,/Add Server Receiver to your Home Screen/);
-assert.match(sw,/server-guest-shell-v3/);
+assert.match(sw,/server-guest-shell-v4/);
 assert.match(sw,/receiver\.html/);
 assert.match(sw,/server_guest_incoming_call/);
 assert.ok(sw.includes('actions:[{action:"answer",title:"Answer"},{action:"decline",title:"Decline"}]'));
