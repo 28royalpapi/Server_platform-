@@ -240,6 +240,9 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
           .putBoolean("debug_telecom_connection_engine_started", true)
           .apply()
       }
+      // Start caller-side ringback as soon as Server begins establishing the call.
+      // Any backend/network failure below stops the tone in failCall()/cleanupPeer().
+      if (shouldRequestTelecomRingback(route)) startLocalRingback()
       recordStage("backend_start_requested")
       val started = api("start", target.toStartPayload("android_telecom"))
       callId = started.optString("call_id").takeIf { it.isNotBlank() }
@@ -268,7 +271,6 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
       iceServerMode = started.optString("ice_server_mode", "stun-only")
       recordStage("backend_call_created")
       preparePeer(iceServers)
-      if (shouldRequestTelecomRingback(route)) startLocalRingback()
       if (hangupRequested) {
         finishCall(callId.orEmpty(), "local")
         return
@@ -296,7 +298,13 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
             .apply()
         }
         val guestPush = started.optJSONObject("push_delivery")
-        val acceptedByPush = guestPush?.optInt("accepted_by_push_service", 0) ?: 0
+        val messageDelivery = started.optJSONObject("message_delivery")
+        // The live server-calls endpoint exposes provider acceptance as
+        // message_delivery.web_push_submitted; older builds used push_delivery.
+        val acceptedByPush = maxOf(
+          guestPush?.optInt("accepted_by_push_service", 0) ?: 0,
+          if (messageDelivery?.optBoolean("web_push_submitted", false) == true) 1 else 0
+        )
         if (acceptedByPush > 0) {
           connection.updateServerStatus("Guest browser alert submitted · waiting for WebRTC answer")
           Log.i(TAG, "Server submitted a caller-identified Web Push alert to the enrolled guest browser.")
