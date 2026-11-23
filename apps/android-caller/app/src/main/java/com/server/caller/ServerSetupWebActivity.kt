@@ -80,8 +80,131 @@ class ServerSetupWebActivity : Activity() {
     }
   }
 
+  /**
+   * The launcher must resume the saved caller identity, not show the account
+   * creation form again. Re-registering with a new installation key creates a
+   * second Server profile, so existing local identity evidence is never replaced
+   * automatically.
+   */
+  private fun resumeSavedServerIdentity(): Boolean {
+    val access = prefs.getString("access_token", null).orEmpty()
+    if (access.matches(Regex("^[0-9a-f]{64}$"))) {
+      openSavedCallerHome()
+      return true
+    }
+
+    val installationId = prefs.getString("installation_id", null).orEmpty().lowercase()
+    val deviceSecret = prefs.getString("device_secret", null).orEmpty().lowercase()
+    val validInstallation = installationId.matches(
+      Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    )
+    val validSecret = deviceSecret.matches(Regex("^[0-9a-f]{64}$"))
+    val hasSavedIdentity = prefs.getString("server_id", null).orEmpty().isNotBlank() ||
+      installationId.isNotBlank() || deviceSecret.isNotBlank()
+
+    if (!hasSavedIdentity) return false
+    if (!validInstallation || !validSecret) {
+      showSavedIdentityRecoveryScreen(
+        "Server found saved account data, but its recovery key is incomplete. No replacement Server ID has been created. Do not start a new identity on this phone."
+      , canRetry = false)
+      return true
+    }
+
+    showSavedIdentityRecoveryScreen("Restoring your existing Server identity…", canRetry = false)
+    Thread { restoreSavedDeviceIdentity(installationId, deviceSecret) }.start()
+    return true
+  }
+
+  private fun openSavedCallerHome() {
+    startActivity(Intent(this, MainActivity::class.java).apply {
+      addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    })
+    finish()
+  }
+
+  private fun restoreSavedDeviceIdentity(installationId: String, deviceSecret: String) {
+    val body = JSONObject()
+      .put("action", "register_device")
+      .put("installation_id", installationId)
+      .put("device_secret", deviceSecret)
+      .put("accepted_terms", true)
+      .put("terms_version", "server-terms-1.0")
+      .put("privacy_version", "server-privacy-1.0")
+    val savedName = prefs.getString("display_name", null).orEmpty().trim()
+    if (savedName.length in 2..60) body.put("display_name", savedName)
+
+    val result = try {
+      requestServerAuth(body)
+    } catch (_: Exception) {
+      JSONObject().put("ok", false).put("error", "SERVER_IDENTITY_RESTORE_UNAVAILABLE")
+    }
+    val access = result.optString("access_token")
+    val user = result.optJSONObject("user") ?: JSONObject()
+    val serverId = user.optString("server_id")
+    val ok = result.optInt("http_status", 500) in 200..299 &&
+      access.matches(Regex("^[0-9a-f]{64}$")) &&
+      serverId.matches(Regex("^SVR-[0-9A-F]{10}$"))
+
+    runOnUiThread {
+      if (ok) {
+        val expires = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond }
+          catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
+        val name = user.optString("display_name").takeIf { it.isNotBlank() }
+          ?: prefs.getString("display_name", null).orEmpty()
+        prefs.edit()
+          .putString("access_token", access)
+          .putLong("access_expiry", expires)
+          .putString("server_id", serverId)
+          .putString("display_name", name)
+          .apply()
+        openSavedCallerHome()
+      } else {
+        showSavedIdentityRecoveryScreen(
+          "Server could not restore the saved identity. Your previous identity data has been kept; no new Server ID was created. Check your internet connection and retry."
+        , canRetry = true, installationId = installationId, deviceSecret = deviceSecret)
+      }
+    }
+  }
+
+  private fun showSavedIdentityRecoveryScreen(
+    message: String,
+    canRetry: Boolean,
+    installationId: String = "",
+    deviceSecret: String = ""
+  ) {
+    val panel = android.widget.LinearLayout(this).apply {
+      orientation = android.widget.LinearLayout.VERTICAL
+      setPadding(48, 64, 48, 48)
+      setBackgroundColor(android.graphics.Color.rgb(8, 17, 29))
+    }
+    panel.addView(android.widget.TextView(this).apply {
+      text = "SERVER"
+      textSize = 13f
+      setTextColor(android.graphics.Color.rgb(24, 200, 121))
+    })
+    panel.addView(android.widget.TextView(this).apply {
+      text = message
+      textSize = 17f
+      setTextColor(android.graphics.Color.WHITE)
+      setPadding(0, 28, 0, 24)
+    })
+    if (canRetry) {
+      panel.addView(android.widget.Button(this).apply {
+        text = "Retry restoring my Server identity"
+        setOnClickListener {
+          text = "Restoring…"
+          isEnabled = false
+          Thread { restoreSavedDeviceIdentity(installationId, deviceSecret) }.start()
+        }
+      })
+    }
+    setContentView(panel)
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    val platformGatewayLaunch = intent?.data?.getQueryParameter("mode") == "platform-gateway"
+    if (!platformGatewayLaunch && resumeSavedServerIdentity()) return
     web = WebView(this).apply {
       settings.javaScriptEnabled = true
       settings.domStorageEnabled = true
@@ -126,7 +249,6 @@ class ServerSetupWebActivity : Activity() {
       }
     }
     setContentView(FrameLayout(this).apply { addView(web, FrameLayout.LayoutParams(-1, -1)) })
-    val platformGatewayLaunch = intent?.data?.getQueryParameter("mode") == "platform-gateway"
     loadBundledOnboarding()
     if (platformGatewayLaunch) web.post { showPlatformGatewaySetupDialog() }
   }
