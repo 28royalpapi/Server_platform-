@@ -1125,7 +1125,7 @@ assert.match(guestWebPushMigration,/revoke all on public\.server_guest_push_devi
   "browser push endpoints and encryption keys are not exposed to public clients");
 assert.match(guestWebPushSender,/buildPushPayload/,
   "guest notifications use RFC-compliant encrypted Web Push rather than a custom unencrypted payload");
-assert.match(guestWebPushSender,/options: \{ ttl: 120, urgency: "high" \}/,
+assert.match(guestWebPushSender,/options: \{ ttl: 300, urgency: "high" \}/,
   "guest call alerts use a bounded high-urgency push lifetime");
 assert.match(guest,/action==="push_config"/,
   "the invitation page can obtain the public VAPID key without exposing its private key");
