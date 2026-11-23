@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,onboarding,onboardingApp,config,pkg,guestPage]=await Promise.all([
+const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,onboarding,onboardingApp,config,pkg,guestPage,push]=await Promise.all([
  readFile("supabase/migrations/20261120190906_server_receiver_persistent_enrolment.sql","utf8"),
  readFile("supabase/migrations/20261122080000_server_receiver_invites_do_not_expire.sql","utf8"),
  readFile("supabase/functions/server-receiver/index.ts","utf8"),
@@ -11,7 +11,8 @@ const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,se
  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt","utf8"),
  readFile("web/index.html","utf8"),readFile("web/app.js","utf8"),
  readFile("supabase/config.toml","utf8"),readFile("package.json","utf8"),
- readFile("web/guest.js","utf8")
+ readFile("web/guest.js","utf8"),
+ readFile("supabase/functions/_shared/guest_web_push.ts","utf8")
 ]);
 assert.match(migration,/create table if not exists public\.server_receiver_invites/i);
 assert.match(migration,/enable row level security/i);
@@ -39,7 +40,7 @@ assert.match(edge,/status:"needs_attention"/);
 assert.match(edge,/needs_attention_count/);
 assert.match(edge,/repair_url:"https:\/\/server-onboarding-ochre\.vercel\.app\/receiver\.html"/);
 assert.match(edge,/needs_repair:true,expired:true/);
-assert.match(push,/expiration_at:new Date\(\)\.toISOString\(\)/);
+assert.match(push,/expiration_at:\s*new Date\(\)\.toISOString\(\)/);
 assert.match(client,/async function renewReceiver\(\)/);
 assert.match(client,/api\("renew_config"/);
 assert.match(client,/api\("renew"/);
