@@ -136,8 +136,8 @@ function callTransitionFailure(transition:any){
 
 
 const SERVER_CALL_TTL_SECONDS = 120;
-const GUEST_CALL_TTL_SECONDS = 2 * 60;
-const GUEST_INVITE_TTL_SECONDS = 2 * 60;
+const GUEST_CALL_TTL_SECONDS = 5 * 60;
+const GUEST_INVITE_TTL_SECONDS = 5 * 60;
 const PRESENCE_FRESH_SECONDS = 35;
 const PRESENCE_WRITE_INTERVAL_MS = 12000;
 
@@ -545,7 +545,7 @@ Deno.serve(async(req:Request)=>{
      }
      const inviteUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
      const browserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
-     const invitationText="SERVER CALL\n"+callerLabel+" is inviting you to an internet call.\nOpen this secure link to answer. Expires in 2 minutes.\n"+inviteUrl;
+     const invitationText="SERVER CALL\n"+callerLabel+" is inviting you to an internet call.\nOpen this secure link to answer. Expires in 5 minutes.\n"+inviteUrl;
      createdItems.push({
       ok:true,recipient_e164:to,call_id:created.call.id,invite_id:created.invite_id,
       invite_expires_at:inviteExpiresAt,guest_invite_url:inviteUrl,
