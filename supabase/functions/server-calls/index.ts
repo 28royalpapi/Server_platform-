@@ -702,7 +702,7 @@ Deno.serve(async(req:Request)=>{
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
    const callerDisplay=callerDisplayName;
    const invitationUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
-   const invitationText="SERVER CALL\n"+callerDisplay+" is calling you.\nAnswer over the internet. Expires in 2 minutes.\n"+invitationUrl;
+   const invitationText="SERVER CALL\n"+callerDisplay+" is calling you.\nAnswer over the internet. Expires in 5 minutes.\n"+invitationUrl;
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
    const guestPush=await sendGuestBrowserPush(db,to,{
     call_id:call.id,caller_label:callerDisplay,
