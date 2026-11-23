@@ -700,6 +700,15 @@ Deno.serve(async(req:Request)=>{
    // the recipient to the secure browser call. The link is sent by the selected
    // first-contact transport below when an eligible route is configured.
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
+   let offlineWakeRegistered=false;
+   if(callerPhone){
+    const {data:wakeDevice,error:wakeDeviceError}=await db.from("server_guest_native_wake_devices")
+     .select("id").eq("recipient_phone_e164",to).eq("caller_phone_e164",callerPhone)
+     .eq("call_screening_enabled",true).is("revoked_at",null).maybeSingle();
+    // A missing native registration is a normal Web Push/manual-share path;
+    // do not fail a WebRTC call if this optional feature is not installed.
+    offlineWakeRegistered=!wakeDeviceError&&!!wakeDevice;
+   }
    const callerDisplay=callerDisplayName;
    const invitationUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
    const invitationText="SERVER CALL\n"+callerDisplay+" is calling you.\nAnswer over the internet. Expires in 2 minutes.\n"+invitationUrl;
@@ -729,6 +738,8 @@ Deno.serve(async(req:Request)=>{
     guest_invite_url:invitationUrl,invitation_text:invitationText,
     delivery_message:deliveryMessage,
     caller_display_label:callerDisplay,caller_display_name:callerDisplay,caller_phone_e164:callerPhone||"",
+    offline_wake_available:offlineWakeRegistered&&!guestInternetReachable,
+    offline_wake_method:offlineWakeRegistered&&!guestInternetReachable?"unanswered_cellular_screened_call":null,
     recipient_availability:{
      status:guestAvailabilityStatus,connected:guestInternetReachable,
      server_reachable:guestInternetReachable,
