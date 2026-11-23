@@ -1089,7 +1089,7 @@ assert.match(calls,/next_after_seq/);
 assert.match(guest,/GUEST_INVITE_EXPIRED_OR_INVALID/);
 assert.match(guest,/RTCPeerConnection|server_call_signals/);
 assert.ok(calls.includes('const invitationText="SERVER CALL\\n"+callerDisplay'),"guest invitation text is branded and names the caller");
-assert.match(calls,/Expires in 2 minutes/,"guest invitation advertises its two-minute expiry");
+assert.match(calls,/Expires in 5 minutes/,"guest invitation advertises its five-minute offline-reconnect window");
  assert.match(guest,/caller_label:callerLabel/,"the no-install guest page receives the verified caller label");
 assert.match(calls,/server-onboarding-ochre\.vercel\.app\/c\//,"guest share links use the compact dynamic caller-branded preview route before the full-screen call page");
 assert.match(calls,/action==="start_guest_batch"/,"the backend supports up to ten separate guest invitation links in one request");
@@ -1346,7 +1346,7 @@ assert.match(guest,/CALLER_PROFILE_LOOKUP_FAILED/,
   "guest caller-profile database errors are surfaced as service failures, not hidden");
 
 assert.match(calls,/missed_call_saved:true/);
-assert.match(calls,/GUEST_INVITE_TTL_SECONDS = 2 \* 60/);
+assert.match(calls,/GUEST_INVITE_TTL_SECONDS = 5 \* 60/);
 assert.match(offlineInbox,/replicateRxCollection/);
 assert.match(offlineInbox,/getRxStorageDexie/);
 assert.match(offlineInbox,/rxdb@17\.6\.0/);
