@@ -227,6 +227,11 @@ Deno.serve(async(req:Request)=>{
     .eq("endpoint",endpoint).eq("receiver_secret_hash",secretHash).is("revoked_at",null)
     .select("id,receiver_invite_id").maybeSingle();
    if(error)return out({error:"RECEIVER_REVOKE_FAILED"},503);
+   if(data?.id){
+    const {error:nativeRevokeError}=await db.from("server_receiver_native_devices")
+     .update({revoked_at:now,updated_at:now}).eq("receiver_device_id",data.id).is("revoked_at",null);
+    if(nativeRevokeError)return out({error:"RECEIVER_NATIVE_REVOKE_SYNC_FAILED"},503);
+   }
    if(data?.receiver_invite_id){
     const {error:inviteRevokeError}=await db.from("server_receiver_invites")
      .update({revoked_at:now}).eq("id",data.receiver_invite_id).is("revoked_at",null);
@@ -258,6 +263,94 @@ Deno.serve(async(req:Request)=>{
    ?out({ok:true,active:false,needs_repair:true,expired:true,phone_hint:phoneHint(data.phone_e164)})
    :out({ok:true,active:true,phone_hint:phoneHint(data.phone_e164)});
  }
+
+ // Native Receiver companion pairing and offline caller-roster support.
+ if(action==="native_pair"){
+  const deviceSecret=typeof b.device_secret==="string"?b.device_secret:"";
+  if(!/^[0-9a-f]{64}$/i.test(deviceSecret))return out({error:"RECEIVER_DEVICE_CREDENTIALS_INVALID"},400);
+  const {data:device,error}=await db.from("server_guest_push_devices").select("id")
+   .eq("receiver_secret_hash",await sha(deviceSecret)).is("revoked_at",null).maybeSingle();
+  if(error)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
+  if(!device)return out({error:"RECEIVER_DEVICE_NOT_ACTIVE"},401);
+  const pairCode=Array.from(crypto.getRandomValues(new Uint8Array(16))).map(x=>x.toString(16).padStart(2,"0")).join("");
+  const expiresAt=new Date(Date.now()+10*60*1000).toISOString();
+  const {error:insertError}=await db.from("server_receiver_native_pair_codes").insert({
+   receiver_device_id:device.id,pair_code_hash:await sha(pairCode),expires_at:expiresAt
+  });
+  if(insertError)return out({error:"RECEIVER_NATIVE_PAIR_CREATE_FAILED"},503);
+  return out({ok:true,pair_code:pairCode,expires_at:expiresAt});
+ }
+ if(action==="native_claim"){
+  const pairCode=typeof b.pair_code==="string"?b.pair_code:"";
+  if(!/^[0-9a-f]{32}$/i.test(pairCode))return out({error:"RECEIVER_NATIVE_PAIR_INVALID"},400);
+  const now=new Date().toISOString();
+  const {data:pair,error:pairError}=await db.from("server_receiver_native_pair_codes")
+   .select("id,receiver_device_id").eq("pair_code_hash",await sha(pairCode))
+   .is("claimed_at",null).gt("expires_at",now).maybeSingle();
+  if(pairError||!pair)return out({error:"RECEIVER_NATIVE_PAIR_EXPIRED_OR_USED"},401);
+  const {data:claimed,error:claimError}=await db.from("server_receiver_native_pair_codes")
+   .update({claimed_at:now}).eq("id",pair.id).is("claimed_at",null).gt("expires_at",now)
+   .select("id").maybeSingle();
+  if(claimError||!claimed)return out({error:"RECEIVER_NATIVE_PAIR_EXPIRED_OR_USED"},409);
+  const nativeSecret=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(x=>x.toString(16).padStart(2,"0")).join("");
+  const {error:saveError}=await db.from("server_receiver_native_devices").insert({
+   receiver_device_id:pair.receiver_device_id,native_secret_hash:await sha(nativeSecret),
+   last_seen_at:now,updated_at:now
+  });
+  if(saveError){
+   await db.from("server_receiver_native_pair_codes").update({claimed_at:null})
+    .eq("id",pair.id).eq("claimed_at",now);
+   return out({error:"RECEIVER_NATIVE_DEVICE_SAVE_FAILED"},503);
+  }
+  return out({ok:true,native_secret:nativeSecret});
+ }
+ if(action==="native_roster"){
+  const nativeSecret=typeof b.native_secret==="string"?b.native_secret:"";
+  if(!/^[0-9a-f]{64}$/i.test(nativeSecret))return out({error:"RECEIVER_NATIVE_CREDENTIALS_INVALID"},400);
+  const nativeHash=await sha(nativeSecret),now=new Date().toISOString();
+  const {data:nativeDevice,error:nativeError}=await db.from("server_receiver_native_devices")
+   .select("id,receiver_device_id").eq("native_secret_hash",nativeHash).is("revoked_at",null).maybeSingle();
+  if(nativeError)return out({error:"RECEIVER_NATIVE_LOOKUP_FAILED"},503);
+  if(!nativeDevice)return out({error:"RECEIVER_NATIVE_NOT_ACTIVE"},401);
+  const {data:parent,error:parentError}=await db.from("server_guest_push_devices")
+   .select("id").eq("id",nativeDevice.receiver_device_id).is("revoked_at",null).maybeSingle();
+  if(parentError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
+  if(!parent)return out({error:"RECEIVER_NATIVE_NOT_ACTIVE"},401);
+  const {error:touchError}=await db.from("server_receiver_native_devices")
+   .update({last_seen_at:now,updated_at:now}).eq("id",nativeDevice.id).is("revoked_at",null);
+  if(touchError)return out({error:"RECEIVER_NATIVE_TOUCH_FAILED"},503);
+  const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(nativeSecret),
+   {name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  const callers:any[]=[];
+  for(let offset=0;offset<10000;offset+=1000){
+   const {data:rows,error}=await db.from("server_profiles")
+    .select("server_id,display_name,phone_e164")
+    .not("phone_e164","is",null).not("phone_verified_at","is",null)
+    .eq("allow_number_based_server_calls",true).order("user_id",{ascending:true})
+    .range(offset,offset+999);
+   if(error)return out({error:"RECEIVER_NATIVE_ROSTER_FAILED"},503);
+   for(const row of rows||[]){
+    const phone=typeof row.phone_e164==="string"?row.phone_e164.trim():"";
+    if(!/^\\+[1-9][0-9]{7,14}$/.test(phone))continue;
+    const signature=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(phone)));
+    const callerHash=Array.from(signature).map(x=>x.toString(16).padStart(2,"0")).join("");
+    callers.push({caller_hash:callerHash,server_id:row.server_id||"",display_name:row.display_name||"Server user"});
+   }
+   if((rows||[]).length<1000)break;
+  }
+  return out({ok:true,roster_version:now,caller_count:callers.length,callers});
+ }
+ if(action==="native_revoke"){
+  const nativeSecret=typeof b.native_secret==="string"?b.native_secret:"";
+  if(!/^[0-9a-f]{64}$/i.test(nativeSecret))return out({error:"RECEIVER_NATIVE_CREDENTIALS_INVALID"},400);
+  const now=new Date().toISOString();
+  const {data,error}=await db.from("server_receiver_native_devices")
+   .update({revoked_at:now,updated_at:now}).eq("native_secret_hash",await sha(nativeSecret))
+   .is("revoked_at",null).select("id").maybeSingle();
+  if(error)return out({error:"RECEIVER_NATIVE_REVOKE_FAILED"},503);
+  return out({ok:true,revoked:!!data});
+ }
+
  const token=typeof b.token==="string"?b.token.trim():"";
  if(!/^[0-9a-f]{64}$/i.test(token))return out({error:"RECEIVER_INVITE_INVALID"},401);
  const {data:invite,error:inviteError}=await db.from("server_receiver_invites")
