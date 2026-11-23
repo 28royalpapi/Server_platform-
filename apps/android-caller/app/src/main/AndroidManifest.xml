@@ -52,6 +52,13 @@
         android:value="Server-operated SMS gateway delivery on a Server-owned handset using Android system default SMS subscription." />
     </service>
     <receiver android:name="com.server.caller.ServerSmsStatusReceiver" android:enabled="true" android:exported="false" />
+    <service android:name="com.server.caller.ServerOfflineWakeScreeningService"
+      android:permission="android.permission.BIND_SCREENING_SERVICE"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.telecom.CallScreeningService" />
+      </intent-filter>
+    </service>
     <service android:name="com.server.caller.ServerIncomingCallService"
       android:exported="false" android:foregroundServiceType="phoneCall" />
     <service android:name="com.server.caller.ServerIncomingCallAlertService"
