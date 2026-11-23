@@ -206,13 +206,15 @@ Deno.serve(async(req:Request)=>{
   const expiry=Number(subscription.expirationTime);
   const expirationAt=Number.isFinite(expiry)&&expiry>Date.now()?new Date(expiry).toISOString():null;
   const now=new Date().toISOString();
-  const {error:updateError}=await db.from("server_guest_push_devices").update({
+  const {data:updated,error:updateError}=await db.from("server_guest_push_devices").update({
    endpoint,p256dh,auth,expiration_at:expirationAt,last_seen_at:now,updated_at:now
-  }).eq("id",device.id).eq("receiver_secret_hash",secretHash).is("revoked_at",null);
+  }).eq("id",device.id).eq("receiver_secret_hash",secretHash).is("revoked_at",null)
+   .select("id").maybeSingle();
   if(updateError){
    if(updateError.code==="23505")return out({error:"RECEIVER_DEVICE_ALREADY_BOUND"},409);
    return out({error:"RECEIVER_SUBSCRIPTION_RENEW_FAILED"},503);
   }
+  if(!updated)return out({error:"RECEIVER_DEVICE_NOT_RENEWABLE"},409);
   return out({ok:true,registered:true,renewed:true,phone_hint:phoneHint(device.phone_e164)});
  }
  // Per-device secret permits status, heartbeat and revocation. Only its hash is stored.
