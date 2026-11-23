@@ -29,7 +29,7 @@ assert.match(manifest, /android\.telecom\.CallScreeningService/);
 assert.match(manifest, /BIND_SCREENING_SERVICE/);
 assert.match(manifest, /READ_CONTACTS/);
 assert.match(activity, /ROLE_CALL_SCREENING/);
-assert.match(activity, /ServerReceiverRoster\\.claimPair/);
+assert.match(activity, /ServerReceiverRoster\.claimPair/);
 assert.match(activity, /PeriodicWorkRequestBuilder/);
 assert.match(screening, /respondToCall/);
 assert.match(screening, /DIRECTION_INCOMING/);
