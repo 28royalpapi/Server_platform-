@@ -117,8 +117,7 @@ Deno.serve(async(req:Request)=>{
   const {data:deviceRows,error:deviceError}=await db.from("server_guest_push_devices")
    .select("phone_e164,expiration_at").in("phone_e164",recipients).is("revoked_at",null);
   if(deviceError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
-  const registered=new Set((deviceRows||[]).map((row:any)=>row.phone_e164));
-  const liveRegistered=new Set((deviceRows||[])
+  const registered=new Set((deviceRows||[])
    .filter((row:any)=>!row.expiration_at||Date.parse(row.expiration_at)>Date.now())
    .map((row:any)=>row.phone_e164));
 
@@ -129,12 +128,7 @@ Deno.serve(async(req:Request)=>{
     continue;
    }
    if(registered.has(to)){
-    if(liveRegistered.has(to)){
-     results.push({phone_e164:to,status:"registered",message:"This number already has an active Server browser receiver. You can call it without sending another setup link."});
-    }else{
-     results.push({phone_e164:to,status:"needs_attention",repair_url:"https://server-onboarding-ochre.vercel.app/receiver.html",
-      message:"This phone is already enrolled, but its browser alert subscription needs repair. Ask the recipient to open Server Receiver on the same browser and tap Repair call alerts. No new setup link is needed."});
-    }
+    results.push({phone_e164:to,status:"registered",message:"This number already has an active Server browser receiver. You can call it without sending another setup link."});
     continue;
    }
 
@@ -172,7 +166,6 @@ Deno.serve(async(req:Request)=>{
    ok:true,requested_count:recipients.length,
    invitation_count:createdCount,
    registered_count:results.filter((r:any)=>r.status==="registered").length,
-   needs_attention_count:results.filter((r:any)=>r.status==="needs_attention").length,
    server_user_count:results.filter((r:any)=>r.status==="server_user").length,
    failed_count:results.filter((r:any)=>r.status==="failed").length,
    carrier_sms_used:false,results
