@@ -1,6 +1,9 @@
 package com.server.receiver
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.telephony.PhoneNumberUtils
@@ -9,9 +12,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.Locale
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
 import javax.crypto.Mac
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 internal data class ServerCaller(val serverId: String, val displayName: String)
@@ -20,20 +28,67 @@ internal object ServerReceiverRoster {
   private const val PREFS = "server_receiver_companion"
   private const val SECRET_KEY = "native_secret"
   private const val ROSTER_KEY = "caller_roster_json"
+  private const val KEY_ALIAS = "server.receiver.native-secret-key"
   private const val ENDPOINT_URL = "https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-receiver"
   private const val API_KEY = "sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E"
 
   fun saveSecret(context: Context, secret: String) {
+    val encrypted = encryptSecret(secret.lowercase(Locale.ROOT))
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-      .putString(SECRET_KEY, secret.lowercase(Locale.ROOT)).apply()
+      .putString(SECRET_KEY, encrypted).apply()
   }
 
-  fun secret(context: Context): String =
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(SECRET_KEY, "").orEmpty()
+  fun secret(context: Context): String {
+    val encrypted = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getString(SECRET_KEY, "").orEmpty()
+    if (encrypted.isBlank()) return ""
+    return try { decryptSecret(encrypted) } catch (_: Exception) { "" }
+  }
 
   fun clear(context: Context) {
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
       .remove(SECRET_KEY).remove(ROSTER_KEY).apply()
+    try {
+      val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+      if (store.containsAlias(KEY_ALIAS)) store.deleteEntry(KEY_ALIAS)
+    } catch (_: Exception) {
+      // Removing the encrypted credential is sufficient to revoke local access.
+    }
+  }
+
+  private fun encryptionKey(): SecretKey {
+    val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+    (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+    val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+    generator.init(
+      KeyGenParameterSpec.Builder(
+        KEY_ALIAS,
+        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+      )
+        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+        .setRandomizedEncryptionRequired(true)
+        .build()
+    )
+    return generator.generateKey()
+  }
+
+  private fun encryptSecret(value: String): String {
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(Cipher.ENCRYPT_MODE, encryptionKey())
+    val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+    val packed = cipher.iv + encrypted
+    return Base64.encodeToString(packed, Base64.NO_WRAP)
+  }
+
+  private fun decryptSecret(encoded: String): String {
+    val packed = Base64.decode(encoded, Base64.NO_WRAP)
+    require(packed.size > 28) { "Stored Receiver credential is invalid." }
+    val iv = packed.copyOfRange(0, 12)
+    val ciphertext = packed.copyOfRange(12, packed.size)
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), GCMParameterSpec(128, iv))
+    return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
   }
 
   fun claimPair(code: String): String {
