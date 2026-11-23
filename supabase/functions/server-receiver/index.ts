@@ -331,7 +331,7 @@ Deno.serve(async(req:Request)=>{
    if(error)return out({error:"RECEIVER_NATIVE_ROSTER_FAILED"},503);
    for(const row of rows||[]){
     const phone=typeof row.phone_e164==="string"?row.phone_e164.trim():"";
-    if(!/^\\+[1-9][0-9]{7,14}$/.test(phone))continue;
+    if(!/^\+[1-9][0-9]{7,14}$/.test(phone))continue;
     const signature=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(phone)));
     const callerHash=Array.from(signature).map(x=>x.toString(16).padStart(2,"0")).join("");
     callers.push({caller_hash:callerHash,server_id:row.server_id||"",display_name:row.display_name||"Server user"});
