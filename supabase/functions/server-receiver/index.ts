@@ -261,12 +261,52 @@ Deno.serve(async(req:Request)=>{
  const token=typeof b.token==="string"?b.token.trim():"";
  if(!/^[0-9a-f]{64}$/i.test(token))return out({error:"RECEIVER_INVITE_INVALID"},401);
  const {data:invite,error:inviteError}=await db.from("server_receiver_invites")
-  .select("id,phone_e164,caller_label,expires_at,claimed_at,claimed_endpoint_hash,revoked_at")
+  .select("id,phone_e164,caller_label,created_by_user_id,expires_at,claimed_at,claimed_endpoint_hash,revoked_at")
   .eq("token_hash",await sha(token)).is("revoked_at",null).maybeSingle();
  if(inviteError||!invite||(invite.expires_at&&Date.parse(invite.expires_at)<=Date.now()))
   return out({error:"RECEIVER_INVITE_INVALID_OR_REVOKED"},401);
+ const {data:inviter,error:inviterError}=await db.from("server_profiles")
+  .select("user_id,server_id,display_name,phone_e164,phone_verified_at")
+  .eq("user_id",invite.created_by_user_id).maybeSingle();
+ if(inviterError)return out({error:"RECEIVER_CALLER_LOOKUP_FAILED"},503);
+ const inviterPhone=inviter?.phone_verified_at&&typeof inviter.phone_e164==="string"
+  &&/^\\+[1-9][0-9]{7,14}$/.test(inviter.phone_e164)?inviter.phone_e164:null;
+ const inviterLabel=(typeof inviter?.display_name==="string"&&inviter.display_name.trim())
+  ?inviter.display_name.trim():invite.caller_label;
  if(action==="inspect")return out({ok:true,phone_hint:phoneHint(invite.phone_e164),invited_by:invite.caller_label,
-  expires_at:invite.expires_at,already_claimed:!!invite.claimed_at});
+  expires_at:invite.expires_at,already_claimed:!!invite.claimed_at,
+  offline_wake_available:!!inviterPhone,offline_wake_reason:inviterPhone?null:"CALLER_PHONE_NOT_VERIFIED"});
+ if(action==="native_inspect"){
+  if(!inviterPhone)return out({error:"CALLER_PHONE_NOT_VERIFIED",message:"The Server caller must verify their mobile number before this Receiver can enable offline wake alerts."},409);
+  return out({ok:true,phone_hint:phoneHint(invite.phone_e164),caller_phone_e164:inviterPhone,
+   caller_label:inviterLabel,caller_server_id:inviter?.server_id||"",receiver_invite_id:invite.id});
+ }
+ if(action==="native_claim"){
+  if(b.consent!==true)return out({error:"RECEIVER_CONSENT_REQUIRED"},400);
+  if(!inviterPhone)return out({error:"CALLER_PHONE_NOT_VERIFIED",message:"The inviting Server caller must verify their mobile number first."},409);
+  const deviceId=typeof b.device_id==="string"?b.device_id:"";
+  const deviceSecret=typeof b.device_secret==="string"?b.device_secret:"";
+  if(!/^[0-9a-f]{64}$/i.test(deviceId)||!/^[0-9a-f]{64}$/i.test(deviceSecret))
+   return out({error:"RECEIVER_NATIVE_CREDENTIALS_INVALID"},400);
+  const deviceHash=await sha(deviceId),secretHash=await sha(deviceSecret),now=new Date().toISOString();
+  const {data:existing,error:existingError}=await db.from("server_guest_native_wake_devices")
+   .select("id,device_id_hash,revoked_at").eq("receiver_invite_id",invite.id).maybeSingle();
+  if(existingError)return out({error:"RECEIVER_NATIVE_LOOKUP_FAILED"},503);
+  if(existing&&existing.device_id_hash!==deviceHash&&!existing.revoked_at)
+   return out({error:"RECEIVER_NATIVE_ALREADY_BOUND",message:"This Receiver link is already connected to another native device."},409);
+  const record={
+   receiver_invite_id:invite.id,recipient_phone_e164:invite.phone_e164,
+   caller_user_id:invite.created_by_user_id,caller_phone_e164:inviterPhone,
+   caller_server_id:inviter?.server_id||"",caller_label:inviterLabel.slice(0,80),
+   device_id_hash:deviceHash,device_secret_hash:secretHash,
+   call_screening_enabled:true,last_seen_at:now,revoked_at:null
+  };
+  const {error:saveError}=await db.from("server_guest_native_wake_devices")
+   .upsert(record,{onConflict:"receiver_invite_id"});
+  if(saveError)return out({error:"RECEIVER_NATIVE_SAVE_FAILED"},503);
+  return out({ok:true,registered:true,phone_hint:phoneHint(invite.phone_e164),
+   caller_label:inviterLabel,call_screening_enabled:true});
+ }
  if(action==="push_config"){
   if(invite.claimed_at)return out({error:"RECEIVER_INVITE_ALREADY_USED"},409);
   const {data:keys,error}=await db.from("server_guest_push_config").select("public_key").eq("id",1).maybeSingle();
