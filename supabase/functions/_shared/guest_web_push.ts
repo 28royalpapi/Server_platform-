@@ -180,7 +180,7 @@ export async function sendGuestBrowserPush(
           body: notification.body,
           url: notification.url
         }),
-        options: { ttl: 120, urgency: "high" }
+        options: { ttl: 300, urgency: "high" }
       };
       let delivered = false;
       let permanentFailure = false;
