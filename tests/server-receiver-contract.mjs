@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,onboarding,onboardingApp,config,pkg]=await Promise.all([
+const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,onboarding,onboardingApp,config,pkg,guestPage]=await Promise.all([
  readFile("supabase/migrations/20261120190906_server_receiver_persistent_enrolment.sql","utf8"),
  readFile("supabase/migrations/20261122080000_server_receiver_invites_do_not_expire.sql","utf8"),
  readFile("supabase/functions/server-receiver/index.ts","utf8"),
@@ -10,7 +10,8 @@ const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,se
  readFile("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt","utf8"),
  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt","utf8"),
  readFile("web/index.html","utf8"),readFile("web/app.js","utf8"),
- readFile("supabase/config.toml","utf8"),readFile("package.json","utf8")
+ readFile("supabase/config.toml","utf8"),readFile("package.json","utf8"),
+ readFile("web/guest.js","utf8")
 ]);
 assert.match(migration,/create table if not exists public\.server_receiver_invites/i);
 assert.match(migration,/enable row level security/i);
@@ -74,6 +75,12 @@ assert.match(client,/Add Server Receiver to your Home Screen/);
 assert.match(sw,/server-guest-shell-v3/);
 assert.match(sw,/receiver\.html/);
 assert.match(sw,/server_guest_incoming_call/);
+assert.ok(sw.includes('actions:[{action:"answer",title:"Answer"},{action:"decline",title:"Decline"}]'));
+assert.ok(sw.includes('sameOriginTarget.searchParams.set("server_action","answer")'));
+assert.ok(sw.includes('sameOriginTarget.searchParams.set("server_action","decline")'));
+assert.ok(guestPage.includes('notificationAction=url.searchParams.get("server_action")'));
+assert.ok(guestPage.includes("joinButton.focus"));
+assert.ok(guestPage.includes('notificationAction==="decline"'));
 assert.match(android,/Manage Server Receivers/);
 assert.match(android,/receiverApiAsync\("create_invites"/);
 assert.match(config,/\[functions\.server-receiver\]/);
