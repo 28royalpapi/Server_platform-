@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [migration, edge, manifest, activity, screening, roster, worker, gradle, workflow, page, client] = await Promise.all([
+const [migration, edge, serverCalls, guestPush, manifest, activity, screening, roster, worker, gradle, workflow, page, client] = await Promise.all([
   readFile("supabase/migrations/20261123190000_server_receiver_native_companion.sql", "utf8"),
   readFile("supabase/functions/server-receiver/index.ts", "utf8"),
+  readFile("supabase/functions/server-calls/index.ts", "utf8"),
+  readFile("supabase/functions/_shared/guest_web_push.ts", "utf8"),
   readFile("apps/android-receiver/app/src/main/AndroidManifest.xml", "utf8"),
   readFile("apps/android-receiver/app/src/main/java/com/server/receiver/MainActivity.kt", "utf8"),
   readFile("apps/android-receiver/app/src/main/java/com/server/receiver/ServerWakeCallScreeningService.kt", "utf8"),
@@ -25,6 +27,9 @@ assert.match(edge, /action==="native_revoke"/);
 assert.match(edge, /caller_hash/);
 assert.match(edge, /receiver_secret_hash/);
 assert.match(edge, /RECEIVER_NATIVE_REVOKE_SYNC_FAILED/);
+assert.match(serverCalls, /GUEST_CALL_TTL_SECONDS = 5 \* 60/);
+assert.match(serverCalls, /GUEST_INVITE_TTL_SECONDS = 5 \* 60/);
+assert.match(guestPush, /options: \{ ttl: 300, urgency: "high" \}/);
 assert.match(manifest, /android\.telecom\.CallScreeningService/);
 assert.match(manifest, /BIND_SCREENING_SERVICE/);
 assert.match(manifest, /READ_CONTACTS/);
