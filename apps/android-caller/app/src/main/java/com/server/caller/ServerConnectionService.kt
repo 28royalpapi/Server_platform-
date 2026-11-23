@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.telecom.Connection
 import android.telecom.ConnectionRequest
 import android.telecom.ConnectionService
@@ -270,7 +272,18 @@ class ServerConnectionService : ConnectionService() {
         val engine = ServerTelecomCallEngine(this, connection)
         connection.attachEngine(engine)
         retainEngine(engine)
-        engine.startOutgoing(phone)
+        // Do not start network/WebRTC work re-entrantly inside Telecom's Binder
+        // callback. Return the Connection first, then begin the outgoing call.
+        Handler(Looper.getMainLooper()).post {
+          if (connection.state != Connection.STATE_DISCONNECTED) {
+            try {
+              engine.startOutgoing(phone)
+            } catch (error: Exception) {
+              android.util.Log.e("ServerTelecom", "Deferred outgoing call startup failed.", error)
+              connection.markEnded()
+            }
+          }
+        }
         connection
       }
     } catch (error: Exception) {
