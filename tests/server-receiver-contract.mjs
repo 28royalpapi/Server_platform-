@@ -39,6 +39,7 @@ assert.match(edge,/RECEIVER_DEVICE_NOT_RENEWABLE/);
 assert.match(edge,/needs_repair:true,expired:true/);
 assert.match(push,/expiration_at:\s*new Date\(\)\.toISOString\(\)/);
 assert.match(client,/async function renewReceiver\(\)/);
+assert.match(client,/inviteToken&&invite&&!invite\.already_claimed/);
 assert.match(client,/api\("renew_config"/);
 assert.match(client,/api\("renew"/);
 assert.match(client,/Repair call alerts/);
