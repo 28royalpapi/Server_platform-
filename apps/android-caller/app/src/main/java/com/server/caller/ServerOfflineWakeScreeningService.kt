@@ -24,7 +24,7 @@ import android.telecom.CallScreeningService
 class ServerOfflineWakeScreeningService : CallScreeningService() {
   override fun onScreenCall(details: Call.Details) {
     val rawNumber = details.handle?.schemeSpecificPart.orEmpty()
-    val e164 = ServerPhoneNumberNormalizer.toE164FromDevice(this, rawNumber)
+    val e164 = ServerPhoneNumberNormalizer.toE164(rawNumber, ServerPhoneNumberNormalizer.deviceRegion(this))
     val caller = e164?.let { ServerOfflineCallerDirectory.find(this, it) }
 
     if (caller == null) {
