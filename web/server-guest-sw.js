@@ -1,4 +1,4 @@
-const CACHE_NAME="server-guest-shell-v3";
+const CACHE_NAME="server-guest-shell-v4";
 const APP_SHELL=["/guest.html","/guest.css","/guest.js","/offline-inbox.js","/config.js","/manifest.webmanifest","/images/server-app-icon.svg","/receiver.html","/receiver.css","/receiver.js","/receiver.webmanifest"];
 self.addEventListener("install",event=>event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener("activate",event=>event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(key=>key.startsWith("server-guest-shell-")&&key!==CACHE_NAME).map(key=>caches.delete(key)));await self.clients.claim();})()));
