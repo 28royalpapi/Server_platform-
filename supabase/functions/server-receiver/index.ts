@@ -171,6 +171,50 @@ Deno.serve(async(req:Request)=>{
    carrier_sms_used:false,results
   });
  }
+ // A device secret is a durable, per-browser credential. It lets a previously
+ // enrolled Receiver repair an expired or rotated browser push subscription
+ // without consuming another one-time invitation. Explicitly revoked devices
+ // cannot renew because every lookup below requires revoked_at IS NULL.
+ if(action==="renew_config"||action==="renew"){
+  const deviceSecret=typeof b.device_secret==="string"?b.device_secret:"";
+  if(!/^[0-9a-f]{64}$/i.test(deviceSecret))
+   return out({error:"RECEIVER_DEVICE_CREDENTIALS_INVALID"},400);
+  const secretHash=await sha(deviceSecret);
+  const {data:devices,error:deviceError}=await db.from("server_guest_push_devices")
+   .select("id,phone_e164,expiration_at,receiver_invite_id")
+   .eq("receiver_secret_hash",secretHash).is("revoked_at",null).limit(2);
+  if(deviceError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
+  if(!devices||devices.length===0)return out({error:"RECEIVER_DEVICE_NOT_RENEWABLE"},404);
+  if(devices.length!==1)return out({error:"RECEIVER_DEVICE_CREDENTIAL_AMBIGUOUS"},409);
+  const device=devices[0];
+  if(action==="renew_config"){
+   const {data:keys,error:keysError}=await db.from("server_guest_push_config")
+    .select("public_key").eq("id",1).maybeSingle();
+   if(keysError||!keys?.public_key)return out({error:"RECEIVER_PUSH_CONFIGURATION_UNAVAILABLE"},503);
+   return out({ok:true,vapid_public_key:keys.public_key,phone_hint:phoneHint(device.phone_e164)});
+  }
+  if(b.consent!==true)return out({error:"RECEIVER_CONSENT_REQUIRED"},400);
+  const subscription=b.subscription,endpoint=subscription?.endpoint,p256dh=subscription?.keys?.p256dh,auth=subscription?.keys?.auth;
+  if(!validPushEndpoint(endpoint)||typeof p256dh!=="string"||!/^[A-Za-z0-9_-]{80,160}$/.test(p256dh)||
+     typeof auth!=="string"||!/^[A-Za-z0-9_-]{16,80}$/.test(auth))
+   return out({error:"RECEIVER_SUBSCRIPTION_INVALID"},400);
+  const {data:bound,error:boundError}=await db.from("server_guest_push_devices")
+   .select("id,phone_e164").eq("endpoint",endpoint).is("revoked_at",null).maybeSingle();
+  if(boundError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
+  if(bound&&bound.id!==device.id)
+   return out({error:"RECEIVER_DEVICE_ALREADY_BOUND",message:"This browser subscription is already connected to another Receiver. Turn off that Receiver first."},409);
+  const expiry=Number(subscription.expirationTime);
+  const expirationAt=Number.isFinite(expiry)&&expiry>Date.now()?new Date(expiry).toISOString():null;
+  const now=new Date().toISOString();
+  const {error:updateError}=await db.from("server_guest_push_devices").update({
+   endpoint,p256dh,auth,expiration_at:expirationAt,last_seen_at:now,updated_at:now
+  }).eq("id",device.id).eq("receiver_secret_hash",secretHash).is("revoked_at",null);
+  if(updateError){
+   if(updateError.code==="23505")return out({error:"RECEIVER_DEVICE_ALREADY_BOUND"},409);
+   return out({error:"RECEIVER_SUBSCRIPTION_RENEW_FAILED"},503);
+  }
+  return out({ok:true,registered:true,renewed:true,phone_hint:phoneHint(device.phone_e164)});
+ }
  // Per-device secret permits status, heartbeat and revocation. Only its hash is stored.
  if(["status","presence","revoke"].includes(action)){
   const endpoint=b.endpoint,secret=typeof b.device_secret==="string"?b.device_secret:"";
@@ -191,14 +235,26 @@ Deno.serve(async(req:Request)=>{
   if(action==="presence"){
    const {data,error}=await db.from("server_guest_push_devices").update({last_seen_at:now,updated_at:now})
     .eq("endpoint",endpoint).eq("receiver_secret_hash",secretHash).is("revoked_at",null)
+    .or("expiration_at.is.null,expiration_at.gt."+now)
     .select("phone_e164").maybeSingle();
    if(error)return out({error:"RECEIVER_PRESENCE_FAILED"},503);
-   return data?out({ok:true,active:true,phone_hint:phoneHint(data.phone_e164)}):out({ok:true,active:false});
+   if(data)return out({ok:true,active:true,phone_hint:phoneHint(data.phone_e164)});
+   const {data:expired,error:expiredError}=await db.from("server_guest_push_devices")
+    .select("phone_e164,expiration_at").eq("endpoint",endpoint)
+    .eq("receiver_secret_hash",secretHash).is("revoked_at",null).maybeSingle();
+   if(expiredError)return out({error:"RECEIVER_PRESENCE_FAILED"},503);
+   return expired
+    ?out({ok:true,active:false,needs_repair:true,expired:true,phone_hint:phoneHint(expired.phone_e164)})
+    :out({ok:true,active:false});
   }
-  const {data,error}=await db.from("server_guest_push_devices").select("phone_e164")
+  const {data,error}=await db.from("server_guest_push_devices").select("phone_e164,expiration_at")
    .eq("endpoint",endpoint).eq("receiver_secret_hash",secretHash).is("revoked_at",null).maybeSingle();
   if(error)return out({error:"RECEIVER_STATUS_FAILED"},503);
-  return data?out({ok:true,active:true,phone_hint:phoneHint(data.phone_e164)}):out({ok:true,active:false});
+  if(!data)return out({ok:true,active:false});
+  const expired=!!data.expiration_at&&Date.parse(data.expiration_at)<=Date.now();
+  return expired
+   ?out({ok:true,active:false,needs_repair:true,expired:true,phone_hint:phoneHint(data.phone_e164)})
+   :out({ok:true,active:true,phone_hint:phoneHint(data.phone_e164)});
  }
  const token=typeof b.token==="string"?b.token.trim():"";
  if(!/^[0-9a-f]{64}$/i.test(token))return out({error:"RECEIVER_INVITE_INVALID"},401);
