@@ -618,7 +618,7 @@ assert.match(androidFirebase,/server_incoming_call/);
 assert.match(androidFirebase,/ServerIncomingCallService.start\(this\)/);
 assert.match(calls,/action==="register_push_token"/);
 assert.ok(calls.includes("SERVER_CALL_TTL_SECONDS = 120"),"unanswered Server calls expire after 120 seconds");
-assert.ok(calls.includes("GUEST_CALL_TTL_SECONDS = 2 * 60"),"guest call ringing expires at two minutes before answer");
+assert.ok(calls.includes("GUEST_CALL_TTL_SECONDS = 5 * 60"),"guest call stays available for five minutes while an offline Receiver restores internet");
 assert.ok(calls.includes('route==="guest"?GUEST_CALL_TTL_SECONDS:SERVER_CALL_TTL_SECONDS'));
 assert.ok(guest.includes('["ringing","connecting"].includes(call.state)&&call.expires_at'));
 assert.doesNotMatch(androidMain,/callStartedAt|carrierFallbackOfferedFor|carrierFallbackPhone/);
