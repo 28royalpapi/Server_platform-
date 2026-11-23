@@ -16,19 +16,25 @@ class ServerWakeCallScreeningService : CallScreeningService() {
     if (callDetails.callDirection != Call.Details.DIRECTION_INCOMING) return
 
     val caller = ServerReceiverRoster.match(this, callDetails.handle?.schemeSpecificPart)
-    if (caller == null || ServerReceiverRoster.hasInternet(this)) {
+    if (caller == null) {
       allow(callDetails)
       return
     }
 
-    // If Android cannot display the wake-up notification, leave the ordinary
-    // cellular call alone rather than silently rejecting a call the user cannot see.
-    if (!showWakeNotification(caller)) {
-      allow(callDetails)
-      return
+    // A recognised Server cellular leg is never the conversation. If internet
+    // is already available, the normal Server WebRTC/browser push is the only
+    // incoming-call UI; silently suppress this wake-up carrier leg.
+    if (!ServerReceiverRoster.hasInternet(this)) {
+      // Without notification permission, let Android present the carrier call
+      // rather than silently hide the only alert the recipient could receive.
+      if (!showWakeNotification(caller)) {
+        allow(callDetails)
+        return
+      }
     }
 
-    // The cellular leg is a wake-up ping only. The conversation remains WebRTC.
+    // Always end the recognised cellular leg; the actual voice conversation
+    // must be established by Server WebRTC after internet is available.
     respondToCall(callDetails, CallResponse.Builder()
       .setDisallowCall(true)
       .setRejectCall(true)
