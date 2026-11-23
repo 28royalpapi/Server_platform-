@@ -43,7 +43,7 @@ assert.match(roster, /NET_CAPABILITY_VALIDATED/);
 assert.match(worker, /ServerReceiverRoster\.sync/);
 assert.match(gradle, /work-runtime-ktx/);
 assert.match(workflow, /assembleDebug/);
-assert.match(workflow, /apksigner verify/);
+assert.match(workflow, /apksigner" verify/);
 assert.match(page, /offline-wake-companion/);
 assert.match(client, /native_pair/);
 assert.match(client, /serverreceiver:\/\/pair/);
