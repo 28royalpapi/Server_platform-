@@ -13,6 +13,8 @@ self.addEventListener("push",event=>{
   ?payload.url:"https://server-onboarding-ochre.vercel.app/guest.html";
  event.waitUntil(self.registration.showNotification(title,{
   body,tag:"server-guest-"+String(payload.call_id||Date.now()).slice(0,80),
+  icon:"/images/server-app-icon.svg",badge:"/images/server-app-icon.svg",
+  actions:[{action:"answer",title:"Answer"},{action:"decline",title:"Decline"}],
   renotify:true,requireInteraction:true,vibrate:[0,450,180,450],
   data:{url:target,call_id:String(payload.call_id||"")}
  }));
@@ -21,10 +23,13 @@ self.addEventListener("notificationclick",event=>{
  event.notification.close();
  const target=event.notification.data?.url;
  if(typeof target!=="string"||!target.startsWith("https://"))return;
+ const action=event.action;
  event.waitUntil((async()=>{
   const windows=await self.clients.matchAll({type:"window",includeUncontrolled:true});
   const sameOriginTarget=new URL(target,self.location.origin);
   if(sameOriginTarget.origin!==self.location.origin)return;
+  if(action==="answer")sameOriginTarget.searchParams.set("server_action","answer");
+  if(action==="decline")sameOriginTarget.searchParams.set("server_action","decline");
   const existing=windows.find(client=>client.url.startsWith(self.location.origin));
   if(existing){await existing.navigate(sameOriginTarget.href);await existing.focus();return;}
   await self.clients.openWindow(sameOriginTarget.href);
