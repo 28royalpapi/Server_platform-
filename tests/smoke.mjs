@@ -1352,7 +1352,7 @@ assert.match(offlineInbox,/getRxStorageDexie/);
 assert.match(offlineInbox,/rxdb@17\.6\.0/);
 assert.match(guestWeb,/syncGuestInvite/);
 assert.match(guestWeb,/server\.guest\.inbox\.v1/);
-assert.match(guestServiceWorker,/server-guest-shell-v3/);
+assert.match(guestServiceWorker,/server-guest-shell-v4/);
 assert.match(guestServiceWorker,/\/receiver\.html/);
 assert.match(guestServiceWorker,/\/receiver\.js/);
 assert.match(guestWeb,/state==="missed"/);
