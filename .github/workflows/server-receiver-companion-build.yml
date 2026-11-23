@@ -1,6 +1,11 @@
 name: Build Server offline Receiver companion
 
 on:
+  pull_request:
+    branches: [android-finish]
+    paths:
+      - 'apps/android-receiver/**'
+      - '.github/workflows/server-receiver-companion-build.yml'
   push:
     branches: [feat/server-receiver-persistent-enrolment]
     paths:
