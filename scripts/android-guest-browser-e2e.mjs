@@ -1,6 +1,20 @@
 import { chromium } from "playwright";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+
+function readAndroidCallStage() {
+  try {
+    const xml = execFileSync("adb", [
+      "shell", "run-as", "com.server.caller.debug",
+      "cat", "shared_prefs/server-session.xml"
+    ], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] });
+    const match = xml.match(/<string name="debug_last_telecom_stage">([^<]*)<\/string>/);
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
 
 const invitationFile = process.env.SERVER_GUEST_INVITATION_FILE;
 const artifactDir = process.env.SERVER_E2E_ARTIFACT_DIR || "artifacts/server-guest-browser-e2e";
@@ -195,6 +209,30 @@ try {
   await page.screenshot({ path: join(artifactDir, "guest-call-connected.png"), fullPage: true });
   await writeFile(join(artifactDir, "guest-audio-stats.json"), JSON.stringify(guestAudioStats, null, 2));
   process.stdout.write("SERVER_GUEST_BROWSER_AUDIO_PASS: inbound/outbound RTP and audio energy verified: " + JSON.stringify(guestAudioStats) + "\\n");
+
+  // Keep the guest browser connected until Android independently confirms its
+  // own inbound/outbound RTP and microphone energy. Hanging up as soon as the
+  // browser reports ready can race Android's next getStats() callback and make
+  // a healthy call appear to have ended before the native side records it.
+  const androidMediaDeadline = Date.now() + 20000;
+  let androidStage = "";
+  while (Date.now() < androidMediaDeadline) {
+    androidStage = readAndroidCallStage();
+    if (androidStage === "two_way_audio_media_ready" ||
+        androidStage === "remote_call_ended" ||
+        androidStage === "call_setup_failed") break;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  await writeFile(join(artifactDir, "android-call-stage.json"), JSON.stringify({
+    stage: androidStage || "not-readable",
+    independentlyVerified: androidStage === "two_way_audio_media_ready",
+    observedAt: new Date().toISOString()
+  }, null, 2));
+  if (androidStage !== "two_way_audio_media_ready") {
+    throw new Error("Android did not independently confirm two-way audio before guest hang-up (stage=" +
+      (androidStage || "not-readable") + "; browserStats=" + JSON.stringify(guestAudioStats) + ").");
+  }
+  process.stdout.write("SERVER_GUEST_ANDROID_AUDIO_READY_PASS: native Android independently confirmed two-way audio.\\n");
 
   await page.locator("#leave-call").click();
   await page.waitForFunction(() =>
