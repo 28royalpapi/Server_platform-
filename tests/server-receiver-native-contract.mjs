@@ -41,6 +41,8 @@ assert.match(screening, /DIRECTION_INCOMING/);
 assert.match(screening, /setDisallowCall\(true\)/);
 assert.match(screening, /showWakeNotification/);
 assert.match(roster, /HmacSHA256/);
+assert.match(roster, /AndroidKeyStore/);
+assert.match(roster, /AES\/GCM\/NoPadding/);
 assert.match(roster, /native_claim/);
 assert.match(roster, /native_roster/);
 assert.match(roster, /normalizeE164/);
