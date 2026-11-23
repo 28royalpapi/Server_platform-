@@ -36,6 +36,7 @@ assert.match(edge,/RECEIVER_INVITE_DAILY_LIMIT/);
 assert.match(edge,/status:"registered"/);
 assert.match(edge,/action==="renew_config"\|\|action==="renew"/);
 assert.match(edge,/RECEIVER_DEVICE_NOT_RENEWABLE/);
+assert.match(edge,/if\(!updated\)return out\(\{error:"RECEIVER_DEVICE_NOT_RENEWABLE"\},409\)/);
 assert.match(edge,/needs_repair:true,expired:true/);
 assert.match(push,/expiration_at:\s*new Date\(\)\.toISOString\(\)/);
 assert.match(client,/async function renewReceiver\(\)/);
