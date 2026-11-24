@@ -668,9 +668,11 @@ assert.match(androidTelecom,/PhoneAccount.CAPABILITY_CALL_PROVIDER/);
 assert.match(androidEngine,/ToneGenerator\(AudioManager\.STREAM_VOICE_CALL, 80\)/,
   "outgoing calls use a local voice-call ringback tone when awaiting an answer");
 assert.match(androidEngine,/TONE_SUP_RINGTONE/);
-assert.match(androidEngine,/armUnansweredTimeout\(callId\.orEmpty\(\)\)/,
-  "each outgoing call arms the two-minute unanswered-call timeout");
-assert.match(androidEngine,/delay\(120_000L\)/);
+assert.match(androidEngine,/armUnansweredTimeout\(/,
+  "each outgoing call arms a route-specific unanswered-call timeout");
+assert.match(androidEngine,/delay\(timeoutMs\)/);
+assert.match(androidEngine,/if \(route == "guest"\) 300_000L else 120_000L/,
+  "guest Receiver reconnect has the backend's five-minute window while Server-to-Server remains two minutes");
 assert.match(androidEngine,/markCallAnswered\(\)/,
   "answer/active events stop ringback and cancel the unanswered timeout");
 assert.match(androidEngine,/shouldRequestTelecomRingback\(route: String\): Boolean = route == "server" \|\| route == "guest"/,
