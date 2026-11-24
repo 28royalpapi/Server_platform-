@@ -724,10 +724,9 @@ Deno.serve(async(req:Request)=>{
      .select("id").eq("phone_e164",to).is("revoked_at",null).limit(20);
     if(!receiverDeviceError&&receiverDevices?.length){
      const receiverIds=receiverDevices.map((device:any)=>device.id);
-     const readyAfter=new Date(Date.now()-20*60*1000).toISOString();
      const {count:readyCount,error:readyError}=await db.from("server_receiver_native_devices")
       .select("id",{count:"exact",head:true}).in("receiver_device_id",receiverIds)
-      .is("revoked_at",null).not("ready_at","is",null).gt("ready_at",readyAfter);
+      .is("revoked_at",null).not("ready_at","is",null);
      nativeWakeAvailable=!readyError&&(readyCount||0)>0;
     }
    }
