@@ -1244,8 +1244,8 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
           offlineWake?.optString("caller_phone_e164").orEmpty()
         )
       } else null
-      if (currentRoute == "guest" && deliveryMode == "manual_share" &&
-          invitationBody.isNotBlank() && wakeAttempt?.handedOff != true) {
+      if (currentRoute == "guest" && invitationBody.isNotBlank() &&
+          wakeAttempt?.handedOff != true && (deliveryMode == "manual_share" || offlineWakeAvailable)) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
         val guestPush = started.optJSONObject("push_delivery")
@@ -1256,8 +1256,10 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
             "Guest browser is online. Server submitted an internet call alert; waiting for the recipient to answer over WebRTC."
           accepted > 0 ->
             "Server submitted an internet call alert to the enrolled guest browser. Device display is not confirmed; waiting for the recipient to answer."
+          offlineWakeAvailable && wakeAttempt?.handedOff == true ->
+            "The cellular wake-up request was handed to Android. Carrier delivery is not confirmed; the recipient can reconnect and resume this pending WebRTC call."
           offlineWakeAvailable ->
-            "The enrolled Android Receiver did not accept a browser alert. Server is attempting its cellular wake-up route; the recipient can reconnect and resume this pending WebRTC call."
+            "The cellular wake-up route could not be handed to Android. Use the shared Receiver invitation as a backup."
           else ->
             "No enrolled guest-browser receiver accepted an internet notification. Share the secure link through WhatsApp or another internet messaging app. No carrier SMS was sent."
         }
