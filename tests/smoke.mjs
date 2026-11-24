@@ -309,13 +309,13 @@ assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
 assert.doesNotMatch(androidMain,/SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
   "the Android call activity does not enumerate SIMs or query subscriber records directly");
-assert.match(androidMain,/setupOfflineWake[\\s\\S]*?READ_PHONE_NUMBERS/,
+assert.match(androidMain,/setupOfflineWake[\s\S]*?READ_PHONE_NUMBERS/,
   "SIM-number permission is requested only through the explicit offline-wake consent flow");
-assert.match(androidOfflineWake,/getPhoneAccount\\(accountHandle\\)/,
+assert.match(androidOfflineWake,/getPhoneAccount\(accountHandle\)/,
   "the isolated offline-wake sender reads only the selected outgoing SIM account after consent");
 assert.match(androidOfflineWake,/CAPABILITY_SIM_SUBSCRIPTION/,
   "offline wake-up rejects non-SIM Telecom accounts");
-assert.doesNotMatch(androidOfflineWake,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\\s*\\(/i,
+assert.doesNotMatch(androidOfflineWake,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
   "offline wake-up does not read subscriber identity or SIM serial identifiers");
 assert.doesNotMatch(androidMain,/ServerFallbackSimManager|recordCarrierFallbackHistory|handoffToCarrierDialer/,
   "the Android call activity never reads carrier-fallback consent or records/initiates a SIM handoff");
