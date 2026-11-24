@@ -341,6 +341,53 @@ Deno.serve(async(req:Request)=>{
   }
   return out({ok:true,roster_version:now,caller_count:callers.length,callers});
  }
+ if(action==="native_pending_call"){
+  const nativeSecret=typeof b.native_secret==="string"?b.native_secret:"";
+  if(!/^[0-9a-f]{64}$/i.test(nativeSecret))return out({error:"RECEIVER_NATIVE_CREDENTIALS_INVALID"},400);
+  const now=new Date().toISOString();
+  const {data:nativeDevice,error:nativeError}=await db.from("server_receiver_native_devices")
+   .select("id,receiver_device_id").eq("native_secret_hash",await sha(nativeSecret))
+   .is("revoked_at",null).maybeSingle();
+  if(nativeError)return out({error:"RECEIVER_NATIVE_LOOKUP_FAILED"},503);
+  if(!nativeDevice)return out({error:"RECEIVER_NATIVE_NOT_ACTIVE"},401);
+  const {data:parent,error:parentError}=await db.from("server_guest_push_devices")
+   .select("id,phone_e164").eq("id",nativeDevice.receiver_device_id)
+   .is("revoked_at",null).maybeSingle();
+  if(parentError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
+  if(!parent||typeof parent.phone_e164!=="string")return out({error:"RECEIVER_NATIVE_NOT_ACTIVE"},401);
+  const {data:calls,error:callError}=await db.from("server_calls")
+   .select("id,state,caller_user_id,expires_at,created_at")
+   .eq("route","guest").eq("callee_phone_e164",parent.phone_e164)
+   .in("state",["ringing","connecting"]).gt("expires_at",now)
+   .order("created_at",{ascending:false}).limit(5);
+  if(callError)return out({error:"RECEIVER_PENDING_CALL_LOOKUP_FAILED"},503);
+  for(const call of calls||[]){
+   const {data:joined,error:joinedError}=await db.from("server_guest_invites")
+    .select("id").eq("call_id",call.id).not("joined_at","is",null)
+    .is("revoked_at",null).limit(1);
+   if(joinedError)return out({error:"RECEIVER_PENDING_CALL_STATE_FAILED"},503);
+   if(joined&&joined.length)continue;
+   const callExpiry=Date.parse(call.expires_at||"");
+   if(!Number.isFinite(callExpiry)||callExpiry<=Date.now())continue;
+   const expiresAt=new Date(Math.min(callExpiry,Date.now()+5*60*1000)).toISOString();
+   const token=Array.from(crypto.getRandomValues(new Uint8Array(32)))
+    .map((x)=>x.toString(16).padStart(2,"0")).join("");
+   const {error:inviteError}=await db.from("server_guest_invites").insert({
+    call_id:call.id,phone_e164:parent.phone_e164,token_hash:await sha(token),expires_at:expiresAt
+   });
+   if(inviteError)return out({error:"RECEIVER_PENDING_CALL_INVITE_FAILED"},503);
+   const {data:caller,error:callerError}=await db.from("server_profiles")
+    .select("server_id,display_name").eq("user_id",call.caller_user_id).maybeSingle();
+   if(callerError)return out({error:"RECEIVER_PENDING_CALL_CALLER_FAILED"},503);
+   const callerLabel=(typeof caller?.display_name==="string"&&caller.display_name.trim())
+    ?caller.display_name.trim():(caller?.server_id||"Server user");
+   return out({
+    ok:true,pending:true,call_id:call.id,caller_label:callerLabel,expires_at:expiresAt,
+    invitation_url:"https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token)
+   });
+  }
+  return out({ok:true,pending:false});
+ }
  if(action==="native_revoke"){
   const nativeSecret=typeof b.native_secret==="string"?b.native_secret:"";
   if(!/^[0-9a-f]{64}$/i.test(nativeSecret))return out({error:"RECEIVER_NATIVE_CREDENTIALS_INVALID"},400);
