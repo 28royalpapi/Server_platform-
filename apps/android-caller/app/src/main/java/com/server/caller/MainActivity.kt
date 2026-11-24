@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
       checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
     if (granted) {
       prefs.edit().putBoolean("server_offline_wake_consent", true).apply()
-      setStatus("Offline wake-up is enabled. Server will use your verified default SIM only for enrolled Android Receivers; your carrier may charge for a cellular call.")
+      setStatus("Offline wake-up is enabled. Server will use the SIM matching your verified Server number only for enrolled Android Receivers; your carrier may charge for a cellular call.")
     } else {
       prefs.edit().putBoolean("server_offline_wake_consent", false).apply()
       setStatus("Offline wake-up was not enabled because the required Phone permissions were not granted.", true)
@@ -278,7 +278,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
     AlertDialog.Builder(this)
       .setTitle("Enable cellular wake-up")
       .setMessage(
-        "When you call an already-enrolled Android Server Receiver whose internet push cannot reach it, Server can place a brief call from your selected default SIM. The Receiver screens that call and then reconnects to the pending Server WebRTC call. Your carrier may charge for the cellular attempt. Server will only try when your selected SIM caller ID exactly matches your verified Server number."
+        "When you call an already-enrolled Android Server Receiver whose internet push cannot reach it, Server can place a brief call from the SIM whose caller ID matches your verified Server number. The Receiver screens that call and then reconnects to the pending Server WebRTC call. Your carrier may charge for the cellular attempt. Server will only try when your selected SIM caller ID exactly matches your verified Server number."
       )
       .setNegativeButton("Not now", null)
       .setPositiveButton("I agree — enable wake-up") { _, _ ->
