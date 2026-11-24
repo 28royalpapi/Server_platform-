@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: server-offline-receiver-companion
@@ -54,6 +54,25 @@ jobs:
           path: artifacts/Server-Offline-Receiver-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish a direct-download Receiver Companion preview
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/server-receiver-persistent-enrolment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=server-offline-receiver-companion-preview
+          APK=artifacts/Server-Offline-Receiver-debug.apk
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK#Server-Offline-Receiver.apk" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "$APK#Server-Offline-Receiver.apk" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Server Receiver Companion — Offline Wake Preview" \
+              --notes "Preview APK for Android offline Receiver wake-up. It requires explicit installation, Android Call Screening approval, Contacts access and notification permission. This companion detects a cellular wake signal only; Server WebRTC carries the actual conversation. Carrier charges may apply to the caller's cellular wake attempt." \
+              --prerelease
+          fi
+          echo "PUBLISHED_RECEIVER_COMPANION_PREVIEW"
 
   gsm-screening-smoke:
     name: Simulate offline GSM call and verify Server Receiver notification
