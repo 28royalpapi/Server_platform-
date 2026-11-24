@@ -20,6 +20,9 @@ class OfflineWakeReceiverSmokeTest {
   private val phone = "+2348012345678"
   private val serverId = "SVR-EMULATOR-A1"
   private val displayName = "Server Caller A"
+  private val phoneC = "+2348098765432"
+  private val serverIdC = "SVR-EMULATOR-C3"
+  private val displayNameC = "Server Caller C"
   private val secret = "a".repeat(64)
 
   @Test
@@ -33,15 +36,24 @@ class OfflineWakeReceiverSmokeTest {
       .put("caller_hash", hmac(secret, phone))
       .put("server_id", serverId)
       .put("display_name", displayName)
+    val secondRow = JSONObject()
+      .put("caller_hash", hmac(secret, phoneC))
+      .put("server_id", serverIdC)
+      .put("display_name", displayNameC)
     context.getSharedPreferences("server_receiver_companion", Context.MODE_PRIVATE)
       .edit()
-      .putString("caller_roster_json", JSONArray().put(row).toString())
+      .putString("caller_roster_json", JSONArray().put(row).put(secondRow).toString())
       .commit()
 
     val matched = ServerReceiverRoster.match(context, phone)
-    assertNotNull("Known verified Server caller must match the local roster", matched)
+    assertNotNull("Inviting Server caller A must match the local roster", matched)
     assertEquals(serverId, matched?.serverId)
     assertEquals(displayName, matched?.displayName)
+    val matchedOtherCaller = ServerReceiverRoster.match(context, phoneC)
+    assertNotNull("A different opted-in Server caller C must also match the same Receiver", matchedOtherCaller)
+    assertEquals(serverIdC, matchedOtherCaller?.serverId)
+    assertEquals(displayNameC, matchedOtherCaller?.displayName)
+    assertEquals(null, ServerReceiverRoster.match(context, "+2348070000000"))
   }
 
   @Test
@@ -64,7 +76,7 @@ class OfflineWakeReceiverSmokeTest {
     assertEquals("$displayName is trying to reach you", title)
   }
 
-  private fun hmac(key: String, value: String): String {
+  @Test\n  fun gsmWakeCallFromDifferentServerCallerProducesServerNotification() {\n    val context = InstrumentationRegistry.getInstrumentation().targetContext\n    assertTrue("Test requires a phone with cellular voice but no validated internet",\n      !ServerReceiverRoster.hasInternet(context))\n    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager\n    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(12)\n    var found: android.service.notification.StatusBarNotification? = null\n    while (System.nanoTime() < deadline && found == null) {\n      found = manager.activeNotifications.firstOrNull {\n        it.notification.channelId == "server-offline-wakeup-v1" &&\n          it.notification.extras?.getCharSequence("android.title")?.toString() == "$displayNameC is trying to reach you"\n      }\n      if (found == null) Thread.sleep(250)\n    }\n    assertNotNull("A second Server caller must trigger a separately identified wake notification", found)\n  }\n\n  private fun hmac(key: String, value: String): String {
     val mac = Mac.getInstance("HmacSHA256")
     mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
     return mac.doFinal(value.toByteArray(Charsets.UTF_8))
