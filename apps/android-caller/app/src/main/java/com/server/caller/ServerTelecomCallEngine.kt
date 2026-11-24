@@ -244,7 +244,11 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
       // Any backend/network failure below stops the tone in failCall()/cleanupPeer().
       if (shouldRequestTelecomRingback(route)) startLocalRingback()
       recordStage("backend_start_requested")
-      val started = api("start", target.toStartPayload("android_telecom"))
+      val startPayload = target.toStartPayload("android_telecom").put(
+        "offline_wake_enabled",
+        prefs.getBoolean("server_offline_wake_consent", false)
+      )
+      val started = api("start", startPayload)
       callId = started.optString("call_id").takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("Server did not return a call ID.")
       ServerTelecomRegistry.setCurrentCallId(callId)
