@@ -719,7 +719,7 @@ Deno.serve(async(req:Request)=>{
    // The caller must also have a verified, explicitly opted-in number so the
    // Receiver can identify the incoming SIM caller ID from its local roster.
    let nativeWakeAvailable=false;
-   if(callerPhone){
+   if(callerPhone&&b.offline_wake_enabled===true&&!guestInternetReachable){
     const {data:receiverDevices,error:receiverDeviceError}=await db.from("server_guest_push_devices")
      .select("id").eq("phone_e164",to).is("revoked_at",null).limit(20);
     if(!receiverDeviceError&&receiverDevices?.length){
