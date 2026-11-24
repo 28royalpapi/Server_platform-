@@ -311,23 +311,31 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
           if (messageDelivery?.optBoolean("web_push_submitted", false) == true) 1 else 0
         )
         val offlineWake = started.optJSONObject("offline_wake")
-        if (offlineWake?.optBoolean("available", false) == true) {
-          val wakeAttempt = ServerOfflineWakeCall.place(
+        val offlineWakeAvailable = offlineWake?.optBoolean("available", false) == true
+        val wakeAttempt = if (offlineWakeAvailable) {
+          ServerOfflineWakeCall.place(
             context,
             callId.orEmpty(),
             target.phoneNumber.orEmpty(),
-            offlineWake.optString("caller_phone_e164")
+            offlineWake?.optString("caller_phone_e164").orEmpty()
           )
-          connection.updateServerStatus(wakeAttempt.message)
+        } else null
+        if (wakeAttempt != null) {
           recordStage(if (wakeAttempt.handedOff) "cellular_wake_handed_to_telecom" else "cellular_wake_unavailable_" + wakeAttempt.code.lowercase())
           Log.i(TAG, "Offline Receiver cellular wake attempt result: " + wakeAttempt.code)
         }
         if (acceptedByPush > 0) {
-          connection.updateServerStatus("Guest browser alert submitted · waiting for WebRTC answer")
+          connection.updateServerStatus(
+            if (wakeAttempt?.handedOff == true) {
+              "Guest internet alert submitted and cellular wake request handed to Android · waiting for WebRTC answer"
+            } else {
+              "Guest browser alert submitted · waiting for WebRTC answer"
+            }
+          )
           Log.i(TAG, "Server submitted a caller-identified Web Push alert to the enrolled guest browser.")
           recordStage("guest_browser_push_submitted")
-        } else if (offlineWake?.optBoolean("available", false) == true) {
-          connection.updateServerStatus("Offline Receiver wake-up attempted · waiting for recipient to reconnect and answer over WebRTC")
+        } else if (wakeAttempt?.handedOff == true) {
+          connection.updateServerStatus("Cellular wake request handed to Android · waiting for recipient to reconnect and answer over WebRTC")
         } else {
           if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
             throw IllegalStateException(
