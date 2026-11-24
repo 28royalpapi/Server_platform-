@@ -637,8 +637,10 @@ assert.match(calls,/APNS_TEAM_ID/);
 assert.match(calls,/apns-push-type/);
 assert.match(pushMigration,/create table if not exists public.server_push_devices/);
 assert.match(pushMigration,/add column if not exists expires_at/);
-assert.doesNotMatch(androidManifest,/android\.permission\.CALL_PHONE/,
-  "Server does not include Android carrier-call permission in its internet-only connector");
+assert.match(androidManifest,/android\.permission\.CALL_PHONE/,
+  "Server declares carrier-call permission solely for the separately consented offline wake signal");
+assert.match(androidOfflineWake,/CALL_PHONE/,
+  "only the isolated offline-wake sender uses the carrier-call permission");
 
 assert.match(androidSetup,/getNumberCallPreferences/);
 assert.match(androidSetup,/onPageFinished/);
