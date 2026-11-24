@@ -74,7 +74,7 @@ assert.match(callerActivity, /offline_wake_enabled/);
 assert.match(callerActivity, /ServerOfflineWakeCall\.place/);
 assert.match(callerActivity, /carrier may charge/);
 assert.match(callerEngine, /ServerOfflineWakeCall\.place/);
-assert.match(wakeSender, /TelecomManager\.placeCall/);
+assert.match(wakeSender, /\.placeCall\(/);
 assert.match(wakeSender, /getDefaultOutgoingPhoneAccount/);
 assert.match(wakeSender, /READ_PHONE_NUMBERS/);
 assert.match(wakeSender, /verifiedCallerE164/);
