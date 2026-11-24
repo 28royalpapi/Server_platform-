@@ -95,9 +95,9 @@ async function enrolTestNativeReceiver() {
   const native = await receiver("native_claim", { pair_code: pair.pair_code });
   assert.equal(native.ok, true);
   assert.match(native.native_secret || "", /^[0-9a-f]{64}$/i);
+  testNativeReceiver = { endpoint, deviceSecret, nativeSecret: native.native_secret };
   const roster = await receiver("native_roster", { native_secret: native.native_secret, ready: true });
   assert.equal(roster.ok, true);
-  testNativeReceiver = { endpoint, deviceSecret, nativeSecret: native.native_secret };
   pass("synthetic Android Receiver enrolled and paired", "one-time setup link, native secret and ready caller roster");
   return testNativeReceiver;
 }
