@@ -1,11 +1,17 @@
 package com.server.receiver
 
+import android.Manifest
+import android.app.NotificationManager
+import android.app.role.RoleManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
+import android.os.Build
 import android.telephony.PhoneNumberUtils
 import android.telephony.TelephonyManager
 import org.json.JSONArray
@@ -23,6 +29,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 internal data class ServerCaller(val serverId: String, val displayName: String)
+internal data class PendingGuestCall(val callId: String, val invitationUrl: String)
 
 internal object ServerReceiverRoster {
   private const val PREFS = "server_receiver_companion"
@@ -98,13 +105,47 @@ internal object ServerReceiverRoster {
 
   fun sync(context: Context, nativeSecret: String = secret(context)): Int {
     require(nativeSecret.matches(Regex("^[0-9a-f]{64}$"))) { "Receiver pairing is missing or invalid." }
-    val response = post(JSONObject().put("action", "native_roster").put("native_secret", nativeSecret))
+    val response = post(
+      JSONObject().put("action", "native_roster")
+        .put("native_secret", nativeSecret)
+        .put("ready", isReady(context))
+    )
     val roster = response.optJSONArray("callers") ?: JSONArray()
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
       .putString(ROSTER_KEY, roster.toString())
       .putLong("roster_synced_at", System.currentTimeMillis())
       .apply()
     return roster.length()
+  }
+
+  fun isReady(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 29) return false
+    val roles = context.getSystemService(RoleManager::class.java) ?: return false
+    val screeningRole = try { roles.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) } catch (_: Exception) { false }
+    val contacts = context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+    val notificationsPermission = Build.VERSION.SDK_INT < 33 ||
+      context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    val notificationsEnabled = try {
+      (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).areNotificationsEnabled()
+    } catch (_: Exception) { false }
+    return screeningRole && contacts && notificationsPermission && notificationsEnabled
+  }
+
+  fun pendingGuestCall(context: Context, nativeSecret: String = secret(context)): PendingGuestCall? {
+    require(nativeSecret.matches(Regex("^[0-9a-f]{64}$"))) { "Receiver pairing is missing or invalid." }
+    val response = post(JSONObject().put("action", "native_pending_call").put("native_secret", nativeSecret))
+    if (response.optBoolean("pending") != true) return null
+    val callId = response.optString("call_id")
+    val url = response.optString("invitation_url")
+    require(callId.matches(Regex("^[0-9a-fA-F-]{36}$"))) { "Pending Server call ID is invalid." }
+    require(Regex("^https://server-onboarding-ochre\\.vercel\\.app/guest\\.html#token=[0-9a-f]{64}$").matches(url)) {
+      "Pending Server invitation URL is invalid."
+    }
+    val uri = Uri.parse(url)
+    require(uri.scheme == "https" && uri.host == "server-onboarding-ochre.vercel.app" && uri.path == "/guest.html") {
+      "Pending Server invitation host is not trusted."
+    }
+    return PendingGuestCall(callId, url)
   }
 
   fun revoke(context: Context) {
