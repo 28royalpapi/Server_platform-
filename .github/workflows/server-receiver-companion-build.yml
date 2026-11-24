@@ -69,6 +69,7 @@ jobs:
             gh release create "$TAG" "$APK#Server-Offline-Receiver.apk" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Server Receiver Companion — Offline Wake Preview" \
+              --target "$GITHUB_SHA" \
               --notes "Preview APK for Android offline Receiver wake-up. It requires explicit installation, Android Call Screening approval, Contacts access and notification permission. This companion detects a cellular wake signal only; Server WebRTC carries the actual conversation. Carrier charges may apply to the caller's cellular wake attempt." \
               --prerelease
           fi
