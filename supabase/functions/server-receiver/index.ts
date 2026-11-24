@@ -317,7 +317,7 @@ Deno.serve(async(req:Request)=>{
   if(parentError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
   if(!parent)return out({error:"RECEIVER_NATIVE_NOT_ACTIVE"},401);
   const {error:touchError}=await db.from("server_receiver_native_devices")
-   .update({last_seen_at:now,updated_at:now,ready_at:b.ready===true?now:null})
+   .update({last_seen_at:now,updated_at:now})
    .eq("id",nativeDevice.id).is("revoked_at",null);
   if(touchError)return out({error:"RECEIVER_NATIVE_TOUCH_FAILED"},503);
   const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(nativeSecret),
@@ -339,6 +339,10 @@ Deno.serve(async(req:Request)=>{
    }
    if((rows||[]).length<1000)break;
   }
+  const {error:readyError}=await db.from("server_receiver_native_devices")
+   .update({ready_at:b.ready===true?now:null,updated_at:now})
+   .eq("id",nativeDevice.id).is("revoked_at",null);
+  if(readyError)return out({error:"RECEIVER_NATIVE_READY_STATE_FAILED"},503);
   return out({ok:true,roster_version:now,caller_count:callers.length,callers});
  }
  if(action==="native_pending_call"){
