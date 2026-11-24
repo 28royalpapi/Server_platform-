@@ -1183,6 +1183,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
     // must identify a Phone-originated request so the backend never converts
     // an Android system call into a guest invitation/share page.
     if (pendingSystemDialerReturn) payload.put("source", "android_telecom")
+    payload.put("offline_wake_enabled", prefs.getBoolean("server_offline_wake_consent", false))
     callButton.isEnabled = false
     try {
       recordTelecomDebugStage("backend_start_requested")
@@ -1244,7 +1245,7 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         )
       } else null
       if (currentRoute == "guest" && deliveryMode == "manual_share" &&
-          invitationBody.isNotBlank() && !offlineWakeAvailable) {
+          invitationBody.isNotBlank() && wakeAttempt?.handedOff != true) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
         val guestPush = started.optJSONObject("push_delivery")
