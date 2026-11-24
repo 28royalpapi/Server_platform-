@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [migration, edge, serverCalls, guestPush, manifest, activity, screening, roster, worker, gradle, workflow, page, client] = await Promise.all([
+const [migration, deliveryMigration, edge, serverCalls, guestPush, manifest, activity, screening, roster, worker, gradle, workflow, page, client, callerManifest, callerActivity, callerEngine, wakeSender] = await Promise.all([
   readFile("supabase/migrations/20261123190000_server_receiver_native_companion.sql", "utf8"),
+  readFile("supabase/migrations/20261124070000_server_receiver_offline_wake_delivery.sql", "utf8"),
   readFile("supabase/functions/server-receiver/index.ts", "utf8"),
   readFile("supabase/functions/server-calls/index.ts", "utf8"),
   readFile("supabase/functions/_shared/guest_web_push.ts", "utf8"),
@@ -14,12 +15,18 @@ const [migration, edge, serverCalls, guestPush, manifest, activity, screening, r
   readFile("apps/android-receiver/app/build.gradle.kts", "utf8"),
   readFile(".github/workflows/server-receiver-companion-build.yml", "utf8"),
   readFile("web/receiver.html", "utf8"),
-  readFile("web/receiver.js", "utf8")
+  readFile("web/receiver.js", "utf8"),
+  readFile("apps/android-caller/app/src/main/AndroidManifest.xml", "utf8"),
+  readFile("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt", "utf8"),
+  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerTelecomCallEngine.kt", "utf8"),
+  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerOfflineWakeCall.kt", "utf8")
 ]);
 
 assert.match(migration, /server_receiver_native_pair_codes/);
 assert.match(migration, /server_receiver_native_devices/);
 assert.match(migration, /enable row level security/);
+assert.match(deliveryMigration, /add column if not exists ready_at/);
+assert.match(deliveryMigration, /server_calls_guest_receiver_lookup_idx/);
 assert.match(edge, /action==="native_pair"/);
 assert.match(edge, /action==="native_claim"/);
 assert.match(edge, /action==="native_roster"/);
@@ -46,6 +53,26 @@ assert.match(roster, /AndroidKeyStore/);
 assert.match(roster, /AES\/GCM\/NoPadding/);
 assert.match(roster, /native_claim/);
 assert.match(roster, /native_roster/);
+assert.match(roster, /native_roster/);
+assert.match(roster, /pendingGuestCall/);
+assert.match(roster, /native_pending_call/);
+assert.match(roster, /fun isReady/);
+assert.match(roster, /READ_CONTACTS/);
+assert.match(roster, /POST_NOTIFICATIONS/);
+assert.match(activity, /resumePendingCall/);
+assert.match(activity, /override fun onResume/);
+assert.match(activity, /PeriodicWorkRequestBuilder<ServerRosterRefreshWorker>\\(15, TimeUnit.MINUTES\\)/);
+assert.match(callerManifest, /android\.permission\.CALL_PHONE/);
+assert.match(callerManifest, /android\.permission\.READ_PHONE_NUMBERS/);
+assert.match(callerActivity, /offline_wake_enabled/);
+assert.match(callerActivity, /ServerOfflineWakeCall\.place/);
+assert.match(callerActivity, /carrier may charge/);
+assert.match(callerEngine, /ServerOfflineWakeCall\.place/);
+assert.match(wakeSender, /TelecomManager\.placeCall/);
+assert.match(wakeSender, /getDefaultOutgoingPhoneAccount/);
+assert.match(wakeSender, /READ_PHONE_NUMBERS/);
+assert.match(wakeSender, /verifiedCallerE164/);
+assert.match(wakeSender, /CALLER_CONSENT_REQUIRED/);
 assert.match(roster, /normalizeE164/);
 assert.match(roster, /NET_CAPABILITY_VALIDATED/);
 assert.match(worker, /ServerReceiverRoster\.sync/);
@@ -55,4 +82,4 @@ assert.match(workflow, /apksigner" verify/);
 assert.match(page, /offline-wake-companion/);
 assert.match(client, /native_pair/);
 assert.match(client, /serverreceiver:\/\/pair/);
-console.log("PASS Server native Receiver contract — one-time pairing, keyed caller roster, Android call-screening service and APK build.");
+console.log("PASS Server offline Receiver contract — caller SIM wake handoff, one-time pairing, keyed caller roster, pending WebRTC recovery, and Android build.");
