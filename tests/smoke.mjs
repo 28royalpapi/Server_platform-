@@ -46,6 +46,7 @@ const handoffMigration=read("supabase/migrations/20261021195856_server_app_hando
 const deviceMigration=read("supabase/migrations/20261022100500_server_device_first_identity.sql");
 const handoff=read("supabase/functions/server-handoff/index.ts");
 const androidMain=read("apps/android-caller/app/src/main/java/com/server/caller/MainActivity.kt");
+const androidOfflineWake=read("apps/android-caller/app/src/main/java/com/server/caller/ServerOfflineWakeCall.kt");
 const androidSetup=read("apps/android-caller/app/src/main/java/com/server/caller/ServerSetupWebActivity.kt");
 const androidFallbackSim=read("apps/android-caller/app/src/main/java/com/server/caller/ServerFallbackSimManager.kt");
 const androidTelecom=read("apps/android-caller/app/src/main/java/com/server/caller/ServerConnectionService.kt");
@@ -306,8 +307,16 @@ assert.match(app,/userAgent\.toLowerCase\(\)\.includes\("; wv"\)/);
 assert.match(app,/setNumberCallConsent/);
 assert.match(html,/allow-number-calls/);
 assert.match(auth,/LEGAL_ACCEPTANCE_REQUIRED/);
-assert.doesNotMatch(androidMain,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
-  "the Android call activity must not enumerate SIMs or read protected SIM identifiers directly");
+assert.doesNotMatch(androidMain,/SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
+  "the Android call activity does not enumerate SIMs or query subscriber records directly");
+assert.match(androidMain,/setupOfflineWake[\\s\\S]*?READ_PHONE_NUMBERS/,
+  "SIM-number permission is requested only through the explicit offline-wake consent flow");
+assert.match(androidOfflineWake,/getPhoneAccount\\(accountHandle\\)/,
+  "the isolated offline-wake sender reads only the selected outgoing SIM account after consent");
+assert.match(androidOfflineWake,/CAPABILITY_SIM_SUBSCRIPTION/,
+  "offline wake-up rejects non-SIM Telecom accounts");
+assert.doesNotMatch(androidOfflineWake,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\\s*\\(/i,
+  "offline wake-up does not read subscriber identity or SIM serial identifiers");
 assert.doesNotMatch(androidMain,/ServerFallbackSimManager|recordCarrierFallbackHistory|handoffToCarrierDialer/,
   "the Android call activity never reads carrier-fallback consent or records/initiates a SIM handoff");
 assert.doesNotMatch(androidSetup,/READ_PHONE_NUMBERS|SubscriptionManager|activeSubscriptionInfoList|TelephonyManager/,
@@ -354,8 +363,10 @@ assert.match(androidSetup,/Manifest\.permission\.READ_PHONE_STATE/);
 assert.match(androidSetup,/Manifest\.permission\.SEND_SMS/);
 assert.doesNotMatch(androidSetup,/Manifest\.permission\.READ_PHONE_NUMBERS|Manifest\.permission\.CALL_PHONE|REQUEST_AUTO_CARRIER_FALLBACK/,
   "Android onboarding never reads the SIM phone number or requests carrier-call permission");
-assert.doesNotMatch(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
-  "Server must not request permission to read SIM phone numbers");
+assert.match(androidManifest,/android\.permission\.READ_PHONE_NUMBERS/,
+  "the caller requests SIM-number access only for explicit offline wake-up");
+assert.match(androidManifest,/android\.permission\.CALL_PHONE/,
+  "the caller declares the OS permission needed to place the consented cellular wake signal");
 assert.doesNotMatch(androidTelecom,/selected_sim_phone/,
    "a legacy SIM number must not become Server's calling-account address");
 assert.match(androidTelecom,/setAudioModeIsVoip\(true\)/,
