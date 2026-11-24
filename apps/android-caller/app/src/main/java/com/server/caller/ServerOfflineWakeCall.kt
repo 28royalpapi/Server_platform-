@@ -58,6 +58,9 @@ internal object ServerOfflineWakeCall {
       // Android requires READ_PHONE_NUMBERS for getPhoneAccount on current target SDKs.
       val account = telecom.getPhoneAccount(accountHandle)
         ?: return unavailable("DEFAULT_SIM_UNAVAILABLE", "Android could not read the selected outgoing SIM.")
+      if (!account.hasCapabilities(PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION)) {
+        return unavailable("DEFAULT_ACCOUNT_NOT_SIM", "The default outgoing account is not a mobile SIM. No wake-up call was placed.")
+      }
       val simNumber = account.address?.schemeSpecificPart
         ?: return unavailable("SIM_CALLER_ID_UNAVAILABLE", "Android did not expose the selected SIM caller ID. No wake-up call was placed.")
       val normalizedSim = normalizeE164(context, simNumber)
