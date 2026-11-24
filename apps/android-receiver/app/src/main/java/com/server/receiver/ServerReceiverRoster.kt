@@ -131,9 +131,18 @@ internal object ServerReceiverRoster {
     return screeningRole && contacts && notificationsPermission && notificationsEnabled
   }
 
-  fun pendingGuestCall(context: Context, nativeSecret: String = secret(context)): PendingGuestCall? {
+  fun pendingGuestCall(
+    context: Context,
+    nativeSecret: String = secret(context),
+    excludeCallId: String = ""
+  ): PendingGuestCall? {
     require(nativeSecret.matches(Regex("^[0-9a-f]{64}$"))) { "Receiver pairing is missing or invalid." }
-    val response = post(JSONObject().put("action", "native_pending_call").put("native_secret", nativeSecret))
+    require(excludeCallId.isBlank() || excludeCallId.matches(Regex("^[0-9a-fA-F-]{36}$"))) {
+      "Previously opened Server call ID is invalid."
+    }
+    val request = JSONObject().put("action", "native_pending_call").put("native_secret", nativeSecret)
+    if (excludeCallId.isNotBlank()) request.put("exclude_call_id", excludeCallId)
+    val response = post(request)
     if (response.optBoolean("pending") != true) return null
     val callId = response.optString("call_id")
     val url = response.optString("invitation_url")
