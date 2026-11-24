@@ -26,7 +26,8 @@ on:
       - 'tests/**'
       - 'infra/**'
 concurrency:
-  group: server-native-${{ github.ref }}-kvm
+  # PR merge-ref runs can remain queued behind cancelled matrix jobs; isolate each code head.
+  group: server-native-${{ github.ref }}-${{ github.sha }}-kvm
   cancel-in-progress: true
 permissions:
   contents: read
