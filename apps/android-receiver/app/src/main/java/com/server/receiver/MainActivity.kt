@@ -27,8 +27,12 @@ class MainActivity : ComponentActivity() {
   private lateinit var status: TextView
 
   private val roleResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-    syncRoster()
-    renderStatus()
+    val manager = getSystemService(RoleManager::class.java)
+    if (manager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true) requestPermissions()
+    else {
+      syncRoster()
+      renderStatus()
+    }
   }
   private val permissionsResult = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
     syncRoster()
@@ -134,13 +138,31 @@ class MainActivity : ComponentActivity() {
         ServerReceiverRoster.saveSecret(this, secret)
         val count = ServerReceiverRoster.sync(this, secret)
         runOnUiThread {
-          setStatus("PAIRED · $count verified Server callers synced. Approve the Call Screening role and permissions below.")
+          setStatus("Receiver paired. Approve the Android offline wake-up permissions to finish setup.")
+          beginOfflineWakeActivation()
         }
       } catch (e: Exception) {
         runOnUiThread {
           setStatus("Pairing failed: ${e.message?.take(140) ?: "network error"}. Create a fresh pairing link from the Receiver page.")
         }
       }
+    }
+  }
+
+  private fun beginOfflineWakeActivation() {
+    if (Build.VERSION.SDK_INT < 29) {
+      setStatus("Android 10 or later is required for offline wake-up.")
+      return
+    }
+    val manager = getSystemService(RoleManager::class.java)
+    if (manager == null || !manager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
+      setStatus("This phone does not expose Android's Call Screening role. Browser Receiver alerts remain available while internet is on.")
+      return
+    }
+    if (manager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+      requestPermissions()
+    } else {
+      roleResult.launch(manager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING))
     }
   }
 
