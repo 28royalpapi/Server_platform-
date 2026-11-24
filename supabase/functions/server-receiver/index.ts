@@ -317,7 +317,8 @@ Deno.serve(async(req:Request)=>{
   if(parentError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
   if(!parent)return out({error:"RECEIVER_NATIVE_NOT_ACTIVE"},401);
   const {error:touchError}=await db.from("server_receiver_native_devices")
-   .update({last_seen_at:now,updated_at:now}).eq("id",nativeDevice.id).is("revoked_at",null);
+   .update({last_seen_at:now,updated_at:now,ready_at:b.ready===true?now:null})
+   .eq("id",nativeDevice.id).is("revoked_at",null);
   if(touchError)return out({error:"RECEIVER_NATIVE_TOUCH_FAILED"},503);
   const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(nativeSecret),
    {name:"HMAC",hash:"SHA-256"},false,["sign"]);
