@@ -311,8 +311,8 @@ assert.doesNotMatch(androidMain,/SubscriptionManager|activeSubscriptionInfoList|
   "the Android call activity does not enumerate SIMs or query subscriber records directly");
 assert.match(androidMain,/setupOfflineWake[\s\S]*?READ_PHONE_NUMBERS/,
   "SIM-number permission is requested only through the explicit offline-wake consent flow");
-assert.match(androidOfflineWake,/getPhoneAccount\(accountHandle\)/,
-  "the isolated offline-wake sender reads only the selected outgoing SIM account after consent");
+assert.match(androidOfflineWake,/callCapablePhoneAccounts[\s\S]*?getPhoneAccount\(handle\)[\s\S]*?normalized === verifiedCallerE164/,
+  "the isolated offline-wake sender checks cellular SIM accounts only after consent and selects the exact verified caller number");
 assert.match(androidOfflineWake,/CAPABILITY_SIM_SUBSCRIPTION/,
   "offline wake-up rejects non-SIM Telecom accounts");
 assert.doesNotMatch(androidOfflineWake,/getLine1Number|getSubscriberId|getIccSerialNumber|getSimSerialNumber|iccId\s*\(/i,
