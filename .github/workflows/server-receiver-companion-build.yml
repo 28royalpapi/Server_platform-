@@ -54,3 +54,49 @@ jobs:
           path: artifacts/Server-Offline-Receiver-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  gsm-screening-smoke:
+    name: Simulate offline GSM call and verify Server Receiver notification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            gradle -p apps/android-receiver assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
+            APP=apps/android-receiver/app/build/outputs/apk/debug/app-debug.apk
+            TEST=apps/android-receiver/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            test -s "$APP"
+            test -s "$TEST"
+            adb install "$APP"
+            adb install "$TEST"
+            PACKAGE=com.server.receiver.debug
+            RUNNER=com.server.receiver.debug.test/androidx.test.runner.AndroidJUnitRunner
+            adb shell cmd role add-role-holder --user 0 android.app.role.CALL_SCREENING "$PACKAGE"
+            adb shell pm grant "$PACKAGE" android.permission.READ_CONTACTS
+            adb shell pm grant "$PACKAGE" android.permission.POST_NOTIFICATIONS
+            adb shell svc wifi disable
+            adb emu gsm voice home
+            adb emu gsm data off
+            adb shell settings put global airplane_mode_on 0
+            adb shell am instrument -w -e class com.server.receiver.OfflineWakeReceiverSmokeTest#seedKnownServerCallerAndVerifyLocalMatch "$RUNNER"
+            adb emu gsm call +2348012345678
+            sleep 3
+            adb shell am instrument -w -e class com.server.receiver.OfflineWakeReceiverSmokeTest#gsmWakeCallProducesServerNotification "$RUNNER"
+            adb emu gsm cancel +2348012345678 || true
+            echo "PASS: Android GSM emulator delivered a simulated incoming cellular call to Server CallScreeningService and the Server wake notification was posted."
