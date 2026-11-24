@@ -195,13 +195,13 @@ private var activeStateSyncedFor: String? = null
     stopLocalRingback()
   }
 
-  private fun armUnansweredTimeout(id: String) {
+  private fun armUnansweredTimeout(id: String, timeoutMs: Long = 120_000L) {
     unansweredTimeoutJob?.cancel()
     callAnswered = false
     unansweredTimeoutJob = scope.launch {
-      delay(120_000L)
+      delay(timeoutMs)
       if (!disposed && !callAnswered && callId == id) {
-        recordStage("call_no_answer_timeout_120s")
+        recordStage("call_no_answer_timeout_${timeoutMs / 1000}s")
         stopLocalRingback()
         connection.markEnded()
         finishCall(id, "no_answer_timeout")
@@ -261,7 +261,12 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
 // Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
       if (shouldRequestTelecomRingback(route)) {
-        armUnansweredTimeout(callId.orEmpty())
+        // Guest calls remain live for the backend's full five-minute Receiver
+        // reconnect window. Normal Server-to-Server calls keep the two-minute limit.
+        armUnansweredTimeout(
+          callId.orEmpty(),
+          if (route == "guest") 300_000L else 120_000L
+        )
       }
       if (route == "guest") {
         // The number is not registered as a Server identity. This does NOT tell us
