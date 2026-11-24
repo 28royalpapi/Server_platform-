@@ -355,10 +355,14 @@ Deno.serve(async(req:Request)=>{
    .is("revoked_at",null).maybeSingle();
   if(parentError)return out({error:"RECEIVER_DEVICE_LOOKUP_FAILED"},503);
   if(!parent||typeof parent.phone_e164!=="string")return out({error:"RECEIVER_NATIVE_NOT_ACTIVE"},401);
-  const {data:calls,error:callError}=await db.from("server_calls")
+  const excludedCallId=typeof b.exclude_call_id==="string"&&/^[0-9a-f-]{36}$/i.test(b.exclude_call_id)
+   ?b.exclude_call_id:"";
+  let callQuery=db.from("server_calls")
    .select("id,state,caller_user_id,expires_at,created_at")
    .eq("route","guest").eq("callee_phone_e164",parent.phone_e164)
-   .in("state",["ringing","connecting"]).gt("expires_at",now)
+   .in("state",["ringing","connecting"]).gt("expires_at",now);
+  if(excludedCallId)callQuery=callQuery.neq("id",excludedCallId);
+  const {data:calls,error:callError}=await callQuery
    .order("created_at",{ascending:false}).limit(5);
   if(callError)return out({error:"RECEIVER_PENDING_CALL_LOOKUP_FAILED"},503);
   for(const call of calls||[]){
