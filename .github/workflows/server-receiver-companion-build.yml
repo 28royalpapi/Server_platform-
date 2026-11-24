@@ -99,4 +99,8 @@ jobs:
             sleep 3
             adb shell am instrument -w -e class com.server.receiver.OfflineWakeReceiverSmokeTest#gsmWakeCallProducesServerNotification "$RUNNER"
             adb emu gsm cancel +2348012345678 || true
-            echo "PASS: Android GSM emulator delivered a simulated incoming cellular call to Server CallScreeningService and the Server wake notification was posted."
+            adb emu gsm call +2348098765432
+            sleep 3
+            adb shell am instrument -w -e class com.server.receiver.OfflineWakeReceiverSmokeTest#gsmWakeCallFromDifferentServerCallerProducesServerNotification "$RUNNER"
+            adb emu gsm cancel +2348098765432 || true
+            echo "PASS: Android GSM emulator delivered incoming cellular wake calls from two distinct Server callers and the Receiver posted both caller-specific notifications."
