@@ -18,7 +18,8 @@ internal data class OfflineWakeAttempt(
 )
 
 /**
- * Places a short cellular wake-up leg on the user's default SIM.
+ * Places a short cellular wake-up leg using the SIM whose exposed caller ID matches the
+ * caller's verified Server number. It does not blindly use or change the default SIM.
  * It is never the voice conversation: Server WebRTC remains the call itself.
  * A caller must explicitly accept possible carrier charges.
  */
@@ -49,24 +50,30 @@ internal object ServerOfflineWakeCall {
 
     return try {
       val telecom = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-      val accountHandle = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
-        ?: return unavailable("DEFAULT_SIM_NOT_SELECTED", "Choose a default SIM for outgoing calls in Android Phone settings.")
-      if (accountHandle == ServerTelecomRegistry.handle(context)) {
-        return unavailable("SERVER_ACCOUNT_IS_NOT_A_SIM", "Select an ordinary mobile SIM as the default outgoing line.")
+      // On dual-SIM phones, Android may be set to "Ask every time" or the
+      // default SIM may not be the verified Server number. Search only real
+      // cellular PhoneAccounts and select the unique SIM whose exposed number
+      // exactly matches the caller's verified Server number.
+      val matchingAccounts = telecom.callCapablePhoneAccounts.orEmpty().mapNotNull { handle ->
+        if (handle == ServerTelecomRegistry.handle(context)) return@mapNotNull null
+        val account = telecom.getPhoneAccount(handle) ?: return@mapNotNull null
+        if (!account.hasCapabilities(PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION)) return@mapNotNull null
+        val rawNumber = account.address?.schemeSpecificPart ?: return@mapNotNull null
+        val normalized = normalizeE164(context, rawNumber) ?: return@mapNotNull null
+        if (normalized == verifiedCallerE164) handle else null
       }
-
-      // Android requires READ_PHONE_NUMBERS for getPhoneAccount on current target SDKs.
-      val account = telecom.getPhoneAccount(accountHandle)
-        ?: return unavailable("DEFAULT_SIM_UNAVAILABLE", "Android could not read the selected outgoing SIM.")
-      if (!account.hasCapabilities(PhoneAccount.CAPABILITY_SIM_SUBSCRIPTION)) {
-        return unavailable("DEFAULT_ACCOUNT_NOT_SIM", "The default outgoing account is not a mobile SIM. No wake-up call was placed.")
-      }
-      val simNumber = account.address?.schemeSpecificPart
-        ?: return unavailable("SIM_CALLER_ID_UNAVAILABLE", "Android did not expose the selected SIM caller ID. No wake-up call was placed.")
-      val normalizedSim = normalizeE164(context, simNumber)
-        ?: return unavailable("SIM_CALLER_ID_UNAVAILABLE", "The selected SIM caller ID could not be verified. No wake-up call was placed.")
-      if (normalizedSim != verifiedCallerE164) {
-        return unavailable("SIM_CALLER_ID_MISMATCH", "Your default SIM number does not match your verified Server number. No wake-up call was placed.")
+      val defaultAccount = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
+      val accountHandle = when {
+        matchingAccounts.size == 1 -> matchingAccounts.single()
+        matchingAccounts.size > 1 && defaultAccount in matchingAccounts -> defaultAccount
+        matchingAccounts.size > 1 -> return unavailable(
+          "MULTIPLE_MATCHING_SIM_ACCOUNTS",
+          "More than one SIM matches your verified Server number. Choose one as Android's default outgoing SIM."
+        )
+        else -> return unavailable(
+          "VERIFIED_CALLER_SIM_NOT_FOUND",
+          "No accessible SIM caller ID matches your verified Server number. No cellular wake-up was placed."
+        )
       }
 
       // One attempt per Server call; MainActivity and Telecom share this guard.
