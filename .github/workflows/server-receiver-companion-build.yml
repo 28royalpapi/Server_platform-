@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: server-offline-receiver-companion
+  group: server-offline-receiver-companion-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
