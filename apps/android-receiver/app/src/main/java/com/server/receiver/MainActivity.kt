@@ -27,9 +27,11 @@ class MainActivity : ComponentActivity() {
   private lateinit var status: TextView
 
   private val roleResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+    syncRoster()
     renderStatus()
   }
   private val permissionsResult = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    syncRoster()
     renderStatus()
   }
 
@@ -40,6 +42,14 @@ class MainActivity : ComponentActivity() {
     scheduleRosterRefresh()
     if (ServerReceiverRoster.secret(this).isNotBlank()) syncRoster()
     renderStatus()
+  }
+
+  override fun onResume() {
+    super.onResume()
+    if (ServerReceiverRoster.secret(this).isNotBlank()) {
+      if (ServerReceiverRoster.hasInternet(this)) resumePendingCall()
+      else syncRoster()
+    }
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -85,11 +95,7 @@ class MainActivity : ComponentActivity() {
     root.addView(button("Allow Server to detect cellular wake-up calls") { requestScreeningRole() }, matchWrap())
     root.addView(button("Grant Contacts and notification access") { requestPermissions() }, matchWrap())
     root.addView(button("Refresh Server caller list") { syncRoster() }, matchWrap())
-    root.addView(button("Turn on data and open Server Receiver") {
-      try {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://server-onboarding-ochre.vercel.app/receiver.html")))
-      } catch (_: Exception) { setStatus("Could not open Server Receiver in your browser.") }
-    }, matchWrap())
+    root.addView(button("Resume pending Server call") { resumePendingCall() }, matchWrap())
     root.addView(button("Turn off offline wake-up on this phone") { revoke() }, matchWrap())
     root.addView(TextView(this).apply {
       text = "Privacy: Server downloads keyed caller fingerprints, not phone numbers. Contacts permission is required by Android so Call Screening can receive calls from numbers already saved in Contacts; this app does not read or upload your address book. Android may show a notification rather than a full-screen call screen."
@@ -171,6 +177,49 @@ class MainActivity : ComponentActivity() {
     }
   }
 
+  private fun resumePendingCall() {
+    val nativeSecret = ServerReceiverRoster.secret(this)
+    if (nativeSecret.isBlank()) {
+      setStatus("Pair this companion with your enrolled browser Receiver first.")
+      return
+    }
+    if (!ServerReceiverRoster.hasInternet(this)) {
+      setStatus("Turn on mobile data or Wi-Fi. Server will look for the pending call when internet returns.")
+      return
+    }
+    setStatus("Checking for the Server call that triggered this wake-up…")
+    executor.execute {
+      try {
+        val pending = ServerReceiverRoster.pendingGuestCall(this, nativeSecret)
+        if (pending == null) {
+          runOnUiThread { setStatus("No live pending Server call was found. Ask the caller to call again if the call has expired.") }
+          return@execute
+        }
+        val prefs = getSharedPreferences("server_receiver_companion", MODE_PRIVATE)
+        val previousCall = prefs.getString("last_resumed_call_id", "").orEmpty()
+        val previousAt = prefs.getLong("last_resumed_call_at", 0L)
+        val now = System.currentTimeMillis()
+        if (previousCall == pending.callId && now - previousAt < 90_000L) {
+          runOnUiThread { setStatus("The pending Server call has already been opened in your browser. Answer there or return to that browser tab.") }
+          return@execute
+        }
+        prefs.edit().putString("last_resumed_call_id", pending.callId)
+          .putLong("last_resumed_call_at", now).apply()
+        runOnUiThread {
+          setStatus("Opening the pending Server call in your browser…")
+          try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pending.invitationUrl)))
+          } catch (_: Exception) {
+            prefs.edit().remove("last_resumed_call_id").remove("last_resumed_call_at").apply()
+            setStatus("Could not open the pending Server call in your browser.")
+          }
+        }
+      } catch (e: Exception) {
+        runOnUiThread { setStatus("Could not recover the pending Server call: ${e.message?.take(120) ?: "network error"}.") }
+      }
+    }
+  }
+
   private fun syncRoster() {
     val secret = ServerReceiverRoster.secret(this)
     if (secret.isBlank()) {
@@ -210,11 +259,12 @@ class MainActivity : ComponentActivity() {
     val notifications = Build.VERSION.SDK_INT < 33 ||
       checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     val secretReady = ServerReceiverRoster.secret(this).isNotBlank()
-    setStatus("Pairing: ${if (secretReady) "complete" else "waiting"} · Call Screening role: ${if (roleHeld) "enabled" else "not enabled"} · Contacts: ${if (contacts) "granted" else "not granted"} · Notifications: ${if (notifications) "allowed" else "not allowed"}")
+    val ready = ServerReceiverRoster.isReady(this)
+    setStatus("Pairing: ${if (secretReady) "complete" else "waiting"} · Call Screening role: ${if (roleHeld) "enabled" else "not enabled"} · Contacts: ${if (contacts) "granted" else "not granted"} · Notifications: ${if (notifications) "allowed" else "not allowed"} · Offline wake: ${if (ready) "ready" else "not ready"}")
   }
 
   private fun scheduleRosterRefresh() {
-    val request = PeriodicWorkRequestBuilder<ServerRosterRefreshWorker>(12, TimeUnit.HOURS)
+    val request = PeriodicWorkRequestBuilder<ServerRosterRefreshWorker>(15, TimeUnit.MINUTES)
       .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
       .build()
     WorkManager.getInstance(this).enqueueUniquePeriodicWork(
