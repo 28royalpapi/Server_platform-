@@ -67,7 +67,7 @@ assert.match(roster, /READ_CONTACTS/);
 assert.match(roster, /POST_NOTIFICATIONS/);
 assert.match(activity, /resumePendingCall/);
 assert.match(activity, /override fun onResume/);
-assert.match(activity, /PeriodicWorkRequestBuilder<ServerRosterRefreshWorker>\\(15, TimeUnit.MINUTES\\)/);
+assert.match(activity, /PeriodicWorkRequestBuilder<ServerRosterRefreshWorker>\(15, TimeUnit.MINUTES\)/);
 assert.match(callerManifest, /android\.permission\.CALL_PHONE/);
 assert.match(callerManifest, /android\.permission\.READ_PHONE_NUMBERS/);
 assert.match(callerActivity, /offline_wake_enabled/);
