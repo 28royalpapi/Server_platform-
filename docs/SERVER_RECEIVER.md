@@ -27,15 +27,15 @@ Run \`npm run check\` and \`npm run check:web\` for static contract and JavaScri
 
 ## Android offline wake-up companion
 
-The normal browser Receiver still handles internet call alerts without a Server caller account. For a phone that must be alerted while both mobile data and Wi-Fi are off, the recipient must explicitly install the small **Server Receiver Companion** from the Android build artifact linked on the Receiver setup page. The same one-time Receiver link pairs the installed companion to the browser Receiver. Android then asks the recipient to approve the Call Screening role and Contacts/notification permissions; the app cannot grant these OS permissions silently.
+The normal browser Receiver still handles internet call alerts without a Server caller account. For a phone that must be alerted while both mobile data and Wi-Fi are off, the recipient must explicitly install the small **Server Receiver Companion** from the public Android preview release linked on the Receiver setup page. The same one-time Receiver link pairs the installed companion to the browser Receiver. Android then asks the recipient to approve the Call Screening role and Contacts/notification permissions; the app cannot grant these OS permissions silently.
 
 The companion downloads keyed fingerprints for all Server profiles that have a verified phone number and have opted into number-based Server calls. It caches the roster locally and refreshes it when internet is available. It does not depend on the original inviter: any eligible Server caller whose verified number is in the roster can be recognised.
 
 ### Offline call flow
 
 1. The Server caller starts the normal guest WebRTC call. Web Push remains the first alert route.
-2. If the guest browser has no recent internet heartbeat, the caller's app checks whether the recipient has a paired, ready Android companion and whether the caller explicitly enabled cellular wake-up.
-3. The caller app uses Android Telecom to place one brief call from the caller's default **SIM**. It proceeds only if the selected account is a real SIM account and its exposed number exactly matches the caller's verified Server number. Otherwise it fails closed and preserves the ordinary invitation-sharing fallback.
+2. If the guest browser has no recent internet heartbeat, the caller's app checks whether the recipient has a paired, ready Android companion and whether the caller explicitly enabled cellular wake-up. The caller must also have a verified number and opt into number-based Server calling so the Receiver can identify that caller.
+3. The caller app uses Android Telecom to place one brief call from the cellular SIM whose exposed number exactly matches the caller's verified Server number. On dual-SIM phones it searches available cellular SIM accounts; if more than one matches, Android's default outgoing SIM breaks the tie. It never silently uses an unrelated SIM. Otherwise it fails closed and preserves the ordinary invitation-sharing fallback.
 4. The recipient's CallScreeningService matches the incoming caller number against its cached roster. It shows the Server wake-up notification and rejects the cellular leg. The cellular call is not the conversation.
 5. After the recipient restores mobile data or Wi-Fi and opens the Companion notification, the app asks Server for the still-live pending call, obtains a fresh one-use guest invitation for that same call, and opens the existing browser WebRTC page. The call is not recreated; the original caller's pending offer is answered through WebRTC.
 
@@ -43,7 +43,7 @@ The guest call has a finite live-call expiry. Reconnecting after it expires does
 
 ### Verification boundaries and costs
 
-- The caller must explicitly enable the feature and grant Android `CALL_PHONE`, `READ_PHONE_STATE` and `READ_PHONE_NUMBERS` permissions. The selected SIM number must match the verified Server caller number.
+- The caller must explicitly enable the feature and grant Android `CALL_PHONE`, `READ_PHONE_STATE` and `READ_PHONE_NUMBERS` permissions. At least one available cellular SIM must expose the verified Server caller number; if multiple SIM accounts match, Android's default outgoing SIM must identify the intended line.
 - The recipient must explicitly install the Companion, select it as Android's Call Screening app, and grant the permissions needed to receive calls from numbers already saved in Contacts and display notifications.
 - Android may show a heads-up notification; a full-screen call screen is not guaranteed. The CallScreeningService must respond within Android's five-second window.
 - **A Telecom handoff is not proof that the carrier delivered the call or that the notification appeared.** Ordinary cellular wake-up attempts may incur caller charges. Server must not advertise the wake-up as free unless a carrier-provided free alert service is separately proven.
