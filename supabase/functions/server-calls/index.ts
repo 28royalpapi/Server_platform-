@@ -714,6 +714,24 @@ Deno.serve(async(req:Request)=>{
    const guestInternetReachable=guestPush.recent_online>0;
    const guestAvailabilityStatus=guestInternetReachable?"online":"unknown_guest";
 
+   // Offline cellular wake is offered only to an Android Receiver whose native
+   // companion recently confirmed its Call Screening role and notification access.
+   // The caller must also have a verified, explicitly opted-in number so the
+   // Receiver can identify the incoming SIM caller ID from its local roster.
+   let nativeWakeAvailable=false;
+   if(callerPhone){
+    const {data:receiverDevices,error:receiverDeviceError}=await db.from("server_guest_push_devices")
+     .select("id").eq("phone_e164",to).is("revoked_at",null).limit(20);
+    if(!receiverDeviceError&&receiverDevices?.length){
+     const receiverIds=receiverDevices.map((device:any)=>device.id);
+     const readyAfter=new Date(Date.now()-20*60*1000).toISOString();
+     const {count:readyCount,error:readyError}=await db.from("server_receiver_native_devices")
+      .select("id",{count:"exact",head:true}).in("receiver_device_id",receiverIds)
+      .is("revoked_at",null).not("ready_at","is",null).gt("ready_at",readyAfter);
+     nativeWakeAvailable=!readyError&&(readyCount||0)>0;
+    }
+   }
+
    // Guest invitations never use a carrier-SMS gateway. Even a Server-owned
    // handset still sends SMS through a mobile operator and may incur a charge.
    // The free path is Web Push to a recipient-enrolled browser; first contact
@@ -729,6 +747,13 @@ Deno.serve(async(req:Request)=>{
     guest_invite_url:invitationUrl,invitation_text:invitationText,
     delivery_message:deliveryMessage,
     caller_display_label:callerDisplay,caller_display_name:callerDisplay,caller_phone_e164:callerPhone||"",
+     offline_wake:{
+      available:nativeWakeAvailable,
+      caller_phone_e164:callerPhone||"",
+      transport:"verified_default_sim_cellular_call",
+      reason:nativeWakeAvailable?"A paired Android Receiver recently confirmed its offline-wake detector is ready.":
+       "No ready paired Android Receiver or verified caller number is available for cellular wake-up."
+     },
     recipient_availability:{
      status:guestAvailabilityStatus,connected:guestInternetReachable,
      server_reachable:guestInternetReachable,
