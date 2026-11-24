@@ -130,7 +130,8 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
 
   private val askOfflineWakePermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
     val granted = checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED &&
-      checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+      checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
+      checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
     if (granted) {
       prefs.edit().putBoolean("server_offline_wake_consent", true).apply()
       setStatus("Offline wake-up is enabled. Server will use your verified default SIM only for enrolled Android Receivers; your carrier may charge for a cellular call.")
@@ -287,6 +288,9 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         }
         if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
           missing.add(Manifest.permission.READ_PHONE_STATE)
+        }
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) {
+          missing.add(Manifest.permission.READ_PHONE_NUMBERS)
         }
         if (missing.isEmpty()) {
           prefs.edit().putBoolean("server_offline_wake_consent", true).apply()
