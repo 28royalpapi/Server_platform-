@@ -65,7 +65,7 @@ internal object ServerOfflineWakeCall {
       val defaultAccount = telecom.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
       val accountHandle = when {
         matchingAccounts.size == 1 -> matchingAccounts.single()
-        matchingAccounts.size > 1 && defaultAccount in matchingAccounts -> defaultAccount
+        matchingAccounts.size > 1 && defaultAccount != null && defaultAccount in matchingAccounts -> defaultAccount
         matchingAccounts.size > 1 -> return unavailable(
           "MULTIPLE_MATCHING_SIM_ACCOUNTS",
           "More than one SIM matches your verified Server number. Choose one as Android's default outgoing SIM."
