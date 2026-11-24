@@ -194,6 +194,8 @@ class MainActivity : ComponentActivity() {
     }
     if (needed.isEmpty()) {
       setStatus("Contacts and notification permissions are already enabled.")
+      syncRoster()
+      renderStatus()
     } else {
       permissionsResult.launch(needed.toTypedArray())
     }
@@ -209,26 +211,19 @@ class MainActivity : ComponentActivity() {
       setStatus("Turn on mobile data or Wi-Fi. Server will look for the pending call when internet returns.")
       return
     }
-    val launchPrefs = getSharedPreferences("server_receiver_companion", MODE_PRIVATE)
-    val previousAt = launchPrefs.getLong("last_resumed_call_at", 0L)
-    if (System.currentTimeMillis() - previousAt < 90_000L &&
-      launchPrefs.getString("last_resumed_call_id", "").orEmpty().isNotBlank()) {
-      setStatus("The pending Server call has already been opened in your browser. Answer there or return to that browser tab.")
-      return
-    }
     setStatus("Checking for the Server call that triggered this wake-up…")
     executor.execute {
       try {
         // Refresh the readiness lease and the roster while internet is available,
         // then request a one-time link for the original still-live WebRTC call.
         try { ServerReceiverRoster.sync(this, nativeSecret) } catch (_: Exception) {}
-        val pending = ServerReceiverRoster.pendingGuestCall(this, nativeSecret)
+        val prefs = getSharedPreferences("server_receiver_companion", MODE_PRIVATE)
+        val previousCall = prefs.getString("last_resumed_call_id", "").orEmpty()
+        val pending = ServerReceiverRoster.pendingGuestCall(this, nativeSecret, previousCall)
         if (pending == null) {
           runOnUiThread { setStatus("No live pending Server call was found. Ask the caller to call again if the call has expired.") }
           return@execute
         }
-        val prefs = getSharedPreferences("server_receiver_companion", MODE_PRIVATE)
-        val previousCall = prefs.getString("last_resumed_call_id", "").orEmpty()
         val previousAt = prefs.getLong("last_resumed_call_at", 0L)
         val now = System.currentTimeMillis()
         if (previousCall == pending.callId && now - previousAt < 90_000L) {
