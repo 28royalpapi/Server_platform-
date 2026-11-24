@@ -261,10 +261,11 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
       }
       if (route == "guest") {
         // The number is not registered as a Server identity. This does NOT tell us
-        // whether its ordinary handset has mobile data or Wi-Fi. Keep the guest
-        // invitation on the browser/WebRTC path; carrier calling is not a fallback.
+        // whether its ordinary handset has mobile data or Wi-Fi. The browser/WebRTC
+        // path remains primary; a separately enrolled Android Receiver may also
+        // receive a short caller-SIM wake-up leg.
         connection.updateServerStatus("Guest invitation · recipient internet status unknown")
-        Log.i(TAG, "Non-Server destination: internet reachability is unknown; continuing with the browser invitation.")
+        Log.i(TAG, "Non-Server destination: browser/WebRTC remains primary; checking enrolled offline wake eligibility.")
       }
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
@@ -305,10 +306,24 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
           guestPush?.optInt("accepted_by_push_service", 0) ?: 0,
           if (messageDelivery?.optBoolean("web_push_submitted", false) == true) 1 else 0
         )
+        val offlineWake = started.optJSONObject("offline_wake")
+        if (offlineWake?.optBoolean("available", false) == true) {
+          val wakeAttempt = ServerOfflineWakeCall.place(
+            context,
+            callId.orEmpty(),
+            target.phoneNumber.orEmpty(),
+            offlineWake.optString("caller_phone_e164")
+          )
+          connection.updateServerStatus(wakeAttempt.message)
+          recordStage(if (wakeAttempt.handedOff) "cellular_wake_handed_to_telecom" else "cellular_wake_unavailable_" + wakeAttempt.code.lowercase())
+          Log.i(TAG, "Offline Receiver cellular wake attempt result: " + wakeAttempt.code)
+        }
         if (acceptedByPush > 0) {
           connection.updateServerStatus("Guest browser alert submitted · waiting for WebRTC answer")
           Log.i(TAG, "Server submitted a caller-identified Web Push alert to the enrolled guest browser.")
           recordStage("guest_browser_push_submitted")
+        } else if (offlineWake?.optBoolean("available", false) == true) {
+          connection.updateServerStatus("Offline Receiver wake-up attempted · waiting for recipient to reconnect and answer over WebRTC")
         } else {
           if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
             throw IllegalStateException(
