@@ -128,6 +128,18 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     else setStatus("Contacts permission was not granted. You can allow it in Android Settings and try again.", true)
   }
 
+  private val askOfflineWakePermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    val granted = checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED &&
+      checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+    if (granted) {
+      prefs.edit().putBoolean("server_offline_wake_consent", true).apply()
+      setStatus("Offline wake-up is enabled. Server will use your verified default SIM only for enrolled Android Receivers; your carrier may charge for a cellular call.")
+    } else {
+      prefs.edit().putBoolean("server_offline_wake_consent", false).apply()
+      setStatus("Offline wake-up was not enabled because the required Phone permissions were not granted.", true)
+    }
+  }
+
   private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
     if (!granted) {
       if (pendingSystemDialerReturn) {
@@ -250,6 +262,7 @@ class MainActivity : ComponentActivity(), PeerConnection.Observer {
     callButton = button("Call with Server") { startCall() }.apply { id = R.id.server_start_call }
     callPanel.addView(callButton, matchWrap())
     callPanel.addView(button("Manage Server Receivers") { showReceiverManager() }, matchWrap())
+    callPanel.addView(button("Enable offline wake-up for people you call") { setupOfflineWake() }, matchWrap())
     hangupButton = button("End call") { endCall() }.apply { id = R.id.server_end_call; visibility = View.GONE }
     callPanel.addView(hangupButton, matchWrap())
 callPanel.addView(button("Enable Server in phone settings") { enableCallingAccount() }, matchWrap())
@@ -258,6 +271,31 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       text = "Server calls use the internet only. Online recipients are reached through WebRTC over mobile data or Wi-Fi; recipients without a live Server or guest-browser receiver are shown as unreachable. Guest invitations are shared as secure browser links—Server does not switch calls to a mobile operator."
       textSize = 12f; setTextColor(0xFF9AABBC.toInt()); setPadding(0, dp(14), 0, 0)
     })
+  }
+
+  private fun setupOfflineWake() {
+    AlertDialog.Builder(this)
+      .setTitle("Enable cellular wake-up")
+      .setMessage(
+        "When you call an already-enrolled Android Server Receiver whose internet push cannot reach it, Server can place a brief call from your selected default SIM. The Receiver screens that call and then reconnects to the pending Server WebRTC call. Your carrier may charge for the cellular attempt. Server will only try when your selected SIM caller ID exactly matches your verified Server number."
+      )
+      .setNegativeButton("Not now", null)
+      .setPositiveButton("I agree — enable wake-up") { _, _ ->
+        val missing = mutableListOf<String>()
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+          missing.add(Manifest.permission.CALL_PHONE)
+        }
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+          missing.add(Manifest.permission.READ_PHONE_STATE)
+        }
+        if (missing.isEmpty()) {
+          prefs.edit().putBoolean("server_offline_wake_consent", true).apply()
+          setStatus("Offline wake-up is enabled. Your verified default SIM will be used only for enrolled Android Receivers.")
+        } else {
+          askOfflineWakePermissions.launch(missing.toTypedArray())
+        }
+      }
+      .show()
   }
 
   // Avoid relying on a UI framework; all UI widgets are native Android views.
@@ -1191,7 +1229,18 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
       recordTelecomDebugStage("call_offer_submitted")
       val deliveryMode = started.optString("delivery_mode", "")
       val invitationBody = started.optString("invitation_text")
-      if (currentRoute == "guest" && deliveryMode == "manual_share" && invitationBody.isNotBlank()) {
+      val offlineWake = started.optJSONObject("offline_wake")
+      val offlineWakeAvailable = offlineWake?.optBoolean("available", false) == true
+      val wakeAttempt = if (currentRoute == "guest" && offlineWakeAvailable) {
+        ServerOfflineWakeCall.place(
+          this@MainActivity,
+          callId.orEmpty(),
+          normalizedPhone.orEmpty(),
+          offlineWake?.optString("caller_phone_e164").orEmpty()
+        )
+      } else null
+      if (currentRoute == "guest" && deliveryMode == "manual_share" &&
+          invitationBody.isNotBlank() && !offlineWakeAvailable) {
         shareGuestInvitation(invitationBody, normalizedPhone.orEmpty())
       } else if (currentRoute == "guest") {
         val guestPush = started.optJSONObject("push_delivery")
@@ -1199,13 +1248,19 @@ callPanel.addView(button("Enable Server in phone settings") { enableCallingAccou
         val guestStatus = started.optJSONObject("recipient_availability")?.optString("status").orEmpty()
         val message = when {
           accepted > 0 && guestStatus == "online" ->
-            "Guest browser is online. Server submitted a free internet notification; waiting for the recipient to answer over WebRTC."
+            "Guest browser is online. Server submitted an internet call alert; waiting for the recipient to answer over WebRTC."
           accepted > 0 ->
-            "Server submitted a free internet notification to an enrolled guest browser. Device display is not confirmed; waiting for the recipient to open and answer."
+            "Server submitted an internet call alert to the enrolled guest browser. Device display is not confirmed; waiting for the recipient to answer."
+          offlineWakeAvailable ->
+            "The enrolled Android Receiver did not accept a browser alert. Server is attempting its cellular wake-up route; the recipient can reconnect and resume this pending WebRTC call."
           else ->
             "No enrolled guest-browser receiver accepted an internet notification. Share the secure link through WhatsApp or another internet messaging app. No carrier SMS was sent."
         }
-        setStatus(message, accepted == 0)
+        val wakeMessage = wakeAttempt?.message.orEmpty()
+        setStatus(
+          if (wakeMessage.isBlank()) message else "$message\n$wakeMessage",
+          accepted == 0 && wakeAttempt?.handedOff != true
+        )
         if (pendingSystemDialerReturn) returnToSystemPhoneUi()
       } else {
         val pushDelivery = started.optJSONObject("push_delivery")
