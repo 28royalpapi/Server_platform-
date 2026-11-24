@@ -102,11 +102,11 @@ async function startGuestCall() {
   assert.equal(created.call?.state, "ringing");
   assert.ok(created.guest_invite_url);
   assert.ok((created.invitation_text || "").startsWith("SERVER CALL\n"),"the guest invitation text is branded");
-  assert.ok((created.invitation_text || "").includes("Expires in 2 minutes"),"the guest invitation advertises its two-minute expiry");
+  assert.ok((created.invitation_text || "").includes("Expires in 5 minutes"),"the guest invitation advertises its five-minute Receiver reconnect window");
   assert.ok((created.guest_invite_url || "").includes("/c/"),"the invitation ends with the caller-preview URL");
   const inviteExpiryMs = Date.parse(created.invite_expires_at || "") - Date.now();
-  assert.ok(inviteExpiryMs > 0 && inviteExpiryMs <= 125000,
-    "the actual guest invitation token must expire within two minutes");
+  assert.ok(inviteExpiryMs > 0 && inviteExpiryMs <= 305000,
+    "the actual guest invitation token must expire within five minutes for offline Receiver recovery");
   createdCallIds.add(created.call_id);
   return { created, token: guestTokenFrom(created.guest_invite_url) };
 }
@@ -240,7 +240,7 @@ try {
   assert.equal(joined.call?.state, "connecting");
   const connectedSetupWindow = Date.parse(joined.call?.expires_at || "") - Date.now();
   assert.ok(connectedSetupWindow >= 9 * 60 * 1000,
-    "joining within the two-minute invitation window extends the call setup session to at least ten minutes");
+    "joining within the five-minute invitation window extends the call setup session to at least ten minutes");
   const realtime = await guest(token, "realtime_token");
   if (realtime.realtime_available === true) {
     assert.ok((realtime.url || "").startsWith("wss://"));
