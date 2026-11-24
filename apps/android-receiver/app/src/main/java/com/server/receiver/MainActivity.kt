@@ -187,9 +187,19 @@ class MainActivity : ComponentActivity() {
       setStatus("Turn on mobile data or Wi-Fi. Server will look for the pending call when internet returns.")
       return
     }
+    val launchPrefs = getSharedPreferences("server_receiver_companion", MODE_PRIVATE)
+    val previousAt = launchPrefs.getLong("last_resumed_call_at", 0L)
+    if (System.currentTimeMillis() - previousAt < 90_000L &&
+      launchPrefs.getString("last_resumed_call_id", "").orEmpty().isNotBlank()) {
+      setStatus("The pending Server call has already been opened in your browser. Answer there or return to that browser tab.")
+      return
+    }
     setStatus("Checking for the Server call that triggered this wake-up…")
     executor.execute {
       try {
+        // Refresh the readiness lease and the roster while internet is available,
+        // then request a one-time link for the original still-live WebRTC call.
+        try { ServerReceiverRoster.sync(this, nativeSecret) } catch (_: Exception) {}
         val pending = ServerReceiverRoster.pendingGuestCall(this, nativeSecret)
         if (pending == null) {
           runOnUiThread { setStatus("No live pending Server call was found. Ask the caller to call again if the call has expired.") }
