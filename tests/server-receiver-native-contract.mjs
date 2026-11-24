@@ -35,6 +35,7 @@ assert.match(edge, /caller_hash/);
 assert.ok(edge.includes('if(!/^\\+[1-9][0-9]{7,14}$/.test(phone))continue;'), "native caller roster must accept E.164 plus-prefixed numbers");
 assert.match(edge, /receiver_secret_hash/);
 assert.match(edge, /RECEIVER_NATIVE_REVOKE_SYNC_FAILED/);
+assert.match(edge, /RECEIVER_NATIVE_READY_STATE_FAILED/);
 assert.match(edge, /ready_at:b\.ready===true\?now:null/);
 assert.match(edge, /action==="native_pending_call"/);
 assert.match(edge, /exclude_call_id/);
