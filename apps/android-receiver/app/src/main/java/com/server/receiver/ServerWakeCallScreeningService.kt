@@ -25,16 +25,15 @@ class ServerWakeCallScreeningService : CallScreeningService() {
     // is already available, the normal Server WebRTC/browser push is the only
     // incoming-call UI; silently suppress this wake-up carrier leg.
     if (!ServerReceiverRoster.hasInternet(this)) {
-      // Without notification permission, let Android present the carrier call
-      // rather than silently hide the only alert the recipient could receive.
-      if (!showWakeNotification(caller)) {
-        allow(callDetails)
-        return
-      }
+      // This cellular leg is only a wake signal. Never expose it as an ordinary
+      // carrier conversation or let it ring as a paid fallback. The notification
+      // permission is part of the Receiver readiness gate; if the user revokes it
+      // after setup, the leg is still suppressed rather than becoming a normal call.
+      showWakeNotification(caller)
     }
 
-    // Always end the recognised cellular leg; the actual voice conversation
-    // must be established by Server WebRTC after internet is available.
+    // Always end a recognised Server cellular leg. The actual voice conversation
+    // is resumed over WebRTC after the recipient restores internet access.
     respondToCall(callDetails, CallResponse.Builder()
       .setDisallowCall(true)
       .setRejectCall(true)
