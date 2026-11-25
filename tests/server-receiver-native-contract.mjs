@@ -7,12 +7,12 @@ const [migration, deliveryMigration, edge, serverCalls, guestPush, manifest, act
   readFile("supabase/functions/server-receiver/index.ts", "utf8"),
   readFile("supabase/functions/server-calls/index.ts", "utf8"),
   readFile("supabase/functions/_shared/guest_web_push.ts", "utf8"),
-  readFile("apps/android-receiver/app/src/main/AndroidManifest.xml", "utf8"),
-  readFile("apps/android-receiver/app/src/main/java/com/server/receiver/MainActivity.kt", "utf8"),
-  readFile("apps/android-receiver/app/src/main/java/com/server/receiver/ServerWakeCallScreeningService.kt", "utf8"),
-  readFile("apps/android-receiver/app/src/main/java/com/server/receiver/ServerReceiverRoster.kt", "utf8"),
-  readFile("apps/android-receiver/app/src/main/java/com/server/receiver/ServerRosterRefreshWorker.kt", "utf8"),
-  readFile("apps/android-receiver/app/build.gradle.kts", "utf8"),
+  readFile("apps/android-caller/app/src/main/AndroidManifest.xml", "utf8"),
+  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerReceiverSetupActivity.kt", "utf8"),
+  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerWakeCallScreeningService.kt", "utf8"),
+  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerReceiverRoster.kt", "utf8"),
+  readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerRosterRefreshWorker.kt", "utf8"),
+  readFile("apps/android-caller/app/build.gradle.kts", "utf8"),
   readFile(".github/workflows/server-receiver-companion-build.yml", "utf8"),
   readFile("web/receiver.html", "utf8"),
   readFile("web/receiver.js", "utf8"),
@@ -93,7 +93,7 @@ assert.match(worker, /ServerReceiverRoster\.sync/);
 assert.match(gradle, /work-runtime-ktx/);
 assert.match(workflow, /assembleDebug/);
 assert.match(workflow, /apksigner" verify/);
-const receiverSmoke = await readFile("apps/android-receiver/app/src/androidTest/java/com/server/receiver/OfflineWakeReceiverSmokeTest.kt", "utf8");
+const receiverSmoke = await readFile("apps/android-caller/app/src/androidTest/java/com/server/caller/OfflineWakeReceiverSmokeTest.kt", "utf8");
 assert.match(receiverSmoke, /Server Caller C/);
 assert.match(receiverSmoke, /matchedOtherCaller/);
 assert.match(receiverSmoke, /gsmWakeCallFromDifferentServerCallerProducesServerNotification/);
@@ -105,4 +105,4 @@ assert.match(workflow, /Publish a direct-download Receiver Companion preview/);
 assert.match(workflow, /contents: write/);
 assert.match(client, /native_pair/);
 assert.match(client, /serverreceiver:\/\/pair/);
-console.log("PASS Server offline Receiver contract — caller SIM wake handoff, one-time pairing, keyed caller roster, pending WebRTC recovery, and Android build.");
+assert.doesNotMatch(manifest,/android:label="Server Receiver"/);\nassert.match(manifest,/android:label="Server"/);\nassert.match(manifest,/ServerWakeCallScreeningService/);\nconsole.log("PASS single Server APK contract — caller SIM wake handoff, receiver pairing, one-package Call Screening, keyed roster, pending WebRTC recovery, and Android build.");
