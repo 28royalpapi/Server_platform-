@@ -785,9 +785,9 @@ assert.match(platformSmsMigration,/owner_user_id,label,token_hash,enabled,shared
 assert.match(platformSmsMigration,/d\.is_platform_owned\s*=\s*true/,"only platform-owned handsets can claim Server SMS jobs");
 assert.doesNotMatch(platformSmsMigration,/j\.auth_user_id\s*=\s*d\.owner_user_id/s,"OTP delivery is not tied to a customer's SIM");
 assert.match(integratedGatewayMigration,/sim_subscription_id/);
-assert.match(androidEmulatorSmoke,/SINGLE_APP_SIM_GATEWAY_SMOKE_PASS/,"the emulator smoke validates the SMS gateway inside the single Server app");
-assert.match(androidEmulatorSmoke,/ServerSmsGatewayService/);
-assert.match(androidEmulatorSmoke,/ServerSmsStatusReceiver/);
+assert.match(androidEmulatorSmoke,/ANDROID_UI_SMOKE_PASS/,"the Android emulator smoke must finish its 23 instrumentation tests and capture the onboarding flow");
+assert.match(androidEmulatorSmoke,/assert-android-test-count\.py --expected-tests 23/,"the Android emulator smoke must enforce the full caller acceptance-test count");
+assert.doesNotMatch(androidEmulatorSmoke,/Verifying that SIM SMS delivery is part of the one installed Server Connector/,"legacy guest-SMS packaging checks must not gate the current no-carrier-SMS invitation flow");
 assert.doesNotMatch(androidEmulatorSmoke,/apps\/android-sim-gateway/,"the main Android acceptance path must not install a second gateway APK");
 assert.match(integratedGatewayMigration,/sim_slot_index/);
 assert.match(gateway,/x-server-gateway-token/,"Gateway polling reads a separate paired-device token header");
