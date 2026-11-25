@@ -36,8 +36,6 @@ internal object ServerReceiverRoster {
   private const val SECRET_KEY = "native_secret"
   private const val ROSTER_KEY = "caller_roster_json"
   private const val KEY_ALIAS = "server.receiver.native-secret-key"
-  private const val ENDPOINT_URL = "https://hzuovekqsjtpvmbuybxs.supabase.co/functions/v1/server-receiver"
-  private const val API_KEY = "sb_publishable_denBmNsOLdaEYPjFr4JxTA_XgElA64E"
 
   fun saveSecret(context: Context, secret: String) {
     val encrypted = encryptSecret(secret.lowercase(Locale.ROOT))
