@@ -13,7 +13,7 @@ const [migration, deliveryMigration, edge, serverCalls, guestPush, manifest, act
   readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerReceiverRoster.kt", "utf8"),
   readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerRosterRefreshWorker.kt", "utf8"),
   readFile("apps/android-caller/app/build.gradle.kts", "utf8"),
-  readFile(".github/workflows/server-receiver-companion-build.yml", "utf8"),
+  readFile(".github/workflows/server-receiver-android-build.yml", "utf8"),
   readFile("web/receiver.html", "utf8"),
   readFile("web/receiver.js", "utf8"),
   readFile("apps/android-caller/app/src/main/AndroidManifest.xml", "utf8"),
@@ -99,7 +99,7 @@ assert.match(receiverSmoke, /matchedOtherCaller/);
 assert.match(receiverSmoke, /gsmWakeCallFromDifferentServerCallerProducesServerNotification/);
 assert.match(workflow, /gsm call \\+2348098765432/);
 assert.match(workflow, /gsmWakeCallFromDifferentServerCallerProducesServerNotification/);
-assert.match(page, /offline-wake-companion/);
+assert.match(page, /offline-wake-server/);
 assert.match(page, /same Server app/);
 assert.match(page, /Server-Android-Connector-preview\\.apk/);
 assert.doesNotMatch(page, /Server-Offline-Receiver-debug\\.apk/);
