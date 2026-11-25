@@ -48,6 +48,18 @@
         <data android:scheme="server" android:host="device-setup" />
       </intent-filter>
     </activity>
+    <activity
+      android:name="com.server.caller.ServerReceiverSetupActivity"
+      android:exported="true"
+      android:launchMode="singleTop"
+      android:configChanges="orientation|screenSize|keyboardHidden">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="serverreceiver" android:host="pair" />
+      </intent-filter>
+    </activity>
     <service android:name="com.server.caller.ServerSmsGatewayService"
       android:enabled="true" android:exported="false" android:foregroundServiceType="specialUse">
       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
@@ -73,6 +85,12 @@
       android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
       android:exported="true">
       <intent-filter><action android:name="android.telecom.ConnectionService" /></intent-filter>
+    </service>
+    <service
+      android:name="com.server.caller.ServerWakeCallScreeningService"
+      android:permission="android.permission.BIND_SCREENING_SERVICE"
+      android:exported="true">
+      <intent-filter><action android:name="android.telecom.CallScreeningService" /></intent-filter>
     </service>
   </application>
 </manifest>
