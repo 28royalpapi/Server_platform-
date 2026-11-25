@@ -25,30 +25,33 @@ The invitation binds the number selected by the caller to the recipient's push s
 Run \`npm run check\` and \`npm run check:web\` for static contract and JavaScript syntax checks.
 
 
-## Android offline wake-up companion
+## Android offline wake-up in the single Server app
 
-The normal browser Receiver still handles internet call alerts without a Server caller account. For a phone that must be alerted while both mobile data and Wi-Fi are off, the recipient must explicitly install the small **Server Receiver Companion** from the public Android preview release linked on the Receiver setup page. The same one-time Receiver link pairs the installed companion to the browser Receiver. Android then asks the recipient to approve the Call Screening role and Contacts/notification permissions; the app cannot grant these OS permissions silently.
+The normal browser Receiver still handles internet call alerts without a Server caller account. For a phone that must be alerted while both mobile data and Wi-Fi are off, the recipient installs the **same Server Android APK** used by callers, if it is not already installed. The invitation opens receiver setup inside that same app; there is no second Receiver application or APK. The same one-time Receiver link pairs the installed Server app with the browser Receiver. Android then asks the recipient to approve the Call Screening role and Contacts/notification permissions; the app cannot grant these OS permissions silently.
 
-The companion downloads keyed fingerprints for all Server profiles that have a verified phone number and have opted into number-based Server calls. It caches the roster locally and refreshes it when internet is available. It does not depend on the original inviter: any eligible Server caller whose verified number is in the roster can be recognised.
+The Server app's Receiver mode downloads keyed fingerprints for all Server profiles that have a verified phone number and have opted into number-based Server calls. It caches the roster locally and refreshes it when internet is available. It does not depend on the original inviter: any eligible Server caller whose verified number is in the roster can be recognised.
 
 ### Offline call flow
 
 1. The Server caller starts the normal guest WebRTC call. Web Push remains the first alert route.
 2. If the guest browser has no recent internet heartbeat, the caller's app checks whether the recipient has a paired, ready Android companion and whether the caller explicitly enabled cellular wake-up. The caller must also have a verified number and opt into number-based Server calling so the Receiver can identify that caller.
 3. The caller app uses Android Telecom to place one brief call from the cellular SIM whose exposed number exactly matches the caller's verified Server number. On dual-SIM phones it searches available cellular SIM accounts; if more than one matches, Android's default outgoing SIM breaks the tie. It never silently uses an unrelated SIM. Otherwise it fails closed and preserves the ordinary invitation-sharing fallback.
-4. The recipient's CallScreeningService matches the incoming caller number against its cached roster. It shows the Server wake-up notification and rejects the cellular leg. The cellular call is not the conversation.
-5. After the recipient restores mobile data or Wi-Fi and opens the Companion notification, the app asks Server for the still-live pending call, obtains a fresh one-use guest invitation for that same call, and opens the existing browser WebRTC page. The call is not recreated; the original caller's pending offer is answered through WebRTC.
+4. The CallScreeningService inside the same Server app matches the incoming caller number against its cached roster. It shows the Server wake-up notification and rejects the cellular leg. The cellular call is not the conversation.
+5. After the recipient restores mobile data or Wi-Fi and opens the Server wake notification, the app asks Server for the still-live pending call, obtains a fresh one-use guest invitation for that same call, and opens the existing browser WebRTC page. The call is not recreated; the original caller's pending offer is answered through WebRTC.
 
 The guest call has a finite live-call expiry. Reconnecting after it expires does not create a late ring; the caller must place another call.
 
 ### Verification boundaries and costs
 
 - The caller must explicitly enable the feature and grant Android `CALL_PHONE`, `READ_PHONE_STATE` and `READ_PHONE_NUMBERS` permissions. At least one available cellular SIM must expose the verified Server caller number; if multiple SIM accounts match, Android's default outgoing SIM must identify the intended line.
-- The recipient must explicitly install the Companion, select it as Android's Call Screening app, and grant the permissions needed to receive calls from numbers already saved in Contacts and display notifications.
+- The recipient must explicitly install the same Server app (if not already installed), select it as Android's Call Screening app, and grant the permissions needed to receive calls from numbers already saved in Contacts and display notifications.
 - Android may show a heads-up notification; a full-screen call screen is not guaranteed. The CallScreeningService must respond within Android's five-second window.
 - **A Telecom handoff is not proof that the carrier delivered the call or that the notification appeared.** Ordinary cellular wake-up attempts may incur caller charges. Server must not advertise the wake-up as free unless a carrier-provided free alert service is separately proven.
 - The recipient phone must be powered on and registered on a cellular network. A powered-off phone, a handset without cellular coverage, hidden caller ID, a SIM whose displayed number differs from the verified Server number, or a caller not yet present in the cached roster cannot be woken by this method.
 - New Server caller identities are recognised after the Receiver refreshes its roster while online. Only verified callers who opted into number-based caller identification are included.
-- The Android companion build and source contracts are CI-checkable. A real end-to-end acceptance still requires two physical phones and a real cellular carrier: disable B's mobile data and Wi-Fi, call from A, verify B's Server notification, repeat from a different enrolled Server caller C, restore B's data, answer the pending browser call, and verify two-way WebRTC audio.
+- The unified Server Android build and Receiver source contracts are CI-checkable. A real end-to-end acceptance still requires two physical phones and a real cellular carrier: disable B's mobile data and Wi-Fi, call from A, verify B's Server notification, repeat from a different enrolled Server caller C, restore B's data, answer the pending browser call, and verify two-way WebRTC audio.
 
-Run `npm run check` and `npm run check:web` for backend/source contract and browser syntax checks. The Android CI workflow compiles and signature-verifies the caller and Receiver companion APKs; passing compilation does not replace the physical two-phone carrier test.
+Run `npm run check` and `npm run check:web` for backend/source contract and browser syntax checks. The Android CI workflow compiles and signature-verifies the single Server APK; passing compilation does not replace the physical two-phone carrier test.
+
+
+**Packaging rule:** Android caller and receiver capabilities ship in one installable Server APK. The receiver invitation is an enrolment link, not a second application download.
