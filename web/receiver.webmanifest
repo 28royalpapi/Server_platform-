@@ -1,7 +1,7 @@
 {
   "id": "/receiver.html",
-  "name": "Server Receiver",
-  "short_name": "Server Receiver",
+  "name": "Server",
+  "short_name": "Server",
   "start_url": "/receiver.html",
   "scope": "/",
   "display": "standalone",
