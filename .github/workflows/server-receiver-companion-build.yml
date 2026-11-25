@@ -40,7 +40,19 @@ jobs:
       - name: Build and verify Receiver companion
         run: |
           set -euo pipefail
-          gradle -p apps/android-receiver assembleDebug --no-daemon --console=plain --stacktrace
+          build_ok=0
+          for attempt in 1 2 3; do
+            echo "Receiver APK build attempt $attempt/3"
+            if gradle -p apps/android-receiver assembleDebug --no-daemon --console=plain --stacktrace; then
+              build_ok=1
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Gradle dependency/build request failed; retrying after a short backoff."
+              sleep 20
+            fi
+          done
+          test "$build_ok" -eq 1
           APK=apps/android-receiver/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
@@ -91,7 +103,19 @@ jobs:
       - name: Compile Receiver app and GSM instrumentation tests
         run: |
           set -euo pipefail
-          gradle -p apps/android-receiver assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
+          build_ok=0
+          for attempt in 1 2 3; do
+            echo "Receiver instrumentation build attempt $attempt/3"
+            if gradle -p apps/android-receiver assembleDebug assembleDebugAndroidTest --no-daemon --console=plain; then
+              build_ok=1
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Gradle dependency/build request failed; retrying after a short backoff."
+              sleep 20
+            fi
+          done
+          test "$build_ok" -eq 1
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
