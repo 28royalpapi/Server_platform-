@@ -804,10 +804,10 @@ jobs:
           if-no-files-found: warn
 
   publish-android-preview-release:
-    # Publish the single ARM64 test app after every blocking Android and guest-call
-    # acceptance job passes. The direct-install preview falls back to the runner's
-    # debug signing key until a persistent preview keystore is configured.
-    if: github.ref == 'refs/heads/android-finish'
+    # Publish only a tested ARM64 Server APK signed with the persistent preview
+    # keystore. A runner-generated debug key changes between builds and would
+    # force users to uninstall, erasing their locally saved Server identity.
+    if: github.ref == 'refs/heads/android-finish' && needs.android-build-and-emulator-smoke.outputs.preview_signing_ready == 'true'
     needs:
       - android-build-and-emulator-smoke
       - android-8-minimum-install-smoke
