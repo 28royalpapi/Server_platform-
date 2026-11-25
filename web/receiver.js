@@ -1,6 +1,6 @@
 const cfg=window.SERVER_CONFIG||{},endpointUrl=String(cfg.supabaseUrl||"").replace(/\/+$/,"")+"/functions/v1/server-receiver",publishableKey=String(cfg.publishableKey||"");
 const secretKey="server.receiver.device-secret.v1",endpointKey="server.receiver.endpoint.v1",pendingInviteKey="server.receiver.pending-invite.v1";
-const titleEl=document.querySelector("#receiver-title"),introEl=document.querySelector("#receiver-intro"),phoneHintEl=document.querySelector("#phone-hint"),inviterEl=document.querySelector("#inviter-label"),statusEl=document.querySelector("#receiver-status"),statusTextEl=document.querySelector("#status-text"),enableButton=document.querySelector("#enable-receiver"),turnOffButton=document.querySelector("#turn-off-receiver"),iosHelp=document.querySelector("#ios-help"),offlineWakePanel=document.querySelector("#offline-wake-companion"),offlineWakeButton=document.querySelector("#offline-wake-activate"),offlineWakeStatus=document.querySelector("#offline-wake-status");
+const titleEl=document.querySelector("#receiver-title"),introEl=document.querySelector("#receiver-intro"),phoneHintEl=document.querySelector("#phone-hint"),inviterEl=document.querySelector("#inviter-label"),statusEl=document.querySelector("#receiver-status"),statusTextEl=document.querySelector("#status-text"),enableButton=document.querySelector("#enable-receiver"),turnOffButton=document.querySelector("#turn-off-receiver"),iosHelp=document.querySelector("#ios-help"),offlineWakePanel=document.querySelector("#offline-wake-server"),offlineWakeButton=document.querySelector("#offline-wake-activate"),offlineWakeStatus=document.querySelector("#offline-wake-status");
 const isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent),isAndroid=/Android/i.test(navigator.userAgent),isIOSHomeScreen=navigator.standalone===true||window.matchMedia("(display-mode: standalone)").matches;
 let inviteToken=readInviteToken(),invite=null,heartbeatTimer=null;
 function readInviteToken(){const t=(location.hash.startsWith("#token=")?decodeURIComponent(location.hash.slice(7)):"")||new URLSearchParams(location.search).get("token")||"";if(t){localStorage.setItem(pendingInviteKey,t);history.replaceState(null,"",location.pathname);}return t||localStorage.getItem(pendingInviteKey)||"";}
@@ -28,7 +28,7 @@ offlineWakeButton?.addEventListener("click",async()=>{
   const saved=localCredentials();
   if(!saved.device_secret)throw new Error("Complete Receiver setup before pairing offline wake-up.");
   const pair=await api("native_pair",{device_secret:saved.device_secret});
-  if(!pair.ok||!/^[0-9a-f]{32}$/.test(pair.pair_code||""))throw new Error("Server could not create the companion pairing code.");
+  if(!pair.ok||!/^[0-9a-f]{32}$/.test(pair.pair_code||""))throw new Error("Server could not create the secure pairing code.");
   if(offlineWakeStatus)offlineWakeStatus.textContent="Opening Server…";
   window.location.href="serverreceiver://pair?code="+encodeURIComponent(pair.pair_code);
  }catch(e){
