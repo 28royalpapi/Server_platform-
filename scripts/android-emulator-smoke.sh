@@ -38,7 +38,23 @@ if [[ "$READY" -ne 1 ]]; then
 fi
 adb devices -l
 
-echo "Unlocking and foregrounding the Android emulator before instrumentation tests"
+echo "Installing the app before checking credential-encrypted storage"
+CALLER_DEBUG_APK="apps/android-caller/app/build/outputs/apk/debug/app-universal-debug.apk"
+if [[ ! -s "$CALLER_DEBUG_APK" ]]; then
+  echo "The built Server caller APK is missing before instrumentation tests." >&2
+  exit 1
+fi
+cp "$CALLER_DEBUG_APK" artifacts/server-caller-debug-for-reinstall.apk
+test -s artifacts/server-caller-debug-for-reinstall.apk
+echo "CALLER_APK_BACKUP_READY: artifacts/server-caller-debug-for-reinstall.apk"
+if ! $TIMEOUT_BIN 90s adb install -r artifacts/server-caller-debug-for-reinstall.apk; then
+  adb logcat -d -t 800 > artifacts/server-caller-preinstall-logcat.txt 2>&1 || true
+  echo "Server app could not be installed before the emulator CE-storage readiness probe." >&2
+  exit 1
+fi
+
+echo "Unlocking and foregrounding Android; CE unlock is verified with run-as"
+sh scripts/unlock-android-emulator.sh
 adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 adb shell input keyevent 82 >/dev/null 2>&1 || true
 adb shell input keyevent 3 >/dev/null 2>&1 || true
@@ -57,9 +73,14 @@ adb shell screenrecord --bit-rate 4000000 --time-limit 180 /sdcard/server-androi
 FULL_WORKFLOW_REC_PID=$!
 sleep 2
 
+echo "Server caller APK is installed and backed up for post-instrumentation reinstall"
 echo "Running Server website onboarding, permission, contact-selection, and system calling-account Android instrumentation tests"
 TEST_STATUS=0
+rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
 $TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
+if [[ "$TEST_STATUS" -eq 0 ]]; then
+  python3 scripts/assert-android-test-count.py --expected-tests 23 || TEST_STATUS=$?
+fi
 
 # Stop and preserve the video before handling test failure, so a red run still
 # gives us the actual screen flow that failed instead of only a report.
@@ -86,7 +107,7 @@ fi
 echo "Reinstalling the Server caller APK after Android instrumentation cleanup"
 # Android Gradle's connected test runner can uninstall the target package during
 # test cleanup; install the freshly built target before trying to record the UI.
-if ! $TIMEOUT_BIN 90s adb install -r apps/android-caller/app/build/outputs/apk/debug/app-debug.apk; then
+if ! $TIMEOUT_BIN 90s adb install -r artifacts/server-caller-debug-for-reinstall.apk; then
   adb logcat -d -t 1000 > artifacts/server-caller-reinstall-logcat.txt 2>&1 || true
   echo "Could not reinstall the Server caller APK after instrumentation tests." >&2
   exit 1
@@ -123,35 +144,27 @@ trap - EXIT
 adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 >/dev/null
 echo "ANDROID_UI_SMOKE_PASS: website onboarding and system calling-account tests passed and setup recording captured."
 
-echo "Installing the SIM Gateway APK onto the emulator before launching it"
-$TIMEOUT_BIN 90s adb install -r apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
-adb shell pm path com.server.gateway.debug | grep -q 'package:'
-echo "Launching SIM Gateway UI and checking its project defaults"
-# Resolve the installed launchable activity through Android rather than hard-coding
-# the applicationId/class pairing. The debug applicationId suffix can make an
-# explicit component name fail even when the APK is installed and its manifest is valid.
-if ! $TIMEOUT_BIN 45s adb shell monkey -p com.server.gateway.debug -c android.intent.category.LAUNCHER 1; then
-  adb logcat -d -t 400 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
-  adb shell pm list packages | grep -E 'com\.server\.gateway|com\.server\.caller' > artifacts/server-installed-packages.txt || true
+echo "Verifying that SIM SMS delivery is part of the one installed Server Connector"
+SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT/build-tools" ]]; then
+  echo "Android SDK build-tools were not found; cannot inspect the installed Server package." >&2
   exit 1
 fi
-sleep 3
-adb shell dumpsys activity activities > artifacts/server-gateway-activity.txt 2>&1 || true
-if ! grep -Fq 'com.server.gateway' artifacts/server-gateway-activity.txt; then
-  adb logcat -d -t 800 > artifacts/server-gateway-launch-logcat.txt 2>&1 || true
-  adb shell dumpsys activity top > artifacts/server-gateway-activity-top.txt 2>&1 || true
-  adb shell dumpsys window > artifacts/server-gateway-window.txt 2>&1 || true
-  echo "Gateway launch returned, but no Server gateway activity was found in the Android activity stack." >&2
+AAPT="$(find "$SDK_ROOT/build-tools" -type f -name aapt -print | sort -V | tail -n 1)"
+if [[ -z "$AAPT" || ! -x "$AAPT" ]]; then
+  echo "aapt is unavailable; cannot verify the packaged SIM gateway manifest." >&2
   exit 1
 fi
-# Stream pixels directly over ADB. Writing under /sdcard can break if the
-# emulator's emulated-storage mount drops its transport during startup.
-if ! $TIMEOUT_BIN 30s adb exec-out screencap -p > artifacts/server-gateway-screen.png; then
-  adb logcat -d -t 1000 > artifacts/server-gateway-screencap-logcat.txt 2>&1 || true
-  adb shell dumpsys meminfo > artifacts/server-gateway-screencap-meminfo.txt 2>&1 || true
-  echo "Gateway launch was requested, but screenshot capture failed; diagnostics were saved." >&2
+"$AAPT" dump xmltree artifacts/server-caller-debug-for-reinstall.apk AndroidManifest.xml > artifacts/server-single-app-manifest.txt
+grep -Fq 'com.server.caller.ServerSmsGatewayService' artifacts/server-single-app-manifest.txt
+grep -Fq 'com.server.caller.ServerSmsStatusReceiver' artifacts/server-single-app-manifest.txt
+unzip -p artifacts/server-caller-debug-for-reinstall.apk assets/server-web/index.html | grep -Fq 'Connect a SIM for automatic SMS invitations (optional)'
+if ! adb shell pm path com.server.caller.debug | grep -q '^package:'; then
+  echo "The one Server Connector package is not installed." >&2
   exit 1
 fi
-test -s artifacts/server-gateway-screen.png
-echo "GATEWAY_LAUNCH_SMOKE_PASS: explicit launcher activity is in the activity stack and a screenshot was streamed over ADB."
-
+if adb shell pm list packages | grep -q '^package:com.server.gateway'; then
+  echo "FAIL: a retired standalone SIM Gateway package is installed in the test environment." >&2
+  exit 1
+fi
+echo "SINGLE_APP_SIM_GATEWAY_SMOKE_PASS: one Server package contains the SIM service, SMS status receiver and onboarding controls. No second Gateway APK is installed."

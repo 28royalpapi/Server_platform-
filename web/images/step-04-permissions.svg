@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1000" viewBox="0 0 600 1000" role="img">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#123528"/><stop offset="1" stop-color="#07110f"/></linearGradient><linearGradient id="screen" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#10251d"/><stop offset="1" stop-color="#07120f"/></linearGradient></defs>
+<rect x="12" y="12" width="576" height="976" rx="58" fill="#020706" stroke="#668879" stroke-width="4"/>
+<rect x="32" y="34" width="536" height="932" rx="42" fill="url(#screen)"/>
+<rect x="232" y="22" width="136" height="12" rx="6" fill="#020706"/>
+<text x="62" y="76" fill="#dbe8e1" font-size="20" font-family="Arial">9:41</text><circle cx="494" cy="66" r="9" fill="#dbe8e1"/><path d="M518 56l18 20h-36z" fill="#dbe8e1"/><rect x="544" y="56" width="12" height="20" rx="3" fill="none" stroke="#dbe8e1" stroke-width="2"/>
+
+<rect x="50" y="110" width="500" height="830" rx="22" fill="#edf1f5"/>
+<text x="82" y="172" fill="#263543" font-size="27" font-weight="bold" font-family="Arial">Allow Server calling</text>
+<text x="82" y="212" fill="#596a78" font-size="16" font-family="Arial">Android asks for the access needed</text><text x="82" y="237" fill="#596a78" font-size="16" font-family="Arial">to make and alert you about calls.</text>
+<rect x="76" y="284" width="448" height="166" rx="18" fill="#fff" stroke="#d2dce4" stroke-width="2"/>
+<circle cx="124" cy="336" r="26" fill="#e3f2e9"/><path d="M116 330q2-10 12-7l5 7-7 7q8 15 18 17l7-7 8 5q4 10-7 13-31-5-39-35" fill="none" stroke="#278453" stroke-width="4"/>
+<text x="174" y="330" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Microphone</text><text x="174" y="361" fill="#637381" font-size="15" font-family="Arial">For voice during internet calls</text>
+<rect x="420" y="386" width="78" height="42" rx="21" fill="#d9efe2"/><text x="459" y="414" fill="#176c43" text-anchor="middle" font-size="15" font-family="Arial" font-weight="bold">ALLOW</text>
+<rect x="76" y="468" width="448" height="138" rx="18" fill="#fff" stroke="#d2dce4" stroke-width="2"/>
+<circle cx="124" cy="516" r="25" fill="#e3f2e9"/><path d="M112 526v-16q0-12 12-12t12 12v16m-28 0h32m-22-6h12" fill="none" stroke="#278453" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="174" y="510" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Notifications</text><text x="174" y="540" fill="#637381" font-size="15" font-family="Arial">For incoming and missed call alerts</text>
+<rect x="76" y="624" width="448" height="138" rx="18" fill="#fff" stroke="#d2dce4" stroke-width="2"/>
+<circle cx="124" cy="674" r="25" fill="#e3f2e9"/><rect x="110" y="659" width="28" height="31" rx="4" fill="none" stroke="#278453" stroke-width="4"/><circle cx="119" cy="669" r="3" fill="#278453"/><path d="M126 668h7m-14 8h14m-14 6h14" stroke="#278453" stroke-width="3" stroke-linecap="round"/>
+<text x="174" y="670" fill="#263543" font-size="21" font-weight="bold" font-family="Arial">Contacts (optional)</text><text x="174" y="701" fill="#637381" font-size="15" font-family="Arial">Match numbers to names saved on this phone</text>
+<rect x="76" y="798" width="448" height="76" rx="14" fill="#dceee4"/><text x="300" y="830" fill="#145d3b" font-size="17" text-anchor="middle" font-weight="bold" font-family="Arial">Only grant access you choose</text><text x="300" y="855" fill="#326e50" font-size="14" text-anchor="middle" font-family="Arial">No SIM-reading or phone-state permission.</text>
+
+<rect x="244" y="938" width="112" height="7" rx="4" fill="#dce8e1"/>
+</svg>

@@ -28,6 +28,24 @@ const record = (name, ok, detail) => {
   console.log((ok ? "PASS" : "FAIL") + " " + name + " — " + detail);
 };
 
+
+// Read-only anonymous REST probe: no user table is read or changed.
+{
+  const response = await fetch(url + "/rest/v1/rpc/server_keepalive_probe", {
+    method: "POST",
+    headers: { apikey: key, "content-type": "application/json" },
+    body: "{}",
+    signal: AbortSignal.timeout(15000)
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch {}
+  const databaseTime = Date.parse(data.database_time || "");
+  const ok = response.status === 200 && data.ok === true && Number.isFinite(databaseTime);
+  record("server Supabase read-only activity probe", ok,
+    "HTTP " + response.status + ", database_time " + (data.database_time || text.slice(0, 100)));
+}
+
 // Device-first signup must reject missing legal acceptance before touching the database.
 {
   const r = await request("server-auth", "POST", {
@@ -46,8 +64,10 @@ const record = (name, ok, detail) => {
 // Invalid phone input must be rejected before any OTP is generated or queued.
 {
   const r = await request("server-auth", "POST", { action: "request_otp", phone: "not-a-real-number" });
-  const ok = r.response.status === 400 && r.data.error === "INVALID_PHONE_FORMAT";
-  record("server-auth input validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+  // OTP issuance now requires a Server session before it inspects a destination.
+  // The malformed-code verification contract below remains the no-SMS input test.
+  const ok = r.response.status === 401 && r.data.error === "SESSION_REQUIRED";
+  record("server-auth request_otp session boundary", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
 // Never trigger a carrier SMS from CI. A malformed verification code must be rejected
@@ -83,11 +103,16 @@ const record = (name, ok, detail) => {
   record("server-calls session boundary", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
-// Invalid gateway pairing codes must not create a gateway device.
+// Legacy customer-SIM pairing must be rejected; only the platform-owned operator flow remains.
 {
   const r = await request("server-gateway", "POST", { action: "claim", pairing_code: "INVALID0" });
+  const ok = r.response.status === 403 && r.data.error === "PLATFORM_GATEWAY_ONLY";
+  record("server-gateway blocks customer SIM pairing", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+}
+{
+  const r = await request("server-gateway", "POST", { action: "claim_platform_device", pairing_code: "INVALID0" });
   const ok = r.response.status === 400 && r.data.error === "PAIRING_CODE_INVALID";
-  record("server-gateway pairing validation", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
+  record("server-gateway validates platform pairing code", ok, "HTTP " + r.response.status + ", " + (r.data.error || r.text.slice(0, 100)));
 }
 
 // Guest API must reject missing bearer invitation tokens.

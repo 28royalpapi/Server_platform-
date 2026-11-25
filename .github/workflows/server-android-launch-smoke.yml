@@ -1,10 +1,12 @@
-name: Server Android gateway launch smoke
+name: Server Android single-app SIM gateway smoke
 
 on:
   workflow_dispatch:
   push:
+    branches: [main, android-finish]
     paths:
-      - 'apps/android-sim-gateway/**'
+      - 'apps/android-caller/**'
+      - 'web/**'
       - 'scripts/android-gateway-launch-smoke.sh'
       - '.github/workflows/server-android-launch-smoke.yml'
 
@@ -12,10 +14,10 @@ permissions:
   contents: read
 
 jobs:
-  gateway-launch:
-    name: Build and launch SIM gateway in hosted Android emulator
+  integrated-sim-gateway:
+    name: Build and launch the integrated Server app
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -31,34 +33,36 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Install Android build components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Build gateway APK
-        run: gradle -p apps/android-sim-gateway assembleDebug --no-daemon
+      - name: Build the single Server Connector APK
+        run: gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
 
-      - name: Install and launch the gateway in a hosted Android emulator
-        timeout-minutes: 25
+      - name: Install and launch Server in a hosted Android emulator
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-boot-timeout: 1200
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -memory 2048 -cores 2
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -memory 4096 -cores 2
           disable-animations: true
           script: bash scripts/android-gateway-launch-smoke.sh
 
-      - name: Save emulator launch evidence
+      - name: Save single-app gateway evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: server-android-gateway-launch-evidence
+          name: server-android-integrated-sim-gateway-smoke
           path: |
-            artifacts/server-gateway-am-start.txt
-            artifacts/server-gateway-activities.txt
-            artifacts/server-gateway-activity-top.txt
-            artifacts/server-gateway-launch-logcat.txt
-            artifacts/server-gateway-screen.png
-            apps/android-sim-gateway/app/build/outputs/apk/debug/app-debug.apk
+            artifacts/server-app-manifest.txt
+            artifacts/server-app-am-start.txt
+            artifacts/server-app-activities.txt
+            artifacts/server-app-activity-top.txt
+            artifacts/server-app-launch-logcat.txt
+            artifacts/server-app-package-manager-logcat.txt
+            artifacts/server-app-screen.png
+            apps/android-caller/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn

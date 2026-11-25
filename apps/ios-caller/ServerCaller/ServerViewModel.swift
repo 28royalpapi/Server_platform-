@@ -2,9 +2,13 @@ import AVFoundation
 import CallKit
 import Combine
 import Foundation
+import PushKit
 import Security
 import SwiftUI
 import WebRTC
+import PhoneNumberKit
+import SwiftCentrifuge
+import UIKit
 
 private enum ServerBuildConfig {
     static let url = Bundle.main.object(forInfoDictionaryKey: "SERVER_SUPABASE_URL") as? String ?? "https://YOUR_PROJECT_REF.supabase.co"
@@ -18,6 +22,7 @@ struct IncomingCall: Identifiable {
 
 @MainActor
 final class ServerViewModel: ObservableObject {
+    private let phoneNumberUtility = PhoneNumberUtility()
     @Published var phone = ""
     @Published var acceptedTerms = false
     @Published var serverID = UserDefaults.standard.string(forKey: "server.server_id") ?? ""
@@ -48,6 +53,10 @@ final class ServerViewModel: ObservableObject {
     private var incomingTask: Task<Void, Never>?
     private let rtc = ServerRTC()
     private let callKit = ServerCallKit()
+    private let voipPush = ServerVoIPPushRegistry()
+    private var realtimeClient: CentrifugeClient?
+    private var realtimeDelegate: ServerRealtimeDelegate?
+    private var realtimeConnected = false
 
     init() {
         if let phoneFromKeychain = Keychain.read("server.phone"), !phoneFromKeychain.isEmpty { storedPhone = phoneFromKeychain }
@@ -72,6 +81,43 @@ final class ServerViewModel: ObservableObject {
             Task { await self.acceptFromSystem(incoming) }
         }
         callKit.onEnd = { [weak self] uuid in Task { await self?.handleCallKitEnd(uuid) } }
+        voipPush.onToken = { [weak self] token in
+            UserDefaults.standard.set(token, forKey: "server.voip_push_token")
+            guard let self, self.isSignedIn else { return }
+            Task { await self.registerPushToken(token, platform: "ios_voip") }
+        }
+        voipPush.onIncomingPush = { [weak self] payload, completion in
+            guard let self,
+                  let id = payload["call_id"] as? String,
+                  UUID(uuidString: id) != nil else {
+                completion()
+                return
+            }
+            let caller = payload["caller_label"] as? String ?? "Server user"
+            Task {
+                let incoming = IncomingCall(id: id, phone: caller)
+                self.incomingCall = incoming
+                do {
+                    try await self.callKit.reportIncoming(id: id, callerName: caller)
+                    self.startIncomingPolling()
+                } catch {
+                    self.update("iPhone received a Server call alert but could not present it through CallKit: \(error.localizedDescription)", error: true)
+                }
+                completion()
+            }
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.realtimeConnected = false
+                self?.realtimeClient?.disconnect()
+            }
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isSignedIn else { return }
+                await self.connectRealtime(callID: self.callId)
+            }
+        }
         if isSignedIn { status = "Signed in as \(maskedPhone). Checking Server calls…"; startIncomingPolling() }
         if isSignedIn { Task { await loadNumberCallPreferences() } }
     }
@@ -84,7 +130,7 @@ final class ServerViewModel: ObservableObject {
 
     func handleAppHandoff(_ url: URL) async {
         guard url.scheme == "server" else { return }
-        if url.host == "sim-setup" { update("Website onboarding opened Server. iOS does not expose SIM slots; create your Server identity here, then use the authorized default-calling integration when Apple permits it."); return }
+        if url.host == "device-setup" { update("Website onboarding opened Server. iOS does not expose SIM slots; create your Server identity here, then use the authorized default-calling integration when Apple permits it."); return }
         guard url.host == "setup" else { return }
         guard let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "handoff" })?.value,
@@ -178,7 +224,7 @@ final class ServerViewModel: ObservableObject {
             return
         }
         guard let clean = normalizePhoneForServer(phoneLinkPhone) else {
-            phoneLinkStatus = "Enter a valid number, e.g. +2348012345678 or 08012345678."
+            phoneLinkStatus = "Enter an international number (for example +2348012345678 or +919876543210), or a local number for your iPhone's region."
             isError = true
             return
         }
@@ -212,7 +258,7 @@ final class ServerViewModel: ObservableObject {
             return
         }
         guard let clean = normalizePhoneForServer(phoneLinkPhone) else {
-            phoneLinkStatus = "Enter a valid number in international format."
+            phoneLinkStatus = "Enter a valid international number or a local number for your iPhone's region."
             isError = true
             return
         }
@@ -342,15 +388,28 @@ final class ServerViewModel: ObservableObject {
 
     private func normalizePhoneForServer(_ raw: String) -> String? {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let digits = value.filter { $0.isNumber }
-        let candidate: String
-        if value.hasPrefix("+") { candidate = "+" + digits }
-        else if value.hasPrefix("00") { candidate = "+" + String(digits.dropFirst(2)) }
-        else if digits.hasPrefix("234") && digits.count == 13 { candidate = "+" + digits }
-        else if digits.count == 11 && digits.hasPrefix("0") { candidate = "+234" + String(digits.dropFirst()) }
-        else if digits.count == 10, let first = digits.first, ["7", "8", "9"].contains(String(first)) { candidate = "+234" + digits }
-        else { return nil }
-        return candidate.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? candidate : nil
+        guard !value.isEmpty, value.count <= 250 else { return nil }
+
+        do {
+            let parsed: PhoneNumber
+            if value.hasPrefix("+") {
+                // E.164/international input is independent of the caller's country.
+                parsed = try phoneNumberUtility.parse(value)
+            } else {
+                // National-format input is meaningful only with a real device locale.
+                // Never silently interpret an unknown region as Nigeria.
+                guard let region = Locale.current.region?.identifier,
+                      region.range(of: #"^[A-Za-z]{2}$"#, options: .regularExpression) != nil
+                else { return nil }
+                parsed = try phoneNumberUtility.parse(value, withRegion: region.uppercased(), ignoreType: true)
+            }
+
+            let e164 = phoneNumberUtility.format(parsed, toType: .e164)
+            return e164.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil
+                ? e164 : nil
+        } catch {
+            return nil
+        }
     }
 
     func startCall() async {
@@ -361,15 +420,18 @@ final class ServerViewModel: ObservableObject {
         let payload: [String: Any]
         if isServerID { payload = ["to_server_id": typedServerID] }
         else if let normalizedPhone { payload = ["to_phone": normalizedPhone] }
-        else { update("Enter a Server ID or a valid number, e.g. 08012345678 or +2348012345678.", error: true); return }
+        else { update("Enter a Server ID or an international number (+country code), or a local number for your iPhone's region.", error: true); return }
         guestInviteMessage = ""
         isBusy = true; defer { isBusy = false }
         do {
             let result = try await api("start", body: payload)
             guard let id = result["call_id"] as? String else { throw ServerError.message("Backend did not return a call ID.") }
             callId = id; route = result["route"] as? String ?? "server"; afterSeq = 0
-            guestInviteMessage = route == "guest" && (result["delivery_mode"] as? String) == "manual_sms"
-                ? (result["sms_body"] as? String ?? "") : ""
+            await connectRealtime(callID: id)
+            let deliveryMode = result["delivery_mode"] as? String ?? ""
+            let invitationText = result["invitation_text"] as? String ?? result["sms_body"] as? String ?? ""
+            guestInviteMessage = route == "guest" && (deliveryMode == "manual_share" || deliveryMode == "manual_sms")
+                ? invitationText : ""
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
             try await startMedia(servers: iceServers)
             let offer = try await rtc.makeDescription(offer: true)
@@ -377,8 +439,10 @@ final class ServerViewModel: ObservableObject {
             try await callKit.reportOutgoingStart(id: id, handle: normalizedPhone ?? typedServerID)
             if !guestInviteMessage.isEmpty {
                 update("No SMS gateway is connected. Tap Share guest invitation and choose Messages to send it to the recipient. They must open it with internet access.")
+            } else if deliveryMode == "sim_sms_queued" {
+                update("Guest invitation queued on your linked Android SIM gateway. Carrier delivery is not confirmed yet.")
             } else {
-                update(route == "guest" ? "Guest invitation queued for SMS delivery. The recipient needs internet and microphone access." : "Calling another Server user…")
+                update(route == "guest" ? "Guest invitation is awaiting delivery. The recipient needs internet and microphone access." : "Calling another Server user…")
             }
             startCallPolling()
         } catch {
@@ -402,6 +466,7 @@ final class ServerViewModel: ObservableObject {
         do {
             callId = incoming.id; route = "server"; afterSeq = 0; incomingCall = nil
             let result = try await api("accept", body: ["call_id": incoming.id])
+            await connectRealtime(callID: incoming.id)
             iceServers = result["ice_servers"] as? [[String: Any]] ?? []
             try await startMedia(servers: iceServers)
             update("Incoming call accepted. Negotiating audio…"); startCallPolling()
@@ -464,37 +529,78 @@ final class ServerViewModel: ObservableObject {
         callId = nil
         pollingTask?.cancel()
         pollingTask = nil
+        realtimeClient?.disconnect()
+        realtimeClient = nil
+        realtimeDelegate = nil
+        realtimeConnected = false
         await endMedia()
         update("Call ended.")
+        if isSignedIn { await connectRealtime() }
     }
 
     func signOut() {
         pollingTask?.cancel(); incomingTask?.cancel(); callId = nil; accessToken = nil; refreshToken = nil; isSignedIn = false
+        realtimeConnected = false; realtimeClient?.disconnect(); realtimeClient = nil; realtimeDelegate = nil
         Keychain.delete("server.access"); Keychain.delete("server.refresh"); UserDefaults.standard.removeObject(forKey: "server.expiry")
         update("Server session cleared. This device can register again with its existing device key.")
     }
 
     private func startIncomingPolling() {
+        if let pushToken = UserDefaults.standard.string(forKey: "server.voip_push_token") {
+            Task { await self.registerPushToken(pushToken, platform: "ios_voip") }
+        }
+        Task { await self.connectRealtime(callID: self.callId) }
         incomingTask?.cancel()
         incomingTask = Task { [weak self] in
             guard let self else { return }
+            var lastPresenceHeartbeat = Date.distantPast
             while !Task.isCancelled && self.isSignedIn {
-                do {
-                    let result = try await self.api("incoming", body: [:])
-                    let rows = result["calls"] as? [[String: Any]] ?? []
-                    if self.callId == nil, let pending = self.incomingCall {
-                        await self.reconcilePendingIncoming(pending, rows: rows)
+                if !self.realtimeConnected {
+                    do {
+                        let result = try await self.api("incoming", body: [:])
+                        let rows = result["calls"] as? [[String: Any]] ?? []
+                        await self.handleIncomingRows(rows)
+                    } catch { /* durable polling is the fallback when push/socket is unavailable */ }
+                } else if Date().timeIntervalSince(lastPresenceHeartbeat) >= 15 {
+                    // Keep backend availability fresh without restoring the
+                    // high-frequency incoming-call polling loop.
+                    do {
+                        _ = try await self.api("presence", body: [:])
+                        lastPresenceHeartbeat = Date()
+                    } catch {
+                        self.realtimeConnected = false
                     }
-                    if self.callId == nil, self.incomingCall == nil,
-                       let first = rows.first(where: { ($0["state"] as? String) == "ringing" }),
-                       let id = first["id"] as? String {
-                        let from = first["caller_server_id"] as? String ?? first["caller_phone_e164"] as? String ?? "Server user"
-                        self.incomingCall = IncomingCall(id: id, phone: from)
-                        try? await self.callKit.reportIncoming(id: id, handle: from)
-                    }
-                } catch { /* keep polling; do not log tokens or request bodies */ }
-                try? await Task.sleep(for: .seconds(2))
+                }
+                try? await Task.sleep(for: .seconds(self.realtimeConnected ? 5 : 2))
             }
+        }
+    }
+
+    private func handleIncomingRows(_ rows: [[String: Any]]) async {
+        if callId == nil, let pending = incomingCall {
+            await reconcilePendingIncoming(pending, rows: rows)
+        }
+        if callId == nil, incomingCall == nil,
+           let first = rows.first(where: { ($0["state"] as? String) == "ringing" }),
+           let id = first["id"] as? String {
+            let callerPhone = first["caller_phone_e164"] as? String
+            let from = callerPhone.flatMap {
+                $0.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil ? $0 : nil
+            }
+            incomingCall = IncomingCall(id: id, phone: from ?? "Server caller")
+            try? await callKit.reportIncoming(id: id, phoneNumber: from)
+        }
+    }
+
+    private func registerPushToken(_ token: String, platform: String) async {
+        guard isSignedIn, token.count >= 40 else { return }
+        if UserDefaults.standard.string(forKey: "server.voip_push_registered") == token { return }
+        do {
+            _ = try await api("register_push_token", body: ["platform": platform, "push_token": token])
+            UserDefaults.standard.set(token, forKey: "server.voip_push_registered")
+        } catch {
+            // Retry when incoming polling starts again or the next token callback arrives.
+            update("iOS VoIP push registration is pending: \(error.localizedDescription)", error: true)
         }
     }
 
@@ -530,29 +636,172 @@ final class ServerViewModel: ObservableObject {
         }
     }
 
+    private func connectRealtime(callID: String? = nil) async {
+        guard isSignedIn else { return }
+        if let callID, callId != callID { return }
+        do {
+            let body: [String: Any] = callID.map { ["call_id": $0] } ?? [:]
+            let result = try await api("realtime_token", body: body)
+            guard (result["realtime_available"] as? Bool) == true,
+                  let endpoint = result["url"] as? String,
+                  let token = result["token"] as? String,
+                  endpoint.hasPrefix("wss://"), !token.isEmpty else {
+                realtimeConnected = false
+                return
+            }
+
+            realtimeClient?.disconnect()
+            let delegate = ServerRealtimeDelegate()
+            delegate.publicationHandler = { [weak self] channel, data in
+                Task { @MainActor [weak self] in
+                    await self?.handleRealtimePublication(channel: channel, data: data)
+                }
+            }
+            delegate.didConnect = { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isSignedIn else { return }
+                    do {
+                        if let callID {
+                            guard self.callId == callID else { return }
+                            let snapshot = try await self.api("poll", body: ["call_id": callID, "after_seq": self.afterSeq])
+                            try await self.processCallSnapshot(snapshot, callID: callID)
+                        } else {
+                            let snapshot = try await self.api("incoming", body: [:])
+                            await self.handleIncomingRows(snapshot["calls"] as? [[String: Any]] ?? [])
+                        }
+                        self.realtimeConnected = true
+                    } catch {
+                        self.realtimeConnected = false
+                        self.update("Realtime connected; database reconciliation will retry: \\(error.localizedDescription)", error: true)
+                    }
+                }
+            }
+            delegate.didDisconnect = { [weak self] in
+                Task { @MainActor [weak self] in self?.realtimeConnected = false }
+            }
+            let config = CentrifugeClientConfig(
+                name: "server-ios",
+                version: "0.1.0",
+                token: token,
+                useNativeWebSocket: true,
+                tokenGetter: { [weak self] _, completion in
+                    guard let self else {
+                        completion(.failure(ServerError.message("Server session is unavailable.")))
+                        return
+                    }
+                    Task { @MainActor [weak self] in
+                        guard let self else {
+                            completion(.failure(ServerError.message("Server session is unavailable.")))
+                            return
+                        }
+                        do {
+                            let refreshed = try await self.api("realtime_token", body: body)
+                            guard let newToken = refreshed["token"] as? String else {
+                                throw ServerError.message("Realtime token refresh was not available.")
+                            }
+                            completion(.success(newToken))
+                        } catch { completion(.failure(error)) }
+                    }
+                }
+            )
+            let client = CentrifugeClient(endpoint: endpoint, config: config, delegate: delegate)
+            realtimeDelegate = delegate
+            realtimeClient = client
+            realtimeConnected = false
+            client.connect()
+        } catch {
+            realtimeConnected = false
+            update("Realtime service is unavailable; durable HTTP signalling remains enabled.", error: true)
+        }
+    }
+
+    private func handleRealtimePublication(channel: String, data: Data) async {
+        guard let message = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+        let type = message["type"] as? String ?? ""
+        if type == "incoming_call" {
+            guard callId == nil, incomingCall == nil,
+                  let call = message["call"] as? [String: Any],
+                  let id = call["id"] as? String else { return }
+            let caller = message["caller"] as? [String: Any] ?? [:]
+            let label = caller["label"] as? String ?? "Server caller"
+            let incoming = IncomingCall(id: id, phone: label)
+            incomingCall = incoming
+            try? await callKit.reportIncoming(id: id, callerName: label)
+            return
+        }
+        guard let activeID = callId,
+              (message["call_id"] as? String) == activeID else { return }
+        switch type {
+        case "signal":
+            if let senderID = message["from_server_id"] as? String, senderID == serverID { return }
+            let sequence = message["seq"] as? Int ?? 0
+            guard sequence == 0 || sequence > afterSeq else { return }
+            afterSeq = max(afterSeq, sequence)
+            let signal: [String: Any] = [
+                "seq": sequence,
+                "kind": message["kind"] as? String ?? "",
+                "payload": message["payload"] as? [String: Any] ?? [:]
+            ]
+            do { try await handle(signal) }
+            catch { update("Realtime call signal failed: \\(error.localizedDescription)", error: true) }
+        case "call_state":
+            let state = message["state"] as? String ?? ""
+            if ["ended", "failed", "missed"].contains(state) {
+                callKit.reportEnded(id: activeID, reason: callKitEndReason(for: state))
+                callId = nil
+                pollingTask?.cancel()
+                pollingTask = nil
+                realtimeClient?.disconnect()
+                realtimeClient = nil
+                realtimeDelegate = nil
+                realtimeConnected = false
+                await endMedia()
+                update("Call ended.")
+                if isSignedIn { await connectRealtime() }
+            }
+        default:
+            break
+        }
+    }
+
+    private func processCallSnapshot(_ result: [String: Any], callID: String) async throws {
+        let signals = result["signals"] as? [[String: Any]] ?? []
+        for signal in signals {
+            let sequence = signal["seq"] as? Int ?? 0
+            if sequence <= afterSeq { continue }
+            afterSeq = sequence
+            try await handle(signal)
+            if self.callId != callID { return }
+        }
+        afterSeq = max(afterSeq, result["next_after_seq"] as? Int ?? 0)
+        let state = (result["call"] as? [String: Any])?["state"] as? String ?? ""
+        if ["ended", "failed", "missed"].contains(state), self.callId == callID {
+            callKit.reportEnded(id: callID, reason: callKitEndReason(for: state))
+            self.callId = nil
+            pollingTask?.cancel()
+            pollingTask = nil
+            realtimeClient?.disconnect()
+            realtimeClient = nil
+            realtimeDelegate = nil
+            realtimeConnected = false
+            await endMedia()
+            update("Call ended.")
+            if isSignedIn { await connectRealtime() }
+        }
+    }
+
     private func startCallPolling() {
         pollingTask?.cancel()
         pollingTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled, let id = self.callId {
                 do {
-                    let result = try await self.api("poll", body: ["call_id": id, "after_seq": self.afterSeq])
-                    let signals = result["signals"] as? [[String: Any]] ?? []
-                    for signal in signals {
-                        self.afterSeq = max(self.afterSeq, signal["seq"] as? Int ?? 0)
-                        try await self.handle(signal)
-                    }
-                    self.afterSeq = max(self.afterSeq, result["next_after_seq"] as? Int ?? 0)
-                    let state = (result["call"] as? [String: Any])?["state"] as? String ?? ""
-                    if ["ended", "failed", "missed"].contains(state) {
-                        self.callKit.reportEnded(id: id, reason: self.callKitEndReason(for: state))
-                        self.callId = nil
-                        await self.endMedia()
-                        self.update("Call ended.")
-                        break
+                    if !self.realtimeConnected {
+                        let result = try await self.api("poll", body: ["call_id": id, "after_seq": self.afterSeq])
+                        try await self.processCallSnapshot(result, callID: id)
                     }
                 } catch { self.update(error.localizedDescription, error: true) }
-                try? await Task.sleep(for: .milliseconds(700))
+                try? await Task.sleep(for: .milliseconds(self.realtimeConnected ? 1000 : 700))
             }
         }
     }
@@ -573,8 +822,14 @@ final class ServerViewModel: ObservableObject {
             if let id = callId { callKit.reportEnded(id: id, reason: .remoteEnded) }
             callId = nil
             pollingTask?.cancel()
+            pollingTask = nil
+            realtimeClient?.disconnect()
+            realtimeClient = nil
+            realtimeDelegate = nil
+            realtimeConnected = false
             await endMedia()
             update("The other person ended the call.")
+            if isSignedIn { await connectRealtime() }
         default: break
         }
     }
@@ -606,7 +861,7 @@ final class ServerViewModel: ObservableObject {
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue(ServerBuildConfig.key, forHTTPHeaderField: "apikey")
-        if authorized, let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "authorization") }
+        if authorized, let accessToken { request.setValue(accessToken, forHTTPHeaderField: "x-server-session-token") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ServerError.message("No response from Server backend.") }
@@ -673,17 +928,34 @@ private final class ServerCallKit: NSObject, CXProviderDelegate {
     override init() {
         let config = CXProviderConfiguration(localizedName: "Server")
         config.supportsVideo = false; config.maximumCallGroups = 1; config.maximumCallsPerCallGroup = 1
-        config.supportedHandleTypes = [.phoneNumber]
+        config.supportedHandleTypes = [.phoneNumber, .generic]
         provider = CXProvider(configuration: config)
         super.init()
         provider.setDelegate(self, queue: nil)
     }
 
-    func reportIncoming(id: String, handle: String) async throws {
+    func reportIncoming(id: String, phoneNumber: String? = nil, callerName: String? = nil) async throws {
         guard let uuid = UUID(uuidString: id) else { return }
         if handles[uuid] != nil { return }
-        handles[uuid] = handle
-        let update = CXCallUpdate(); update.remoteHandle = CXHandle(type: .phoneNumber, value: handle); update.hasVideo = false
+        let rawPhone = (phoneNumber ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let safePhone = rawPhone.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil
+            ? rawPhone : nil
+        let trimmedName = (callerName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = trimmedName.isEmpty ? "Server caller" : String(trimmedName.prefix(80))
+        handles[uuid] = safePhone ?? displayName
+
+        // The backend only supplies phoneNumber after caller verification AND
+        // number-call consent. This preserves recipient Contacts resolution.
+        // PushKit carries a display label, not a phone number: render it as a
+        // generic Server handle so a person's name is never treated as E.164.
+        let update = CXCallUpdate()
+        if let safePhone {
+            update.remoteHandle = CXHandle(type: .phoneNumber, value: safePhone)
+        } else {
+            update.remoteHandle = CXHandle(type: .generic, value: "Server")
+            update.localizedCallerName = displayName
+        }
+        update.hasVideo = false
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             provider.reportNewIncomingCall(with: uuid, update: update) { error in
                 if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: ()) }
@@ -768,7 +1040,7 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
             else { return nil }
             return RTCIceServer(urlStrings: urls, username: row["username"] as? String ?? "", credential: row["credential"] as? String ?? "")
         }
-        let config = RTCConfiguration(); config.iceServers = servers.isEmpty ? [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])] : servers
+        let config = RTCConfiguration(); config.iceServers = servers.isEmpty ? [RTCIceServer(urlStrings: ["stun:stun.cloudflare.com:3478"]), RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"])] : servers
         config.sdpSemantics = .unifiedPlan
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         guard let madePeer = factory?.peerConnection(with: config, constraints: constraints, delegate: self) else { throw ServerError.message("Could not create WebRTC peer connection.") }
@@ -839,4 +1111,57 @@ private final class ServerRTC: NSObject, RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceivingOn transceiver: RTCRtpTransceiver) {}
+}
+
+
+/**
+ * PushKit wakes the iOS app for an incoming VoIP call even when it is backgrounded.
+ * The callback is completed only after Server has asked CallKit to present the call.
+ */
+@MainActor
+private final class ServerVoIPPushRegistry: NSObject, PKPushRegistryDelegate {
+    private var registry: PKPushRegistry!
+    var onToken: ((String) -> Void)?
+    var onIncomingPush: (([String: Any], @escaping () -> Void) -> Void)?
+
+    override init() {
+        super.init()
+        registry = PKPushRegistry(queue: .main)
+        registry.delegate = self
+        registry.desiredPushTypes = [.voIP]
+    }
+
+    func pushRegistry(_ registry: PKPushRegistry,
+                      didUpdate credentials: PKPushCredentials,
+                      for type: PKPushType) {
+        guard type == .voIP else { return }
+        let token = credentials.token.map { String(format: "%02x", $0) }.joined()
+        // Persist even if PushKit delivers the token before the signed-in view model
+        // installs its callback. The next authenticated launch registers it.
+        UserDefaults.standard.set(token, forKey: "server.voip_push_token")
+        onToken?(token)
+    }
+
+    func pushRegistry(_ registry: PKPushRegistry,
+                      didInvalidatePushTokenFor type: PKPushType) {
+        guard type == .voIP else { return }
+        UserDefaults.standard.removeObject(forKey: "server.voip_push_token")
+        UserDefaults.standard.removeObject(forKey: "server.voip_push_registered")
+    }
+
+    func pushRegistry(_ registry: PKPushRegistry,
+                      didReceiveIncomingPushWith payload: PKPushPayload,
+                      for type: PKPushType,
+                      completion: @escaping () -> Void) {
+        guard type == .voIP, let onIncomingPush else {
+            completion()
+            return
+        }
+        let stringPayload = payload.dictionaryPayload.reduce(into: [String: Any]()) { result, entry in
+            if let key = entry.key as? String {
+                result[key] = entry.value
+            }
+        }
+        onIncomingPush(stringPayload, completion)
+    }
 }

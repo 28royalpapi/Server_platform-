@@ -1,0 +1,59 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    restart: unless-stopped
+    volumes:
+      - centrifugo_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [realtime]
+
+  centrifugo:
+    image: centrifugo/centrifugo:v6.10.2
+    command: ["centrifugo", "--config=/centrifugo/config.json"]
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_HMAC_SECRET_KEY:?set a random 32+ character secret}
+      CENTRIFUGO_CLIENT_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGINS:?set your HTTPS onboarding and guest origins}
+      CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:?set a different random 32+ character API key}
+      CENTRIFUGO_ENGINE_TYPE: redis
+      CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis:6379
+      CENTRIFUGO_HTTP_SERVER_PORT: "8000"
+    volumes:
+      - ./config.json:/centrifugo/config.json:ro
+    expose:
+      - "8000"
+    networks: [realtime]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [centrifugo]
+    environment:
+      REALTIME_DOMAIN: ${REALTIME_DOMAIN:?set a public DNS name for realtime}
+      ACME_EMAIL: ${ACME_EMAIL:?set an email for TLS certificate expiry notices}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [realtime]
+
+volumes:
+  centrifugo_redis:
+  caddy_data:
+  caddy_config:
+
+networks:
+  realtime:
+    driver: bridge

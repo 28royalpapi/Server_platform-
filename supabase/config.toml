@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.server-health]
 verify_jwt = true
+
+[functions.server-call-delivery-worker]
+verify_jwt = false
