@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,onboarding,onboardingApp,config,pkg,guestPage,push]=await Promise.all([
+const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,setup,onboarding,onboardingApp,config,pkg,guestPage,push,serverAuth,sessionManager]=await Promise.all([
  readFile("supabase/migrations/20261120190906_server_receiver_persistent_enrolment.sql","utf8"),
  readFile("supabase/migrations/20261122080000_server_receiver_invites_do_not_expire.sql","utf8"),
  readFile("supabase/functions/server-receiver/index.ts","utf8"),
@@ -12,7 +12,9 @@ const [migration,lifetimeMigration,edge,calls,page,client,sw,manifest,android,se
  readFile("web/index.html","utf8"),readFile("web/app.js","utf8"),
  readFile("supabase/config.toml","utf8"),readFile("package.json","utf8"),
  readFile("web/guest.js","utf8"),
- readFile("supabase/functions/_shared/guest_web_push.ts","utf8")
+ readFile("supabase/functions/_shared/guest_web_push.ts","utf8"),
+ readFile("supabase/functions/server-auth/index.ts","utf8"),
+ readFile("apps/android-caller/app/src/main/java/com/server/caller/ServerDeviceSessionManager.kt","utf8")
 ]);
 assert.match(migration,/create table if not exists public\.server_receiver_invites/i);
 assert.match(migration,/enable row level security/i);
@@ -59,6 +61,20 @@ assert.match(setup,/installation_id/);
 assert.match(setup,/device_secret/);
 assert.match(setup,/putString\("server_id", serverId\)/);
 assert.match(setup,/getSharedPreferences\("server-session"/);
+assert.match(setup,/UUID\.randomUUID\(\)\.toString\(\)/);
+assert.match(setup,/putString\("installation_id", installationId\)/);
+assert.match(setup,/putString\("device_secret", deviceSecret\)/);
+assert.match(setup,/No replacement Server ID has been created/);
+assert.match(setup,/Your previous identity data has been kept/);
+assert.match(serverAuth,/\.eq\("installation_id",installationId\)\.maybeSingle\(\)/);
+assert.match(serverAuth,/if\(existing\)\{/);
+assert.match(serverAuth,/existing\.secret_hash!==secretHash/);
+assert.match(serverAuth,/identity=existing/);
+assert.match(serverAuth,/\.eq\("user_id",identity\.user_id\)/);
+assert.match(sessionManager,/ServerDeviceSessionManager\.ensureFresh/);
+assert.match(sessionManager,/putString\("access_token", access\)/);
+assert.match(sessionManager,/putString\("server_id", serverId\)/);
+assert.match(sessionManager,/register_device/);
 assert.match(setup,/copyReceiverInvitation/);
 assert.match(onboarding,/id="receiver-onboarding"/);
 assert.match(onboarding,/Show my contacts/);
