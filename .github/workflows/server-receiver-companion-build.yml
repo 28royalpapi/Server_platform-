@@ -88,17 +88,27 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+      - name: Compile Receiver app and GSM instrumentation tests
+        run: |
+          set -euo pipefail
+          gradle -p apps/android-receiver assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics
+          cores: 2
+          ram-size: 3072M
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-metrics
           disable-animations: true
+          pre-emulator-launch-script: |
+            set -eu
+            adb start-server
+            adb devices -l
           script: |
             set -euo pipefail
-            gradle -p apps/android-receiver assembleDebug assembleDebugAndroidTest --no-daemon --console=plain
             APP=apps/android-receiver/app/build/outputs/apk/debug/app-debug.apk
             TEST=apps/android-receiver/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             test -s "$APP"
