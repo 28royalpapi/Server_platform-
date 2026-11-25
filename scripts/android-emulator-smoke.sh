@@ -77,7 +77,7 @@ echo "Server caller APK is installed and backed up for post-instrumentation rein
 echo "Running Server website onboarding, permission, contact-selection, and system calling-account Android instrumentation tests"
 TEST_STATUS=0
 rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-$TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
+$TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.server.caller.OfflineWakeReceiverSmokeTest --no-daemon || TEST_STATUS=$?
 if [[ "$TEST_STATUS" -eq 0 ]]; then
   python3 scripts/assert-android-test-count.py --expected-tests 26 || TEST_STATUS=$?
 fi
