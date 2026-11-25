@@ -204,7 +204,7 @@ class ServerReceiverSetupActivity : ComponentActivity() {
   private fun resumePendingCall() {
     val nativeSecret = ServerReceiverRoster.secret(this)
     if (nativeSecret.isBlank()) {
-      setStatus("Pair this phone with your enrolled browser Receiver first.")
+      setStatus("Open the private Server Receiver invitation to pair this phone first.")
       return
     }
     if (!ServerReceiverRoster.hasInternet(this)) {
@@ -217,7 +217,7 @@ class ServerReceiverSetupActivity : ComponentActivity() {
         // Refresh the readiness lease and the roster while internet is available,
         // then request a one-time link for the original still-live WebRTC call.
         try { ServerReceiverRoster.sync(this, nativeSecret) } catch (_: Exception) {}
-        val prefs = getSharedPreferences("server_receiver_companion", MODE_PRIVATE)
+        val prefs = getSharedPreferences("server_receiver", MODE_PRIVATE)
         val previousCall = prefs.getString("last_resumed_call_id", "").orEmpty()
         val pending = ServerReceiverRoster.pendingGuestCall(this, nativeSecret, previousCall)
         if (pending == null) {
@@ -273,7 +273,7 @@ class ServerReceiverSetupActivity : ComponentActivity() {
         ServerReceiverRoster.revoke(this)
         runOnUiThread { setStatus("Offline wake-up is off on this phone. Browser alerts remain available while internet is on.") }
       } catch (e: Exception) {
-        runOnUiThread { setStatus("Could not revoke companion: ${e.message?.take(120) ?: "network unavailable"}.") }
+        runOnUiThread { setStatus("Could not turn off offline wake-up: ${e.message?.take(120) ?: "network unavailable"}.") }
       }
     }
   }
