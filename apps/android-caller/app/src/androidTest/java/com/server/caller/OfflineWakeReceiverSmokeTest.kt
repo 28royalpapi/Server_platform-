@@ -40,7 +40,7 @@ class OfflineWakeReceiverSmokeTest {
       .put("caller_hash", hmac(secret, phoneC))
       .put("server_id", serverIdC)
       .put("display_name", displayNameC)
-    context.getSharedPreferences("server_receiver_companion", Context.MODE_PRIVATE)
+    context.getSharedPreferences("server_receiver", Context.MODE_PRIVATE)
       .edit()
       .putString("caller_roster_json", JSONArray().put(row).put(secondRow).toString())
       .commit()
