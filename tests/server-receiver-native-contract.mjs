@@ -101,7 +101,7 @@ assert.match(workflow, /gsm call \\+2348098765432/);
 assert.match(workflow, /gsmWakeCallFromDifferentServerCallerProducesServerNotification/);
 assert.match(page, /offline-wake-server/);
 assert.match(page, /same Server app/);
-assert.match(page, /Server-Android-Connector-preview\\.apk/);
+assert.match(page, /server-android-arm64\\.apk/);
 assert.doesNotMatch(page, /Server-Offline-Receiver-debug\\.apk/);
 assert.match(workflow, /Build and signature-check the single Server APK and test APK/);
 assert.match(workflow, /server-single-apk-offline-wake-test/);
