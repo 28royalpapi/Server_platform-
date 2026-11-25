@@ -850,5 +850,10 @@ jobs:
           gh release delete-asset server-android-connector-preview Server-Android-Connector-preview.apk --repo "$GITHUB_REPOSITORY" --yes || true
           gh release delete-asset server-android-connector-preview app-debug.apk --repo "$GITHUB_REPOSITORY" --yes || true
           gh release delete-asset server-android-connector-preview server-android-armv7.apk --repo "$GITHUB_REPOSITORY" --yes || true
+          # Retire the obsolete second-APK preview only after the single Server APK
+          # has passed the blocking Android release gates and is published.
+          if gh release view server-offline-receiver-companion-preview --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete server-offline-receiver-companion-preview --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          fi
           echo "ANDROID_SINGLE_ARM64_CALLING_AND_SMS_GATEWAY_PUBLISHED"
 
