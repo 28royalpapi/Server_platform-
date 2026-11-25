@@ -76,7 +76,25 @@ class OfflineWakeReceiverSmokeTest {
     assertEquals("$displayName is trying to reach you", title)
   }
 
-  @Test\n  fun gsmWakeCallFromDifferentServerCallerProducesServerNotification() {\n    val context = InstrumentationRegistry.getInstrumentation().targetContext\n    assertTrue("Test requires a phone with cellular voice but no validated internet",\n      !ServerReceiverRoster.hasInternet(context))\n    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager\n    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(12)\n    var found: android.service.notification.StatusBarNotification? = null\n    while (System.nanoTime() < deadline && found == null) {\n      found = manager.activeNotifications.firstOrNull {\n        it.notification.channelId == "server-offline-wakeup-v1" &&\n          it.notification.extras?.getCharSequence("android.title")?.toString() == "$displayNameC is trying to reach you"\n      }\n      if (found == null) Thread.sleep(250)\n    }\n    assertNotNull("A second Server caller must trigger a separately identified wake notification", found)\n  }\n\n  private fun hmac(key: String, value: String): String {
+  @Test
+  fun gsmWakeCallFromDifferentServerCallerProducesServerNotification() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    assertTrue("Test requires a phone with cellular voice but no validated internet",
+      !ServerReceiverRoster.hasInternet(context))
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(12)
+    var found: android.service.notification.StatusBarNotification? = null
+    while (System.nanoTime() < deadline && found == null) {
+      found = manager.activeNotifications.firstOrNull {
+        it.notification.channelId == "server-offline-wakeup-v1" &&
+          it.notification.extras?.getCharSequence("android.title")?.toString() == "$displayNameC is trying to reach you"
+      }
+      if (found == null) Thread.sleep(250)
+    }
+    assertNotNull("A second Server caller must trigger a separately identified wake notification", found)
+  }
+
+  private fun hmac(key: String, value: String): String {
     val mac = Mac.getInstance("HmacSHA256")
     mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
     return mac.doFinal(value.toByteArray(Charsets.UTF_8))
