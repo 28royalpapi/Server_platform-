@@ -100,7 +100,7 @@ assert.match(receiverSmoke, /gsmWakeCallFromDifferentServerCallerProducesServerN
 assert.match(workflow, /gsm call \+2348098765432/);
 assert.match(workflow, /gsmWakeCallFromDifferentServerCallerProducesServerNotification/);
 assert.match(page, /offline-wake-companion/);
-assert.match(page, /releases\/download\/server-offline-receiver-companion-preview\/Server-Offline-Receiver\.apk/);
+assert.match(page, /releases\/download\/server-offline-receiver-companion-preview\/Server-Offline-Receiver-debug\.apk/);
 assert.match(workflow, /Publish a direct-download Receiver Companion preview/);
 assert.match(workflow, /contents: write/);
 assert.match(client, /native_pair/);
