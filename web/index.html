@@ -24,8 +24,8 @@
       <div id="status" class="status hidden" role="status"></div>
       <div class="step-form">
         <section id="android-install" class="install-card">
-          <div class="step-title"><span class="step-number">01</span><div><h2>Download Server for Android</h2><p>Install the single Server app for Android calling. Your Server identity and internet calls do not depend on your SIM, phone number, or mobile operator.</p></div></div>
-          <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-combined-preview/Server-Android-Connector-preview.apk">Download Server — ARM64 <span aria-hidden="true">↓</span></a>
+          <div class="step-title"><span class="step-number">01</span><div><h2>Download Server for Android</h2><p>Install the single Server app for Android calling. This same APK can also receive calls and enable offline wake-up when someone sends you a Receiver invitation. Your Server identity and internet calls do not depend on your SIM, phone number, or mobile operator.</p></div></div>
+          <a class="primary full install-link" id="download-android-connector" target="_blank" rel="noopener" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-arm64.apk">Download Server — ARM64 <span aria-hidden="true">↓</span></a>
           <p class="fine-print">No SIM selection or SMS permission is needed. Guest invitations use free internet notifications for browsers that have enrolled with Server. For first contact, share the secure link through WhatsApp or another internet messaging app. Guest invitations never use carrier SMS or deduct airtime.</p>
           <ol class="install-steps">
             <li>Open this one downloaded APK from Chrome's download notification or your Downloads folder.</li>
@@ -58,6 +58,30 @@
           <h2 class="done-title">Server identity created</h2>
           <p id="server-id" class="pairing-result"></p>
           <p class="done-text">Your Server ID is ready. Server calls use WebRTC over the internet. When you call a non-member, Server sends a caller-identified browser push alert if that phone number has previously enrolled a guest receiver. On first contact, share the secure invitation once; the recipient can enable call alerts in their browser and answer without installing Server. If no internet receiver is available, Server records the attempt as unreachable—no mobile-operator fallback is placed.</p>
+
+          <section class="receiver-onboarding" id="receiver-onboarding" aria-labelledby="receiver-onboarding-title">
+            <div class="receiver-heading">
+              <h3 id="receiver-onboarding-title">Connect people to Server</h3>
+              <p>Choose people from your phone contacts. Each person gets their own private setup link. They open it once and enable call alerts; you can see who has connected here.</p>
+            </div>
+            <p class="receiver-privacy">Your contact names and address book stay on this phone. Server receives only the phone numbers you explicitly invite.</p>
+            <div class="receiver-toolbar">
+              <button class="secondary full" id="load-receiver-contacts" type="button">Show my contacts</button>
+              <button class="secondary full" id="refresh-receiver-list" type="button">Refresh connection status</button>
+            </div>
+            <p id="receiver-management-status" class="receiver-management-status" role="status" aria-live="polite">Your Receiver list is saved to your Server account.</p>
+            <input id="receiver-contact-search" class="receiver-contact-search" type="search" placeholder="Search your contacts" autocomplete="off" aria-label="Search contacts">
+            <div id="receiver-contacts" class="receiver-contacts" aria-live="polite"></div>
+            <div class="receiver-selection" id="receiver-selection">
+              <span id="receiver-selection-count">0 people selected</span>
+              <button class="primary full" id="invite-selected-receivers" type="button" disabled>Generate links for selected people</button>
+            </div>
+            <div id="receiver-generated-links" class="receiver-generated-links" aria-live="polite"></div>
+            <div class="receiver-registry-heading"><h4>My invited contacts</h4><span>Live status from Server</span></div>
+            <div id="receiver-registry" class="receiver-registry" aria-live="polite">
+              <p class="receiver-empty">Your invited people will appear here.</p>
+            </div>
+          </section>
 
           <section class="gateway-setup" id="sms-gateway-setup">
             <h3>Free internet invitations</h3>

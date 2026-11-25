@@ -5,6 +5,7 @@ on:
     paths:
       - 'web/**'
       - 'supabase/functions/server-web/**'
+      - 'tests/**'
       - '.github/workflows/deploy-server-web.yml'
   pull_request:
     paths:

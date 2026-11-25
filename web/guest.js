@@ -9,6 +9,7 @@ const cfg=window.SERVER_CONFIG||{};
 const url=new URL(location.href);
 const fragmentToken=url.hash.startsWith("#token=")?decodeURIComponent(url.hash.slice(7)):"";
 const inviteToken=url.searchParams.get("token")||fragmentToken||"";
+const notificationAction=url.searchParams.get("server_action")||"";
 const isIOSDevice=/iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const isIOSHomeScreen=isIOSDevice&&(navigator.standalone===true||(typeof window.matchMedia==="function"&&window.matchMedia("(display-mode: standalone)").matches));
 if(!isIOSDevice||isIOSHomeScreen)history.replaceState(null,"",location.pathname);
@@ -133,6 +134,29 @@ function renderInvite(details,isCached=false){
  titleEl.textContent=caller+" is calling you";descriptionEl.textContent=caller+" is calling you through Server. Answer to connect by internet voice. You do not need to install Server or create an account.";
  if(isCached){status("This invitation was saved on this device. Reconnect to check whether the caller is still waiting.",true);joinButton.disabled=true;}else{status("Invitation verified. Answer to enable your microphone.");joinButton.disabled=false;}
 }
+async function applyNotificationAction(details){
+ if(details.joined===true||joinButton.disabled)return;
+ if(notificationAction==="answer"){
+  status("Caller identified. Tap Answer call to connect and allow microphone access.");
+  joinButton.focus({preventScroll:false});
+  joinButton.scrollIntoView({block:"center",behavior:"smooth"});
+  return;
+ }
+ if(notificationAction==="decline"){
+  joinButton.disabled=true;
+  declineButton.disabled=true;
+  status("Declining the incoming Server call…");
+  try{
+   await api("decline");
+   titleEl.textContent="Call declined";
+   descriptionEl.textContent="You declined this Server call.";
+   status("The caller has been notified.");
+  }catch(error){
+   status("Could not decline the call: "+(error.message||"Please open the invitation and try again."),true);
+   declineButton.disabled=false;
+  }
+ }
+}
 function status(message,isError=false){statusEl.textContent=message;statusEl.classList.toggle("is-error",isError);statusEl.classList.remove("hidden");}
 async function api(action,extras={}){if(!cfg.supabaseUrl||!cfg.publishableKey||String(cfg.supabaseUrl).includes("YOUR_PROJECT"))throw new Error("Guest calling is not connected to the Server backend.");const response=await fetch(cfg.supabaseUrl+"/functions/v1/server-guest",{method:"POST",headers:{"content-type":"application/json",apikey:cfg.publishableKey},body:JSON.stringify(Object.assign({action,token:inviteToken},extras))});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||("Call service error ("+response.status+")"));return result;}
 async function sendSignal(kind,payload={}){if(leaving)return;try{await api("signal",{call_id:callId,kind,payload});}catch(err){status("Could not send call signal: "+err.message,true);}}
@@ -172,7 +196,7 @@ async function loadInvitation(){
  try{inviteFingerprint=await fingerprintToken(inviteToken);}catch{status("This browser cannot create a secure local invitation reference.",true);joinButton.disabled=true;return;}
  const cached=await readInviteLocally();
  if(!navigator.onLine){if(cached){lastInviteDoc=cached;renderInvite(cached,true);status("You are offline. This is the last saved state; reconnect before trying to answer.",true);}else status("You are offline. Reopen this invitation after your internet connection returns.",true);joinButton.disabled=true;return;}
- try{const details=await api("inspect");const doc=await saveInviteLocally(details);renderInvite(details,false);if(doc.state==="missed")joinButton.disabled=true;void syncExistingGuestPush();}
+ try{const details=await api("inspect");const doc=await saveInviteLocally(details);renderInvite(details,false);if(doc.state==="missed")joinButton.disabled=true;await applyNotificationAction(details);void syncExistingGuestPush();}
  catch(err){const latest=await readInviteLocally();if(latest){lastInviteDoc=latest;renderInvite(latest,true);status("Server could not be reached. Showing the invitation saved on this device.",true);}else{status("This Server invitation could not be verified: "+err.message,true);joinButton.disabled=true;}}
 }
 async function onSignal(signal){if(signal.kind==="hangup"){status("The other person ended the call.");await cleanup(false);return;}if(!pc)return;try{if(signal.kind==="offer"){await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));for(const candidate of pendingIce)await pc.addIceCandidate(new RTCIceCandidate(candidate));pendingIce=[];const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await sendSignal("answer",pc.localDescription.toJSON());status("Negotiating audio connection…");}else if(signal.kind==="ice"&&signal.payload?.candidate){if(pc.remoteDescription)await pc.addIceCandidate(new RTCIceCandidate(signal.payload));else pendingIce.push(signal.payload);}else if(signal.kind==="state"&&signal.payload?.state==="active")status("Audio connection active. Keep this page open.");}catch(err){status("Call negotiation failed: "+err.message,true);}}

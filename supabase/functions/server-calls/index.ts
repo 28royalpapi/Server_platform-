@@ -136,8 +136,8 @@ function callTransitionFailure(transition:any){
 
 
 const SERVER_CALL_TTL_SECONDS = 120;
-const GUEST_CALL_TTL_SECONDS = 2 * 60;
-const GUEST_INVITE_TTL_SECONDS = 2 * 60;
+const GUEST_CALL_TTL_SECONDS = 5 * 60;
+const GUEST_INVITE_TTL_SECONDS = 5 * 60;
 const PRESENCE_FRESH_SECONDS = 35;
 const PRESENCE_WRITE_INTERVAL_MS = 12000;
 
@@ -545,7 +545,7 @@ Deno.serve(async(req:Request)=>{
      }
      const inviteUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
      const browserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
-     const invitationText="SERVER CALL\n"+callerLabel+" is inviting you to an internet call.\nOpen this secure link to answer. Expires in 2 minutes.\n"+inviteUrl;
+     const invitationText="SERVER CALL\n"+callerLabel+" is inviting you to an internet call.\nOpen this secure link to answer. Expires in 5 minutes.\n"+inviteUrl;
      createdItems.push({
       ok:true,recipient_e164:to,call_id:created.call.id,invite_id:created.invite_id,
       invite_expires_at:inviteExpiresAt,guest_invite_url:inviteUrl,
@@ -702,7 +702,7 @@ Deno.serve(async(req:Request)=>{
    const callerPhone=profile.phone_verified_at&&profile.allow_number_based_server_calls===true?phone(profile.phone_e164):null;
    const callerDisplay=callerDisplayName;
    const invitationUrl="https://server-onboarding-ochre.vercel.app/c/"+encodeURIComponent(token);
-   const invitationText="SERVER CALL\n"+callerDisplay+" is calling you.\nAnswer over the internet. Expires in 2 minutes.\n"+invitationUrl;
+   const invitationText="SERVER CALL\n"+callerDisplay+" is calling you.\nAnswer over the internet. Expires in 5 minutes.\n"+invitationUrl;
    const guestBrowserUrl="https://server-onboarding-ochre.vercel.app/guest.html#token="+encodeURIComponent(token);
    const guestPush=await sendGuestBrowserPush(db,to,{
     call_id:call.id,caller_label:callerDisplay,
@@ -713,6 +713,23 @@ Deno.serve(async(req:Request)=>{
    const hasPushAccepted=guestPush.accepted>0;
    const guestInternetReachable=guestPush.recent_online>0;
    const guestAvailabilityStatus=guestInternetReachable?"online":"unknown_guest";
+
+   // Offline cellular wake is offered only to an Android Receiver whose native
+   // companion recently confirmed its Call Screening role and notification access.
+   // The caller must also have a verified, explicitly opted-in number so the
+   // Receiver can identify the incoming SIM caller ID from its local roster.
+   let nativeWakeAvailable=false;
+   if(callerPhone&&b.offline_wake_enabled===true&&!guestInternetReachable){
+    const {data:receiverDevices,error:receiverDeviceError}=await db.from("server_guest_push_devices")
+     .select("id").eq("phone_e164",to).is("revoked_at",null).limit(20);
+    if(!receiverDeviceError&&receiverDevices?.length){
+     const receiverIds=receiverDevices.map((device:any)=>device.id);
+     const {count:readyCount,error:readyError}=await db.from("server_receiver_native_devices")
+      .select("id",{count:"exact",head:true}).in("receiver_device_id",receiverIds)
+      .is("revoked_at",null).not("ready_at","is",null);
+     nativeWakeAvailable=!readyError&&(readyCount||0)>0;
+    }
+   }
 
    // Guest invitations never use a carrier-SMS gateway. Even a Server-owned
    // handset still sends SMS through a mobile operator and may incur a charge.
@@ -729,6 +746,13 @@ Deno.serve(async(req:Request)=>{
     guest_invite_url:invitationUrl,invitation_text:invitationText,
     delivery_message:deliveryMessage,
     caller_display_label:callerDisplay,caller_display_name:callerDisplay,caller_phone_e164:callerPhone||"",
+     offline_wake:{
+      available:nativeWakeAvailable,
+      caller_phone_e164:callerPhone||"",
+      transport:"verified_default_sim_cellular_call",
+      reason:nativeWakeAvailable?"A paired Android Receiver recently confirmed its offline-wake detector is ready.":
+       "No ready paired Android Receiver or verified caller number is available for cellular wake-up."
+     },
     recipient_availability:{
      status:guestAvailabilityStatus,connected:guestInternetReachable,
      server_reachable:guestInternetReachable,

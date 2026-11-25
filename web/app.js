@@ -156,9 +156,10 @@ if (isNativeSetup && nativeSetup && stepForm) {
         showPhoneLinkStatus(persistedNumberConsent ? "This verified number is linked and permitted to receive Server internet calls." : "This verified number is linked, but Server calls by number are currently off.");
       }
     } catch { /* First-time number linking remains available. */ }
-    const contactCountryNote = destinationCountryContactsGranted ? "" : " Contacts access was not granted. For safety, use an international number beginning with +; Server will not guess a country for a national-format number.";
+    const contactCountryNote = " Contact access is optional and can be granted later when you choose Show my contacts.";
     updateSmsGatewayGate();
     showStatus("Server identity created. Your personal SIM is never used to send Server messages." + contactCountryNote, true);
+    refreshReceiverRegistry();
   };
 
   requestPhoneCodeButton && requestPhoneCodeButton.addEventListener("click", () => {
@@ -299,6 +300,324 @@ if (isNativeSetup && nativeSetup && stepForm) {
     window.ServerAndroid.openPhoneDialer();
   });
 
+  // Contacts stay on this device. Only the selected E.164 numbers are sent to Server.
+  const receiverContactsButton = document.querySelector("#load-receiver-contacts");
+  const receiverRefreshButton = document.querySelector("#refresh-receiver-list");
+  const receiverContactsEl = document.querySelector("#receiver-contacts");
+  const receiverContactSearch = document.querySelector("#receiver-contact-search");
+  const receiverStatusEl = document.querySelector("#receiver-management-status");
+  const receiverSelectionCount = document.querySelector("#receiver-selection-count");
+  const receiverInviteSelectedButton = document.querySelector("#invite-selected-receivers");
+  const receiverGeneratedEl = document.querySelector("#receiver-generated-links");
+  const receiverRegistryEl = document.querySelector("#receiver-registry");
+  const receiverLinksStorageKey = "server.receiver.owner.pending-links.v1";
+  const receiverNamesStorageKey = "server.receiver.owner.contact-names.v1";
+  let receiverContacts = [];
+  let receiverContactNames = loadSavedReceiverNames();
+  let receiverRegistry = [];
+  let receiverPendingLinks = loadSavedReceiverLinks();
+  let receiverInviteBusy = false;
+
+  function loadSavedReceiverLinks() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(receiverLinksStorageKey) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((item) =>
+        item && /^\+[1-9][0-9]{7,14}$/.test(item.phone_e164 || "") &&
+        /^https:\/\/server-onboarding-ochre\.vercel\.app\/receiver\.html#token=[0-9a-f]{64}$/.test(item.invitation_url || "")
+      ) : [];
+    } catch { return []; }
+  }
+  function saveReceiverLinks() {
+    try { localStorage.setItem(receiverLinksStorageKey, JSON.stringify(receiverPendingLinks)); } catch {}
+  }
+  function loadSavedReceiverNames() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(receiverNamesStorageKey) || "[]");
+      return Array.isArray(parsed) ? parsed.filter((item) => item && /^\+[1-9][0-9]{7,14}$/.test(item.phone_e164 || "") && typeof item.name === "string") : [];
+    } catch { return []; }
+  }
+  function saveReceiverNames() {
+    try { localStorage.setItem(receiverNamesStorageKey, JSON.stringify(receiverContactNames)); } catch {}
+  }
+  function receiverContactName(phone) {
+    const found = receiverContacts.find((item) => item.phone_e164 === phone);
+    const savedName = receiverContactNames.find((item) => item.phone_e164 === phone);
+    const pending = receiverPendingLinks.find((item) => item.phone_e164 === phone);
+    return (found && found.name) || (savedName && savedName.name) || (pending && pending.name) || ("Number ending " + String(phone || "").slice(-4));
+  }
+  function receiverState(phone) {
+    const found = receiverRegistry.find((item) => item.phone_e164 === phone);
+    return found ? found.status : "";
+  }
+  function receiverStatus(message, ok = false) {
+    if (!receiverStatusEl) return;
+    receiverStatusEl.textContent = message;
+    receiverStatusEl.classList.toggle("ok", ok);
+  }
+  function receiverButton(label, action, disabled = false) {
+    const control = document.createElement("button");
+    control.type = "button";
+    control.className = "receiver-row-action";
+    control.textContent = label;
+    control.disabled = disabled;
+    control.addEventListener("click", action);
+    return control;
+  }
+  function selectedReceiverNumbers() {
+    return receiverContactsEl
+      ? [...receiverContactsEl.querySelectorAll("input[data-receiver-phone]:checked")].map((control) => control.dataset.receiverPhone).filter(Boolean)
+      : [];
+  }
+  function applyReceiverContactFilter() {
+    const query = String(receiverContactSearch && receiverContactSearch.value || "").trim().toLowerCase();
+    if (!receiverContactsEl) return;
+    for (const row of receiverContactsEl.querySelectorAll(".receiver-contact-row")) {
+      row.hidden = !!query && !String(row.dataset.search || "").includes(query);
+    }
+  }
+  function updateReceiverSelection() {
+    const count = selectedReceiverNumbers().length;
+    if (receiverSelectionCount) receiverSelectionCount.textContent = count + (count === 1 ? " person selected" : " people selected") + (count >= 20 ? " · maximum per batch reached" : "");
+    if (receiverInviteSelectedButton) receiverInviteSelectedButton.disabled = receiverInviteBusy || count === 0 || count > 20;
+    if (receiverInviteSelectedButton) receiverInviteSelectedButton.textContent = receiverInviteBusy ? "Generating secure links…" : "Generate links for selected people";
+  }
+  function renderReceiverContacts() {
+    if (!receiverContactsEl) return;
+    receiverContactsEl.replaceChildren();
+    if (!receiverContacts.length) {
+      const empty = document.createElement("p");
+      empty.className = "receiver-empty";
+      empty.textContent = "No contacts with a recognised phone number were found. Check that your phone contacts are available and include phone numbers.";
+      receiverContactsEl.append(empty);
+      updateReceiverSelection();
+      return;
+    }
+    for (const contact of receiverContacts) {
+      const state = receiverState(contact.phone_e164);
+      const saved = receiverPendingLinks.find((item) => item.phone_e164 === contact.phone_e164);
+      const row = document.createElement("div");
+      row.className = "receiver-contact-row";
+      row.dataset.search = (contact.name + " " + contact.phone_e164).toLowerCase();
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "receiver-contact-check";
+      checkbox.dataset.receiverPhone = contact.phone_e164;
+      checkbox.disabled = state === "registered" || (!!saved && (state === "pending" || state === "")) || receiverInviteBusy;
+      checkbox.addEventListener("change", updateReceiverSelection);
+      const copy = document.createElement("div");
+      copy.className = "receiver-contact-copy";
+      const name = document.createElement("strong");
+      name.textContent = contact.name || "Unnamed contact";
+      const phone = document.createElement("span");
+      phone.textContent = contact.phone_e164;
+      copy.append(name, phone);
+      row.append(checkbox, copy);
+      if (state === "registered") {
+        const tag = document.createElement("span");
+        tag.className = "receiver-status";
+        tag.textContent = "CONNECTED";
+        row.append(tag);
+      } else if (saved && (state === "pending" || state === "")) {
+        const tag = document.createElement("span");
+        tag.className = "receiver-status pending";
+        tag.textContent = state === "pending" ? "AWAITING CONNECTION" : "LINK READY";
+        row.append(tag, receiverButton("Share existing link", () => shareReceiverLink(saved)));
+      } else {
+        const actionLabel = state === "pending" || state === "needs_attention" || state === "revoked" || state === "expired" ? "Create new link" : "Invite";
+        row.append(receiverButton(actionLabel, () => createReceiverInvitations([contact.phone_e164])));
+      }
+      receiverContactsEl.append(row);
+    }
+    applyReceiverContactFilter();
+    updateReceiverSelection();
+  }
+  function shareReceiverLink(item) {
+    if (!item || !item.invitation_text || !window.ServerAndroid || typeof window.ServerAndroid.shareReceiverInvitation !== "function") {
+      receiverStatus("The saved link is unavailable on this device. Create a replacement link to continue.");
+      return;
+    }
+    window.ServerAndroid.shareReceiverInvitation(item.invitation_text, item.name || receiverContactName(item.phone_e164));
+  }
+  function copyReceiverLink(item) {
+    if (!item || !item.invitation_url || !window.ServerAndroid || typeof window.ServerAndroid.copyReceiverInvitation !== "function") {
+      receiverStatus("The secure setup link could not be copied on this device.");
+      return;
+    }
+    window.ServerAndroid.copyReceiverInvitation(item.invitation_url);
+    receiverStatus("Copied the private setup link for " + (item.name || receiverContactName(item.phone_e164)) + ". Send it only to that person.", true);
+  }
+  function renderGeneratedLinks(items) {
+    if (!receiverGeneratedEl) return;
+    receiverGeneratedEl.replaceChildren();
+    const created = items.filter((item) => item.status === "invitation_created" && item.invitation_url);
+    const other = items.filter((item) => item.status !== "invitation_created");
+    for (const item of created) {
+      const contact = receiverContacts.find((entry) => entry.phone_e164 === item.phone_e164);
+      const row = document.createElement("div");
+      row.className = "receiver-link-row";
+      const copy = document.createElement("div");
+      copy.className = "receiver-link-copy";
+      const name = document.createElement("strong");
+      name.textContent = ((contact && contact.name) || "Receiver") + " · setup link ready";
+      const detail = document.createElement("span");
+      detail.textContent = "This private link stays valid until the recipient connects or you revoke it.";
+      copy.append(name, detail);
+      const actions = document.createElement("div");
+      actions.className = "receiver-link-actions";
+      actions.append(
+        receiverButton("Share link", () => shareReceiverLink(item)),
+        receiverButton("Copy link", () => copyReceiverLink(item))
+      );
+      row.append(copy, actions);
+      receiverGeneratedEl.append(row);
+    }
+    for (const item of other) {
+      const row = document.createElement("p");
+      row.className = "receiver-empty";
+      const name = receiverContactName(item.phone_e164);
+      const label = item.status === "registered" ? "Already connected" :
+        item.status === "server_user" ? "Already has a discoverable Server identity" :
+        item.message || "This invitation could not be created.";
+      row.textContent = name + " — " + label;
+      receiverGeneratedEl.append(row);
+    }
+  }
+  function renderReceiverRegistry() {
+    if (!receiverRegistryEl) return;
+    receiverRegistryEl.replaceChildren();
+    if (!receiverRegistry.length) {
+      const empty = document.createElement("p");
+      empty.className = "receiver-empty";
+      empty.textContent = "No invited contacts yet. Choose Show my contacts and tap Invite.";
+      receiverRegistryEl.append(empty);
+      return;
+    }
+    const statusLabels = {
+      registered: "CONNECTED",
+      pending: "AWAITING CONNECTION",
+      expired: "INVITATION EXPIRED",
+      revoked: "DISCONNECTED",
+      needs_attention: "DEVICE NEEDS ATTENTION"
+    };
+    for (const item of receiverRegistry) {
+      const row = document.createElement("div");
+      row.className = "receiver-registry-row";
+      const copy = document.createElement("div");
+      copy.className = "receiver-registry-copy";
+      const name = document.createElement("strong");
+      name.textContent = receiverContactName(item.phone_e164);
+      const detail = document.createElement("span");
+      detail.textContent = item.phone_e164 + (item.last_connected_at ? " · last connected " + new Date(item.last_connected_at).toLocaleString() : "");
+      copy.append(name, detail);
+      const state = document.createElement("span");
+      state.className = "receiver-status" + (item.status === "pending" ? " pending" : item.status === "revoked" || item.status === "needs_attention" || item.status === "expired" ? " offline" : "");
+      state.textContent = statusLabels[item.status] || String(item.status || "UNKNOWN").toUpperCase();
+      row.append(copy, state);
+      const saved = receiverPendingLinks.find((link) => link.phone_e164 === item.phone_e164);
+      if (item.status === "pending" && saved) {
+        row.append(receiverButton("Share setup link", () => shareReceiverLink(saved)));
+      }
+      receiverRegistryEl.append(row);
+    }
+  }
+  function refreshReceiverRegistry() {
+    if (!window.ServerAndroid || typeof window.ServerAndroid.listServerReceivers !== "function") {
+      receiverStatus("Receiver management needs the installed Server Android app.");
+      return;
+    }
+    if (receiverRefreshButton) receiverRefreshButton.disabled = true;
+    receiverStatus("Checking your saved Receiver connections…");
+    window.ServerAndroid.listServerReceivers();
+  }
+  function createReceiverInvitations(numbers) {
+    const unique = [...new Set((numbers || []).filter((number) => /^\+[1-9][0-9]{7,14}$/.test(number)))];
+    if (!unique.length || unique.length > 20 || receiverInviteBusy) {
+      receiverStatus("Select between 1 and 20 valid phone contacts for each batch.");
+      return;
+    }
+    if (!window.ServerAndroid || typeof window.ServerAndroid.createReceiverInvitations !== "function") {
+      receiverStatus("Receiver invitations need the installed Server Android app.");
+      return;
+    }
+    receiverInviteBusy = true;
+    if (receiverInviteSelectedButton) receiverInviteSelectedButton.disabled = true;
+    if (receiverContactsButton) receiverContactsButton.disabled = true;
+    receiverStatus("Server is checking existing connections and generating individual setup links…");
+    window.ServerAndroid.createReceiverInvitations(JSON.stringify(unique));
+  }
+
+  window.onServerReceiverContactsResult = (result) => {
+    if (receiverContactsButton) receiverContactsButton.disabled = false;
+    if (!result || result.ok !== true) {
+      receiverStatus((result && result.error) === "CONTACTS_PERMISSION_DENIED"
+        ? "Contacts permission was not granted. Allow it in Android Settings, then try again."
+        : ((result && result.message) || (result && result.error) || "Server could not read contacts on this phone."));
+      return;
+    }
+    receiverContacts = Array.isArray(result.contacts) ? result.contacts
+      .filter((item) => item && typeof item.name === "string" && typeof item.phone_e164 === "string" && /^\+[1-9][0-9]{7,14}$/.test(item.phone_e164)) : [];
+    const nameMap = new Map(receiverContactNames.map((item) => [item.phone_e164, item]));
+    for (const item of receiverContacts) nameMap.set(item.phone_e164, {name:item.name, phone_e164:item.phone_e164});
+    receiverContactNames = [...nameMap.values()];
+    saveReceiverNames();
+    receiverStatus(receiverContacts.length + " contacts with valid phone numbers are available. Contact names remain on this phone.", true);
+    renderReceiverContacts();
+    refreshReceiverRegistry();
+  };
+  window.onServerReceiverInvitesResult = (result) => {
+    receiverInviteBusy = false;
+    if (receiverContactsButton) receiverContactsButton.disabled = false;
+    if (receiverRefreshButton) receiverRefreshButton.disabled = false;
+    if (!result || result.ok !== true) {
+      receiverStatus((result && result.message) || (result && result.error) || "Server could not create Receiver links. No link has been marked as created.");
+      updateReceiverSelection();
+      return;
+    }
+    const results = Array.isArray(result.results) ? result.results : [];
+    for (const item of results) {
+      if (item.status === "invitation_created" && item.invitation_url) {
+        const contact = receiverContacts.find((entry) => entry.phone_e164 === item.phone_e164);
+        const saved = {...item, name: (contact && contact.name) || "Receiver"};
+        receiverPendingLinks = receiverPendingLinks.filter((link) => link.phone_e164 !== item.phone_e164);
+        receiverPendingLinks.push(saved);
+      }
+      if (item.status === "registered") receiverPendingLinks = receiverPendingLinks.filter((link) => link.phone_e164 !== item.phone_e164);
+    }
+    saveReceiverLinks();
+    renderGeneratedLinks(results);
+    receiverStatus(result.invitation_count + " new link(s) created · " + result.registered_count + " already connected. Share each link privately with the matching person.", true);
+    updateReceiverSelection();
+    renderReceiverContacts();
+    refreshReceiverRegistry();
+  };
+  window.onServerReceiverRegistryResult = (result) => {
+    if (receiverRefreshButton) receiverRefreshButton.disabled = false;
+    if (!result || result.ok !== true) {
+      receiverStatus((result && result.message) || (result && result.error) || "Server could not load the saved Receiver list.");
+      return;
+    }
+    receiverRegistry = Array.isArray(result.receivers) ? result.receivers : [];
+    const connected = new Set(receiverRegistry.filter((item) => item.status === "registered").map((item) => item.phone_e164));
+    receiverPendingLinks = receiverPendingLinks.filter((item) => !connected.has(item.phone_e164));
+    saveReceiverLinks();
+    renderReceiverContacts();
+    renderReceiverRegistry();
+    receiverStatus(connected.size + " connected · " + receiverRegistry.filter((item) => item.status === "pending").length + " awaiting connection.", true);
+  };
+  receiverContactsButton && receiverContactsButton.addEventListener("click", () => {
+    if (!window.ServerAndroid || typeof window.ServerAndroid.loadReceiverContacts !== "function") {
+      receiverStatus("Open this onboarding inside the installed Server Android app to access phone contacts.");
+      return;
+    }
+    receiverContactsButton.disabled = true;
+    receiverStatus("Reading contact names and phone numbers on this phone. They are not uploaded.");
+    window.ServerAndroid.loadReceiverContacts();
+  });
+  receiverRefreshButton && receiverRefreshButton.addEventListener("click", refreshReceiverRegistry);
+  receiverContactSearch && receiverContactSearch.addEventListener("input", applyReceiverContactFilter);
+  receiverInviteSelectedButton && receiverInviteSelectedButton.addEventListener("click", () => {
+    createReceiverInvitations(selectedReceiverNumbers());
+  });
 
 }
 

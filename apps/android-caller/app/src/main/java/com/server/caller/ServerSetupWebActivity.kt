@@ -9,6 +9,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.ContactsContract
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.webkit.JavascriptInterface
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -77,8 +80,131 @@ class ServerSetupWebActivity : Activity() {
     }
   }
 
+  /**
+   * The launcher must resume the saved caller identity, not show the account
+   * creation form again. Re-registering with a new installation key creates a
+   * second Server profile, so existing local identity evidence is never replaced
+   * automatically.
+   */
+  private fun resumeSavedServerIdentity(): Boolean {
+    val access = prefs.getString("access_token", null).orEmpty()
+    if (access.matches(Regex("^[0-9a-f]{64}$"))) {
+      openSavedCallerHome()
+      return true
+    }
+
+    val installationId = prefs.getString("installation_id", null).orEmpty().lowercase()
+    val deviceSecret = prefs.getString("device_secret", null).orEmpty().lowercase()
+    val validInstallation = installationId.matches(
+      Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    )
+    val validSecret = deviceSecret.matches(Regex("^[0-9a-f]{64}$"))
+    val hasSavedIdentity = prefs.getString("server_id", null).orEmpty().isNotBlank() ||
+      installationId.isNotBlank() || deviceSecret.isNotBlank()
+
+    if (!hasSavedIdentity) return false
+    if (!validInstallation || !validSecret) {
+      showSavedIdentityRecoveryScreen(
+        "Server found saved account data, but its recovery key is incomplete. No replacement Server ID has been created. Do not start a new identity on this phone."
+      , canRetry = false)
+      return true
+    }
+
+    showSavedIdentityRecoveryScreen("Restoring your existing Server identity…", canRetry = false)
+    Thread { restoreSavedDeviceIdentity(installationId, deviceSecret) }.start()
+    return true
+  }
+
+  private fun openSavedCallerHome() {
+    startActivity(Intent(this, MainActivity::class.java).apply {
+      addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    })
+    finish()
+  }
+
+  private fun restoreSavedDeviceIdentity(installationId: String, deviceSecret: String) {
+    val body = JSONObject()
+      .put("action", "register_device")
+      .put("installation_id", installationId)
+      .put("device_secret", deviceSecret)
+      .put("accepted_terms", true)
+      .put("terms_version", "server-terms-1.0")
+      .put("privacy_version", "server-privacy-1.0")
+    val savedName = prefs.getString("display_name", null).orEmpty().trim()
+    if (savedName.length in 2..60) body.put("display_name", savedName)
+
+    val result = try {
+      requestServerAuth(body)
+    } catch (_: Exception) {
+      JSONObject().put("ok", false).put("error", "SERVER_IDENTITY_RESTORE_UNAVAILABLE")
+    }
+    val access = result.optString("access_token")
+    val user = result.optJSONObject("user") ?: JSONObject()
+    val serverId = user.optString("server_id")
+    val ok = result.optInt("http_status", 500) in 200..299 &&
+      access.matches(Regex("^[0-9a-f]{64}$")) &&
+      serverId.matches(Regex("^SVR-[0-9A-F]{10}$"))
+
+    runOnUiThread {
+      if (ok) {
+        val expires = try { java.time.Instant.parse(result.optString("expires_at")).epochSecond }
+          catch (_: Exception) { System.currentTimeMillis() / 1000 + 30L * 24 * 60 * 60 }
+        val name = user.optString("display_name").takeIf { it.isNotBlank() }
+          ?: prefs.getString("display_name", null).orEmpty()
+        prefs.edit()
+          .putString("access_token", access)
+          .putLong("access_expiry", expires)
+          .putString("server_id", serverId)
+          .putString("display_name", name)
+          .apply()
+        openSavedCallerHome()
+      } else {
+        showSavedIdentityRecoveryScreen(
+          "Server could not restore the saved identity. Your previous identity data has been kept; no new Server ID was created. Check your internet connection and retry."
+        , canRetry = true, installationId = installationId, deviceSecret = deviceSecret)
+      }
+    }
+  }
+
+  private fun showSavedIdentityRecoveryScreen(
+    message: String,
+    canRetry: Boolean,
+    installationId: String = "",
+    deviceSecret: String = ""
+  ) {
+    val panel = android.widget.LinearLayout(this).apply {
+      orientation = android.widget.LinearLayout.VERTICAL
+      setPadding(48, 64, 48, 48)
+      setBackgroundColor(android.graphics.Color.rgb(8, 17, 29))
+    }
+    panel.addView(android.widget.TextView(this).apply {
+      text = "SERVER"
+      textSize = 13f
+      setTextColor(android.graphics.Color.rgb(24, 200, 121))
+    })
+    panel.addView(android.widget.TextView(this).apply {
+      text = message
+      textSize = 17f
+      setTextColor(android.graphics.Color.WHITE)
+      setPadding(0, 28, 0, 24)
+    })
+    if (canRetry) {
+      panel.addView(android.widget.Button(this).apply {
+        text = "Retry restoring my Server identity"
+        setOnClickListener {
+          text = "Restoring…"
+          isEnabled = false
+          Thread { restoreSavedDeviceIdentity(installationId, deviceSecret) }.start()
+        }
+      })
+    }
+    setContentView(panel)
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    val platformGatewayLaunch = intent?.data?.getQueryParameter("mode") == "platform-gateway"
+    if (!platformGatewayLaunch && resumeSavedServerIdentity()) return
     web = WebView(this).apply {
       settings.javaScriptEnabled = true
       settings.domStorageEnabled = true
@@ -123,7 +249,6 @@ class ServerSetupWebActivity : Activity() {
       }
     }
     setContentView(FrameLayout(this).apply { addView(web, FrameLayout.LayoutParams(-1, -1)) })
-    val platformGatewayLaunch = intent?.data?.getQueryParameter("mode") == "platform-gateway"
     loadBundledOnboarding()
     if (platformGatewayLaunch) web.post { showPlatformGatewaySetupDialog() }
   }
@@ -211,6 +336,13 @@ class ServerSetupWebActivity : Activity() {
           checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val contactsGranted = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         runJs("window.onServerCallPermissionResult && window.onServerCallPermissionResult($micGranted, $notificationsGranted, false, $contactsGranted)")
+      }
+      REQUEST_RECEIVER_CONTACTS -> {
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+          Thread { callbackToWebsite("onServerReceiverContactsResult", readReceiverContacts()) }.start()
+        } else {
+          callbackToWebsite("onServerReceiverContactsResult", JSONObject().put("ok", false).put("error", "CONTACTS_PERMISSION_DENIED"))
+        }
       }
       REQUEST_PLATFORM_GATEWAY -> {
         val phoneStateGranted = checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
@@ -361,6 +493,89 @@ class ServerSetupWebActivity : Activity() {
     runJs("window.$name && window.$name($result)")
   }
 
+  /** Read display names and phone numbers only; contact data is never uploaded. */
+  private fun readReceiverContacts(): JSONObject {
+    if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+      return JSONObject().put("ok", false).put("error", "CONTACTS_PERMISSION_DENIED")
+    }
+    return try {
+      val projection = arrayOf(
+        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+        ContactsContract.CommonDataKinds.Phone.NUMBER
+      )
+      val cursor = contentResolver.query(
+        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+        projection,
+        null,
+        null,
+        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE NOCASE ASC"
+      ) ?: return JSONObject().put("ok", false).put("error", "CONTACTS_READ_UNAVAILABLE")
+      val contacts = org.json.JSONArray()
+      val seenNumbers = HashSet<String>()
+      val region = ServerPhoneNumberNormalizer.deviceRegion(this)
+      cursor.use { rows ->
+        val nameIndex = rows.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+        val numberIndex = rows.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+        while (rows.moveToNext()) {
+          val displayName = rows.getString(nameIndex)?.trim().orEmpty()
+          val rawNumber = rows.getString(numberIndex)?.trim().orEmpty()
+          val e164 = ServerPhoneNumberNormalizer.toE164(rawNumber, region).orEmpty()
+          if (displayName.isNotBlank() && Regex("^\\+[1-9][0-9]{7,14}$").matches(e164) && seenNumbers.add(e164)) {
+            contacts.put(JSONObject().put("name", displayName).put("phone_e164", e164))
+          }
+        }
+      }
+      JSONObject().put("ok", true).put("contacts", contacts).put("contact_count", contacts.length())
+    } catch (_: Exception) {
+      JSONObject().put("ok", false).put("error", "CONTACTS_READ_UNAVAILABLE")
+    }
+  }
+
+  /** Authenticated Receiver access; recover the same device identity if its session expires. */
+  private fun requestServerReceiver(body: JSONObject, accessToken: String): JSONObject {
+    fun send(token: String): JSONObject {
+      val url = BuildConfig.SUPABASE_URL.trimEnd('/') + "/functions/v1/server-receiver"
+      val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 15000
+        readTimeout = 20000
+        doOutput = true
+        setRequestProperty("content-type", "application/json")
+        setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+        setRequestProperty("x-server-session-token", token)
+      }
+      return try {
+        conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        val status = conn.responseCode
+        val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+        val text = stream?.use { input -> BufferedReader(InputStreamReader(input)).readText() }.orEmpty()
+        val result = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
+        if (status !in 200..299) {
+          if (result.optString("error").isBlank()) result.put("error", "HTTP_" + status)
+          result.put("ok", false)
+        }
+        result.put("http_status", status)
+      } finally {
+        conn.disconnect()
+      }
+    }
+    return try {
+      val session = ServerDeviceSessionManager.ensureFresh(
+        this, accessToken, prefs.getLong("access_expiry", 0L), prefs
+      )
+      var result = send(session.accessToken)
+      if (result.optInt("http_status") == 401) {
+        val restored = ServerDeviceSessionManager.ensureFresh(
+          this, session.accessToken, prefs.getLong("access_expiry", 0L), prefs, forceRefresh = true
+        )
+        result = send(restored.accessToken)
+      }
+      result
+    } catch (error: Exception) {
+      JSONObject().put("ok", false).put("error", error.message ?: "SERVER_SESSION_UNAVAILABLE")
+    }
+  }
+
   private fun registerDevice(displayName: String, acceptedTerms: Boolean): JSONObject {
     val normalizedDisplayName = displayName.trim().replace(Regex("\\s+"), " ")
     if (normalizedDisplayName.length !in 2..60 || normalizedDisplayName.any { it.isISOControl() || it == '<' || it == '>' }) {
@@ -431,7 +646,6 @@ class ServerSetupWebActivity : Activity() {
       runOnUiThread {
         val needed = arrayListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.RECORD_AUDIO)
-        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_CONTACTS)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
           needed.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -449,6 +663,90 @@ class ServerSetupWebActivity : Activity() {
         raw,
         ServerPhoneNumberNormalizer.deviceRegion(this@ServerSetupWebActivity)
       ).orEmpty()
+
+    @JavascriptInterface fun loadReceiverContacts() {
+      runOnUiThread {
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+          requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), REQUEST_RECEIVER_CONTACTS)
+        } else {
+          Thread { callbackToWebsite("onServerReceiverContactsResult", readReceiverContacts()) }.start()
+        }
+      }
+    }
+
+    @JavascriptInterface fun createReceiverInvitations(recipientsJson: String) {
+      Thread {
+        val result = try {
+          val parsed = org.json.JSONArray(recipientsJson)
+          if (parsed.length() !in 1..20) throw IllegalArgumentException("Select between 1 and 20 people.")
+          val recipients = org.json.JSONArray()
+          val seen = HashSet<String>()
+          for (index in 0 until parsed.length()) {
+            val phone = parsed.optString(index).trim()
+            if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(phone)) {
+              throw IllegalArgumentException("A selected contact has an invalid phone number. Review the contact and try again.")
+            }
+            if (!seen.add(phone)) throw IllegalArgumentException("The selected contacts contain the same phone number more than once.")
+            recipients.put(phone)
+          }
+          val session = prefs.getString("access_token", null).orEmpty()
+          if (!Regex("^[0-9a-f]{64}$").matches(session)) {
+            JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+          } else {
+            requestServerReceiver(JSONObject().put("action", "create_invites").put("recipients", recipients), session)
+          }
+        } catch (error: Exception) {
+          JSONObject().put("ok", false).put("error", error.message ?: "RECEIVER_INVITATIONS_INVALID")
+        }
+        callbackToWebsite("onServerReceiverInvitesResult", result)
+      }.start()
+    }
+
+    @JavascriptInterface fun listServerReceivers() {
+      Thread {
+        val session = prefs.getString("access_token", null).orEmpty()
+        val result = if (!Regex("^[0-9a-f]{64}$").matches(session)) {
+          JSONObject().put("ok", false).put("error", "SESSION_REQUIRED")
+        } else try {
+          requestServerReceiver(JSONObject().put("action", "list"), session)
+        } catch (_: Exception) {
+          JSONObject().put("ok", false).put("error", "RECEIVER_REGISTRY_UNAVAILABLE")
+        }
+        callbackToWebsite("onServerReceiverRegistryResult", result)
+      }.start()
+    }
+
+    @JavascriptInterface fun shareReceiverInvitation(invitationText: String, recipientLabel: String) {
+      val trustedUrl = Regex("https://server-onboarding-ochre\\.vercel\\.app/receiver\\.html#token=[0-9a-f]{64}")
+      if (!trustedUrl.containsMatchIn(invitationText) || invitationText.length > 2000) {
+        runOnUiThread { Toast.makeText(this@ServerSetupWebActivity, "The Receiver link is invalid. Generate a new link from Server.", Toast.LENGTH_LONG).show() }
+        return
+      }
+      runOnUiThread {
+        val share = Intent(Intent.ACTION_SEND).apply {
+          type = "text/plain"
+          putExtra(Intent.EXTRA_TEXT, invitationText)
+        }
+        try {
+          startActivity(Intent.createChooser(share, "Share Server Receiver link for " + recipientLabel.take(50)))
+        } catch (_: Exception) {
+          Toast.makeText(this@ServerSetupWebActivity, "No sharing app is available on this phone.", Toast.LENGTH_LONG).show()
+        }
+      }
+    }
+
+    @JavascriptInterface fun copyReceiverInvitation(invitationUrl: String) {
+      val trustedUrl = Regex("^https://server-onboarding-ochre\\.vercel\\.app/receiver\\.html#token=[0-9a-f]{64}$")
+      if (!trustedUrl.matches(invitationUrl)) {
+        runOnUiThread { Toast.makeText(this@ServerSetupWebActivity, "The Receiver link is invalid.", Toast.LENGTH_LONG).show() }
+        return
+      }
+      runOnUiThread {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Server Receiver invitation", invitationUrl))
+        Toast.makeText(this@ServerSetupWebActivity, "Private Receiver link copied.", Toast.LENGTH_SHORT).show()
+      }
+    }
 
     @JavascriptInterface fun completeSetup(displayName: String, acceptedTerms: Boolean) {
       Thread {
@@ -579,6 +877,7 @@ class ServerSetupWebActivity : Activity() {
   companion object {
     private const val HOST = "server-onboarding-ochre.vercel.app"
     private const val REQUEST_CALL = 5102
+    private const val REQUEST_RECEIVER_CONTACTS = 5103
     private const val REQUEST_PLATFORM_GATEWAY = 5104
   }
 }

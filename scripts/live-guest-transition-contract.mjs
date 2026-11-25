@@ -14,6 +14,9 @@ assert.ok(projectUrl && publishableKey.startsWith("sb_publishable_"), "Server pu
 let destination = "";
 const baseHeaders = { apikey: publishableKey };
 const createdCallIds = new Set();
+const createdCallTokens = new Map();
+const secondaryAccessTokens = [];
+let testNativeReceiver = null;
 let accessToken = "";
 const callerName = "Server Test " + randomUUID().slice(0, 8);
 let activeGuestToken = "";
@@ -55,6 +58,48 @@ function guestTokenFrom(urlValue) {
 
 async function guest(token, action, extra = {}) {
   return request("server-guest", { token, action, ...extra }, { token: "" });
+}
+
+async function receiver(action, extra = {}) {
+  return request("server-receiver", { action, ...extra });
+}
+
+function guestTokenFromReceiverUrl(value) {
+  const inviteUrl = new URL(value);
+  const token = new URLSearchParams(inviteUrl.hash.replace(/^#/, "")).get("token") || "";
+  assert.match(token, /^[0-9a-f]{64}$/i, "native Receiver recovery URL must carry a one-use guest token");
+  return token;
+}
+
+async function enrolTestNativeReceiver() {
+  const created = await receiver("create_invites", { recipients: [destination] });
+  assert.equal(created.ok, true);
+  assert.equal(created.invitation_count, 1);
+  const setupUrl = new URL(created.results[0].invitation_url);
+  const setupToken = new URLSearchParams(setupUrl.hash.replace(/^#/, "")).get("token");
+  assert.match(setupToken || "", /^[0-9a-f]{64}$/i);
+  const deviceSecret = randomBytes(32).toString("hex");
+  const endpoint = "https://fcm.googleapis.com/fcm/send/server-native-contract-" + randomUUID();
+  const subscription = {
+    endpoint, expirationTime: null,
+    keys: { p256dh: randomBytes(65).toString("base64url"), auth: randomBytes(16).toString("base64url") }
+  };
+  const claimed = await receiver("claim", {
+    token: setupToken, consent: true, device_secret: deviceSecret, subscription
+  });
+  assert.equal(claimed.ok, true);
+  assert.equal(claimed.registered, true);
+  const pair = await receiver("native_pair", { device_secret: deviceSecret });
+  assert.equal(pair.ok, true);
+  assert.match(pair.pair_code || "", /^[0-9a-f]{32}$/i);
+  const native = await receiver("native_claim", { pair_code: pair.pair_code });
+  assert.equal(native.ok, true);
+  assert.match(native.native_secret || "", /^[0-9a-f]{64}$/i);
+  testNativeReceiver = { endpoint, deviceSecret, nativeSecret: native.native_secret };
+  const roster = await receiver("native_roster", { native_secret: native.native_secret, ready: true });
+  assert.equal(roster.ok, true);
+  pass("synthetic Android Receiver enrolled and paired", "one-time setup link, native secret and ready caller roster");
+  return testNativeReceiver;
 }
 
 async function chooseFreshGuestNumber() {
@@ -102,12 +147,13 @@ async function startGuestCall() {
   assert.equal(created.call?.state, "ringing");
   assert.ok(created.guest_invite_url);
   assert.ok((created.invitation_text || "").startsWith("SERVER CALL\n"),"the guest invitation text is branded");
-  assert.ok((created.invitation_text || "").includes("Expires in 2 minutes"),"the guest invitation advertises its two-minute expiry");
+  assert.ok((created.invitation_text || "").includes("Expires in 5 minutes"),"the guest invitation advertises its five-minute Receiver reconnect window");
   assert.ok((created.guest_invite_url || "").includes("/c/"),"the invitation ends with the caller-preview URL");
   const inviteExpiryMs = Date.parse(created.invite_expires_at || "") - Date.now();
-  assert.ok(inviteExpiryMs > 0 && inviteExpiryMs <= 125000,
-    "the actual guest invitation token must expire within two minutes");
+  assert.ok(inviteExpiryMs > 0 && inviteExpiryMs <= 305000,
+    "the actual guest invitation token must expire within five minutes for offline Receiver recovery");
   createdCallIds.add(created.call_id);
+  createdCallTokens.set(created.call_id, accessToken);
   return { created, token: guestTokenFrom(created.guest_invite_url) };
 }
 
@@ -126,10 +172,22 @@ async function cleanup() {
     try { await guest(activeGuestToken, "push_unsubscribe", { endpoint: testPushEndpoint }); } catch {}
   }
   for (const callId of createdCallIds) {
-    try { await request("server-calls", { action: "end", call_id: callId }); } catch {}
+    try {
+      await request("server-calls", { action: "end", call_id: callId }, {
+        token: createdCallTokens.get(callId) || accessToken
+      });
+    } catch {}
   }
-  if (accessToken) {
-    try { await request("server-auth", { action: "logout" }); } catch {}
+  if (testNativeReceiver) {
+    try {
+      await receiver("revoke", {
+        endpoint: testNativeReceiver.endpoint,
+        device_secret: testNativeReceiver.deviceSecret
+      });
+    } catch {}
+  }
+  for (const token of [accessToken, ...secondaryAccessTokens].filter(Boolean)) {
+    try { await request("server-auth", { action: "logout" }, { token }); } catch {}
   }
 }
 
@@ -159,6 +217,55 @@ try {
   const first = await startGuestCall();
   const { created, token } = first;
   pass("guest call created atomically", "call_id=" + created.call_id);
+
+  // Exercise the server side of offline recovery without placing an actual
+  // carrier call: a synthetic enrolled Receiver obtains a fresh link for the
+  // original still-live call, then a second Server identity must be able to
+  // recover its own new call while excluding the first call ID.
+  const nativeReceiver = await enrolTestNativeReceiver();
+  const pendingA = await receiver("native_pending_call", {
+    native_secret: nativeReceiver.nativeSecret
+  });
+  assert.equal(pendingA.ok, true);
+  assert.equal(pendingA.pending, true);
+  assert.equal(pendingA.call_id, created.call_id);
+  const recoveredAToken = guestTokenFromReceiverUrl(pendingA.invitation_url);
+  const recoveredA = await inspect(recoveredAToken);
+  assert.equal(recoveredA.call_id, created.call_id);
+  assert.equal(recoveredA.call?.state, "ringing");
+  assert.equal(recoveredA.caller_label, callerName);
+  pass("offline Receiver recovers caller A's original live call", "fresh one-use WebRTC invite points to the existing call ID");
+
+  const secondCallerName = "Server Test C " + randomUUID().slice(0, 8);
+  const secondCaller = await request("server-auth", {
+    action: "register_device",
+    installation_id: randomUUID(),
+    device_secret: randomBytes(32).toString("hex"),
+    display_name: secondCallerName,
+    accepted_terms: true,
+    terms_version: "server-terms-1.0",
+    privacy_version: "server-privacy-1.0"
+  }, { token: "" });
+  assert.equal(secondCaller.ok, true);
+  assert.match(secondCaller.access_token || "", /^[0-9a-f]{64}$/);
+  secondaryAccessTokens.push(secondCaller.access_token);
+  const originalAccessToken = accessToken;
+  accessToken = secondCaller.access_token;
+  const secondCall = await startGuestCall();
+  accessToken = originalAccessToken;
+  const pendingC = await receiver("native_pending_call", {
+    native_secret: nativeReceiver.nativeSecret,
+    exclude_call_id: created.call_id
+  });
+  assert.equal(pendingC.ok, true);
+  assert.equal(pendingC.pending, true);
+  assert.equal(pendingC.call_id, secondCall.created.call_id);
+  const recoveredCToken = guestTokenFromReceiverUrl(pendingC.invitation_url);
+  const recoveredC = await inspect(recoveredCToken);
+  assert.equal(recoveredC.call_id, secondCall.created.call_id);
+  assert.equal(recoveredC.caller_label, secondCallerName);
+  pass("the same Receiver recovers a different Server caller C", "A's opened call is excluded; C's independent call is returned");
+
 
   const previewResponse = await fetch(created.guest_invite_url, {
     redirect: "manual", signal: AbortSignal.timeout(15000)
@@ -240,7 +347,7 @@ try {
   assert.equal(joined.call?.state, "connecting");
   const connectedSetupWindow = Date.parse(joined.call?.expires_at || "") - Date.now();
   assert.ok(connectedSetupWindow >= 9 * 60 * 1000,
-    "joining within the two-minute invitation window extends the call setup session to at least ten minutes");
+    "joining within the five-minute invitation window extends the call setup session to at least ten minutes");
   const realtime = await guest(token, "realtime_token");
   if (realtime.realtime_available === true) {
     assert.ok((realtime.url || "").startsWith("wss://"));

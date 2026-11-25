@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.server-call-delivery-worker]
 verify_jwt = false
+
+[functions.server-receiver]
+verify_jwt = false

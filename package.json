@@ -3,10 +3,10 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Server phone onboarding, SIM-backed OTP queue, calling signalling, and guest WebRTC.",
+  "description": "Server phone onboarding, native calling, persistent guest receivers, and WebRTC signalling.",
   "scripts": {
-    "check": "node tests/smoke.mjs",
-    "check:web": "node --check web/app.js && node --check web/guest.js && node --check web/offline-inbox.js && node --check web/server-guest-sw.js",
+    "check": "node tests/smoke.mjs && node tests/server-receiver-contract.mjs && node tests/server-receiver-native-contract.mjs",
+    "check:web": "node --check web/app.js && node --check web/guest.js && node --check web/receiver.js && node --check web/offline-inbox.js && node --check web/server-guest-sw.js",
     "check:live": "node tests/live-contract.mjs",
     "check:live:guest": "node scripts/live-guest-transition-contract.mjs",
     "check:live:server": "node scripts/live-server-call-contract.mjs"

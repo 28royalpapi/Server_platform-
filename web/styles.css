@@ -25,3 +25,42 @@
 .walkthrough-note strong{color:#b9efce}
 @media(max-width:680px){.walkthrough-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:420px){.walkthrough-grid{grid-template-columns:1fr}.walkthrough-card img{max-height:640px;object-fit:contain}}.install-link-secondary{display:block;text-align:center;text-decoration:none;margin-top:10px}
+
+
+/* Persistent Receiver enrolment inside the existing Server onboarding. */
+.receiver-onboarding{margin:22px 0 24px;padding:18px;border:1px solid #315d48;border-radius:16px;background:linear-gradient(145deg,#0e241b,#091812)}
+.receiver-heading h3{margin:0;color:#dff8e9;font-size:19px;letter-spacing:-.02em}
+.receiver-heading p{margin:8px 0 0;color:#9ab4a7;font-size:12px;line-height:1.65}
+.receiver-privacy{margin:13px 0;color:#84d5a3;font-size:11px;line-height:1.6}
+.receiver-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:13px 0}
+.receiver-toolbar .secondary{width:100%;padding:12px;font-size:11px}
+.receiver-management-status{margin:10px 0;color:#9ab4a7;font-size:11px;line-height:1.6}
+.receiver-contacts,.receiver-registry,.receiver-generated-links{display:grid;gap:9px}
+.receiver-contact-row,.receiver-registry-row,.receiver-link-row{display:flex;align-items:center;gap:11px;min-width:0;padding:12px;border:1px solid #284638;border-radius:12px;background:#091711}
+.receiver-contact-check{width:18px;height:18px;flex:0 0 auto;accent-color:#7ce0aa}
+.receiver-contact-copy,.receiver-registry-copy,.receiver-link-copy{display:grid;gap:4px;min-width:0;flex:1}
+.receiver-contact-copy strong,.receiver-registry-copy strong,.receiver-link-copy strong{color:#eaf8ef;font-size:12px;overflow-wrap:anywhere}
+.receiver-contact-copy span,.receiver-registry-copy span,.receiver-link-copy span{color:#8da69a;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.receiver-status{flex:0 0 auto;border-radius:999px;padding:5px 8px;background:#1b3528;color:#bceccf;font-size:9px;font-weight:800;letter-spacing:.04em}
+.receiver-status.pending{background:#3a2c16;color:#f6d79b}
+.receiver-status.offline{background:#382321;color:#f0b8ae}
+.receiver-row-action{flex:0 0 auto;padding:9px 10px;border:1px solid #35624a;border-radius:9px;background:#133323;color:#c8f2d8;font:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.receiver-row-action:disabled{opacity:.5;cursor:wait}
+.receiver-selection{display:grid;gap:10px;margin:14px 0}
+.receiver-selection>span{color:#b5c9bd;font-size:11px}
+.receiver-selection .primary{padding:13px}
+.receiver-registry-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 10px}
+.receiver-registry-heading h4{margin:0;color:#e7f7ed;font-size:14px}
+.receiver-registry-heading span{color:#789286;font-size:9px}
+.receiver-empty{margin:0;padding:13px;border:1px dashed #31513f;border-radius:11px;color:#829c8f;font-size:11px;line-height:1.6}
+.receiver-generated-links{margin-top:12px}
+.receiver-link-row{align-items:flex-start;flex-wrap:wrap}
+.receiver-link-copy{flex-basis:100%}
+.receiver-link-actions{display:flex;gap:8px;width:100%}
+.receiver-link-actions button{flex:1}
+@media(max-width:480px){.receiver-toolbar{grid-template-columns:1fr}.receiver-contact-row,.receiver-registry-row{align-items:flex-start;flex-wrap:wrap}.receiver-row-action{margin-left:auto}.receiver-registry-heading{align-items:flex-start;flex-direction:column;gap:4px}}
+
+.receiver-contact-search{display:block;width:100%;box-sizing:border-box;margin:8px 0 12px;padding:12px 13px;border:1px solid #31513f;border-radius:10px;background:#091711;color:#eaf8ef;font:inherit;font-size:12px;outline:none}
+.receiver-contact-search::placeholder{color:#789286}
+.receiver-contact-search:focus{border-color:#76c99a}
+.receiver-contact-row[hidden]{display:none}

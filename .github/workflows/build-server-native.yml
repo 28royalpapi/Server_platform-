@@ -2,7 +2,7 @@ name: Build Server native clients and emulator previews
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, android-finish]
     paths:
       - 'apps/android-caller/**'
       - 'apps/ios-caller/**'
@@ -26,7 +26,8 @@ on:
       - 'tests/**'
       - 'infra/**'
 concurrency:
-  group: server-native-${{ github.ref }}-kvm
+  # PR merge-ref runs can remain queued behind cancelled matrix jobs; isolate each code head.
+  group: server-native-${{ github.ref }}-${{ github.sha }}-kvm
   cancel-in-progress: true
 permissions:
   contents: read
@@ -803,10 +804,10 @@ jobs:
           if-no-files-found: warn
 
   publish-android-preview-release:
-    # Publish the single ARM64 test app after every blocking Android and guest-call
-    # acceptance job passes. The direct-install preview falls back to the runner's
-    # debug signing key until a persistent preview keystore is configured.
-    if: github.ref == 'refs/heads/android-finish'
+    # Publish only a tested ARM64 Server APK signed with the persistent preview
+    # keystore. A runner-generated debug key changes between builds and would
+    # force users to uninstall, erasing their locally saved Server identity.
+    if: github.ref == 'refs/heads/android-finish' && needs.android-build-and-emulator-smoke.outputs.preview_signing_ready == 'true'
     needs:
       - android-build-and-emulator-smoke
       - android-8-minimum-install-smoke
@@ -849,5 +850,10 @@ jobs:
           gh release delete-asset server-android-connector-preview Server-Android-Connector-preview.apk --repo "$GITHUB_REPOSITORY" --yes || true
           gh release delete-asset server-android-connector-preview app-debug.apk --repo "$GITHUB_REPOSITORY" --yes || true
           gh release delete-asset server-android-connector-preview server-android-armv7.apk --repo "$GITHUB_REPOSITORY" --yes || true
+          # Retire the obsolete second-APK preview only after the single Server APK
+          # has passed the blocking Android release gates and is published.
+          if gh release view server-offline-receiver-companion-preview --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete server-offline-receiver-companion-preview --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          fi
           echo "ANDROID_SINGLE_ARM64_CALLING_AND_SMS_GATEWAY_PUBLISHED"
 

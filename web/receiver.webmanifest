@@ -1,0 +1,18 @@
+{
+  "id": "/receiver.html",
+  "name": "Server",
+  "short_name": "Server",
+  "start_url": "/receiver.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07121b",
+  "theme_color": "#07121b",
+  "icons": [
+    {
+      "src": "/images/server-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark"><meta name="theme-color" content="#07121b"><meta name="referrer" content="no-referrer">
+<meta name="description" content="Connect this phone once to receive Server internet calls. The same Server app also supports offline cellular wake-up.">
+<meta property="og:type" content="website"><meta property="og:title" content="Set up Server call receiving"><meta property="og:description" content="Connect this phone once to receive Server internet calls.">
+<meta property="og:image" content="https://server-onboarding-ochre.vercel.app/images/server-incoming-call-preview.svg">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Server Receiver">
+<link rel="manifest" href="/receiver.webmanifest"><link rel="icon" href="/images/server-app-icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/receiver.css">
+<title>Server call receiving</title><script src="/config.js"></script><script defer src="/receiver.js"></script></head>
+<body><main class="receiver-shell">
+<header class="brand"><div class="brand-icon">S</div><div><strong>SERVER</strong><span>Internet calling</span></div><span class="secure-label">PRIVATE SETUP</span></header>
+<section class="receiver-card">
+<div class="eyebrow"><span class="dot"></span> ONE-TIME PHONE SETUP</div>
+<div class="receiver-art"><div class="receiver-orbit"></div><div class="receiver-orbit second"></div><div class="receiver-mark">S</div></div>
+<h1 id="receiver-title">Make this phone ready for Server calls.</h1><p class="intro" id="receiver-intro">No Server account. No caller app. No phone number to type.</p>
+<div class="number-card"><span class="number-label">THIS PHONE WILL RECEIVE CALLS FOR</span><strong id="phone-hint">Checking your secure invitation…</strong><span class="inviter" id="inviter-label"></span></div>
+<div class="status" id="receiver-status" role="status" aria-live="polite"><span class="status-dot"></span><span id="status-text">Checking this setup link…</span></div>
+<button id="enable-receiver" class="primary" type="button" disabled>Enable call alerts</button>
+<button id="turn-off-receiver" class="secondary hidden" type="button">Turn off Server call alerts</button>
+<p class="privacy-note">By enabling alerts, you allow this browser on this phone to receive incoming Server call notifications for the number shown above. You can turn this off here or in your browser's notification settings.</p>
+<div class="ios-help hidden" id="ios-help"><strong>One extra step on iPhone</strong><p>Open Safari's Share menu, choose <b>Add to Home Screen</b>, keep <b>Open as Web App</b> enabled, then open the Server Receiver icon and reopen this setup link. iPhone requires a Home Screen web app for web push call alerts.</p></div>
+<div class="android-offline-wake hidden" id="offline-wake-server">
+<strong>Enable offline wake-up in Server</strong>
+<p>Browser alerts need internet. To receive a wake-up alert when both mobile data and Wi-Fi are off, use the same Server app you use to make calls and approve Android's Call Screening role.</p>
+<a id="offline-wake-download" href="https://github.com/28royalpapi/Server_platform-/releases/download/server-android-connector-preview/server-android-arm64.apk" target="_blank" rel="noopener noreferrer">Download the Server APK (same app)</a>
+<button id="offline-wake-activate" class="secondary" type="button">Activate offline wake-up</button>
+<p class="privacy-note" id="offline-wake-status">Install Server if it is not already on this phone. Then activate offline wake-up here.</p>
+</div>
+<footer>SERVER · YOUR PHONE, READY FOR INTERNET CALLS</footer>
+</section></main></body></html>

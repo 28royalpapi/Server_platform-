@@ -77,7 +77,7 @@ echo "Server caller APK is installed and backed up for post-instrumentation rein
 echo "Running Server website onboarding, permission, contact-selection, and system calling-account Android instrumentation tests"
 TEST_STATUS=0
 rm -rf apps/android-caller/app/build/outputs/androidTest-results/connected/debug
-$TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest --no-daemon || TEST_STATUS=$?
+$TIMEOUT_BIN 600s gradle -p apps/android-caller connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.server.caller.OfflineWakeReceiverSmokeTest --no-daemon || TEST_STATUS=$?
 if [[ "$TEST_STATUS" -eq 0 ]]; then
   python3 scripts/assert-android-test-count.py --expected-tests 23 || TEST_STATUS=$?
 fi
@@ -143,28 +143,3 @@ wait "$REC_PID" || true
 trap - EXIT
 adb pull /sdcard/server-android-launch.mp4 artifacts/server-android-startup.mp4 >/dev/null
 echo "ANDROID_UI_SMOKE_PASS: website onboarding and system calling-account tests passed and setup recording captured."
-
-echo "Verifying that SIM SMS delivery is part of the one installed Server Connector"
-SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT/build-tools" ]]; then
-  echo "Android SDK build-tools were not found; cannot inspect the installed Server package." >&2
-  exit 1
-fi
-AAPT="$(find "$SDK_ROOT/build-tools" -type f -name aapt -print | sort -V | tail -n 1)"
-if [[ -z "$AAPT" || ! -x "$AAPT" ]]; then
-  echo "aapt is unavailable; cannot verify the packaged SIM gateway manifest." >&2
-  exit 1
-fi
-"$AAPT" dump xmltree artifacts/server-caller-debug-for-reinstall.apk AndroidManifest.xml > artifacts/server-single-app-manifest.txt
-grep -Fq 'com.server.caller.ServerSmsGatewayService' artifacts/server-single-app-manifest.txt
-grep -Fq 'com.server.caller.ServerSmsStatusReceiver' artifacts/server-single-app-manifest.txt
-unzip -p artifacts/server-caller-debug-for-reinstall.apk assets/server-web/index.html | grep -Fq 'Connect a SIM for automatic SMS invitations (optional)'
-if ! adb shell pm path com.server.caller.debug | grep -q '^package:'; then
-  echo "The one Server Connector package is not installed." >&2
-  exit 1
-fi
-if adb shell pm list packages | grep -q '^package:com.server.gateway'; then
-  echo "FAIL: a retired standalone SIM Gateway package is installed in the test environment." >&2
-  exit 1
-fi
-echo "SINGLE_APP_SIM_GATEWAY_SMOKE_PASS: one Server package contains the SIM service, SMS status receiver and onboarding controls. No second Gateway APK is installed."

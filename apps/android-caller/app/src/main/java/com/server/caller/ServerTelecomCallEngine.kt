@@ -195,13 +195,13 @@ private var activeStateSyncedFor: String? = null
     stopLocalRingback()
   }
 
-  private fun armUnansweredTimeout(id: String) {
+  private fun armUnansweredTimeout(id: String, timeoutMs: Long = 120_000L) {
     unansweredTimeoutJob?.cancel()
     callAnswered = false
     unansweredTimeoutJob = scope.launch {
-      delay(120_000L)
+      delay(timeoutMs)
       if (!disposed && !callAnswered && callId == id) {
-        recordStage("call_no_answer_timeout_120s")
+        recordStage("call_no_answer_timeout_${timeoutMs / 1000}s")
         stopLocalRingback()
         connection.markEnded()
         finishCall(id, "no_answer_timeout")
@@ -240,8 +240,15 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
           .putBoolean("debug_telecom_connection_engine_started", true)
           .apply()
       }
+      // Start caller-side ringback as soon as Server begins establishing the call.
+      // Any backend/network failure below stops the tone in failCall()/cleanupPeer().
+      if (shouldRequestTelecomRingback(route)) startLocalRingback()
       recordStage("backend_start_requested")
-      val started = api("start", target.toStartPayload("android_telecom"))
+      val startPayload = target.toStartPayload("android_telecom").put(
+        "offline_wake_enabled",
+        prefs.getBoolean("server_offline_wake_consent", false)
+      )
+      val started = api("start", startPayload)
       callId = started.optString("call_id").takeIf { it.isNotBlank() }
         ?: throw IllegalStateException("Server did not return a call ID.")
       ServerTelecomRegistry.setCurrentCallId(callId)
@@ -254,21 +261,26 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
 // Availability is Server reachability, never a claim that a phone number's
       // mobile data is actually enabled or disabled.
       if (shouldRequestTelecomRingback(route)) {
-        armUnansweredTimeout(callId.orEmpty())
+        // Guest calls remain live for the backend's full five-minute Receiver
+        // reconnect window. Normal Server-to-Server calls keep the two-minute limit.
+        armUnansweredTimeout(
+          callId.orEmpty(),
+          if (route == "guest") 300_000L else 120_000L
+        )
       }
       if (route == "guest") {
         // The number is not registered as a Server identity. This does NOT tell us
-        // whether its ordinary handset has mobile data or Wi-Fi. Keep the guest
-        // invitation on the browser/WebRTC path; carrier calling is not a fallback.
+        // whether its ordinary handset has mobile data or Wi-Fi. The browser/WebRTC
+        // path remains primary; a separately enrolled Android Receiver may also
+        // receive a short caller-SIM wake-up leg.
         connection.updateServerStatus("Guest invitation · recipient internet status unknown")
-        Log.i(TAG, "Non-Server destination: internet reachability is unknown; continuing with the browser invitation.")
+        Log.i(TAG, "Non-Server destination: browser/WebRTC remains primary; checking enrolled offline wake eligibility.")
       }
       lastSeq = 0
       iceServers = started.optJSONArray("ice_servers") ?: JSONArray()
       iceServerMode = started.optString("ice_server_mode", "stun-only")
       recordStage("backend_call_created")
       preparePeer(iceServers)
-      if (shouldRequestTelecomRingback(route)) startLocalRingback()
       if (hangupRequested) {
         finishCall(callId.orEmpty(), "local")
         return
@@ -296,11 +308,39 @@ val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as Con
             .apply()
         }
         val guestPush = started.optJSONObject("push_delivery")
-        val acceptedByPush = guestPush?.optInt("accepted_by_push_service", 0) ?: 0
+        val messageDelivery = started.optJSONObject("message_delivery")
+        // The live server-calls endpoint exposes provider acceptance as
+        // message_delivery.web_push_submitted; older builds used push_delivery.
+        val acceptedByPush = maxOf(
+          guestPush?.optInt("accepted_by_push_service", 0) ?: 0,
+          if (messageDelivery?.optBoolean("web_push_submitted", false) == true) 1 else 0
+        )
+        val offlineWake = started.optJSONObject("offline_wake")
+        val offlineWakeAvailable = offlineWake?.optBoolean("available", false) == true
+        val wakeAttempt = if (offlineWakeAvailable) {
+          ServerOfflineWakeCall.place(
+            context,
+            callId.orEmpty(),
+            target.phoneNumber.orEmpty(),
+            offlineWake?.optString("caller_phone_e164").orEmpty()
+          )
+        } else null
+        if (wakeAttempt != null) {
+          recordStage(if (wakeAttempt.handedOff) "cellular_wake_handed_to_telecom" else "cellular_wake_unavailable_" + wakeAttempt.code.lowercase())
+          Log.i(TAG, "Offline Receiver cellular wake attempt result: " + wakeAttempt.code)
+        }
         if (acceptedByPush > 0) {
-          connection.updateServerStatus("Guest browser alert submitted · waiting for WebRTC answer")
+          connection.updateServerStatus(
+            if (wakeAttempt?.handedOff == true) {
+              "Guest internet alert submitted and cellular wake request handed to Android · waiting for WebRTC answer"
+            } else {
+              "Guest browser alert submitted · waiting for WebRTC answer"
+            }
+          )
           Log.i(TAG, "Server submitted a caller-identified Web Push alert to the enrolled guest browser.")
           recordStage("guest_browser_push_submitted")
+        } else if (wakeAttempt?.handedOff == true) {
+          connection.updateServerStatus("Cellular wake request handed to Android · waiting for recipient to reconnect and answer over WebRTC")
         } else {
           if (!ServerGuestInviteNotifications.show(context, callId.orEmpty(), target.phoneNumber.orEmpty(), invitation)) {
             throw IllegalStateException(

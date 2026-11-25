@@ -180,7 +180,7 @@ export async function sendGuestBrowserPush(
           body: notification.body,
           url: notification.url
         }),
-        options: { ttl: 120, urgency: "high" }
+        options: { ttl: 300, urgency: "high" }
       };
       let delivered = false;
       let permanentFailure = false;
@@ -199,7 +199,11 @@ export async function sendGuestBrowserPush(
             delivered = true;
           } else if (response.status === 404 || response.status === 410) {
             await db.from("server_guest_push_devices")
-              .update({ revoked_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              // A 404/410 push endpoint has expired. Keep the enrolment's
+              // device-secret credential so the same receiver can renew it
+              // without another invitation. A user-initiated revoke still sets
+              // revoked_at in server-receiver and remains permanent.
+              .update({ expiration_at: new Date().toISOString(), updated_at: new Date().toISOString() })
               .eq("id", device.id);
             permanentFailure = true;
           } else if (response.status !== 408 && response.status !== 429 && response.status < 500) {
