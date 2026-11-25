@@ -1,30 +1,34 @@
-name: Build Server offline Receiver companion
+name: Test offline wake-up inside the single Server Android app
 
 on:
   pull_request:
     branches: [android-finish]
     paths:
-      - 'apps/android-receiver/**'
+      - 'apps/android-caller/**'
+      - 'web/receiver.html'
+      - 'web/receiver.js'
       - '.github/workflows/server-receiver-companion-build.yml'
   push:
     branches: [feat/server-receiver-persistent-enrolment]
     paths:
-      - 'apps/android-receiver/**'
+      - 'apps/android-caller/**'
+      - 'web/receiver.html'
+      - 'web/receiver.js'
       - '.github/workflows/server-receiver-companion-build.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: server-offline-receiver-companion-${{ github.event_name }}
+  group: server-single-apk-offline-wake-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Compile Android offline Receiver companion
+  gsm-screening-smoke:
+    name: Build one Server APK and test Android GSM receiver wake-up
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -37,13 +41,13 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Build and verify Receiver companion
+      - name: Build and signature-check the single Server APK and test APK
         run: |
           set -euo pipefail
           build_ok=0
           for attempt in 1 2 3; do
-            echo "Receiver APK build attempt $attempt/3"
-            if gradle -p apps/android-receiver assembleDebug --no-daemon --console=plain --stacktrace; then
+            echo "Single Server APK build attempt $attempt/3"
+            if gradle -p apps/android-caller assembleDebug assembleDebugAndroidTest --no-daemon --console=plain --stacktrace; then
               build_ok=1
               break
             fi
@@ -53,69 +57,29 @@ jobs:
             fi
           done
           test "$build_ok" -eq 1
-          APK=apps/android-receiver/app/build/outputs/apk/debug/app-debug.apk
-          test -s "$APK"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          APK_DIR=apps/android-caller/app/build/outputs/apk/debug
+          APP_APK=""
+          while IFS= read -r candidate; do
+            if unzip -l "$candidate" | grep -F 'lib/x86_64/libjingle_peerconnection_so.so' >/dev/null; then
+              APP_APK="$candidate"
+              break
+            fi
+          done < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' ! -name '*androidTest*' | sort)
+          test -n "$APP_APK"
+          TEST_APK=apps/android-caller/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          test -s "$APP_APK"
+          test -s "$TEST_APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APP_APK"
           mkdir -p artifacts
-          cp "$APK" artifacts/Server-Offline-Receiver-debug.apk
-          sha256sum artifacts/Server-Offline-Receiver-debug.apk
-          ls -lh artifacts/Server-Offline-Receiver-debug.apk
+          cp "$APP_APK" artifacts/Server-Android-debug.apk
+          sha256sum artifacts/Server-Android-debug.apk
+          ls -lh artifacts/Server-Android-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: server-offline-receiver-android-apk
-          path: artifacts/Server-Offline-Receiver-debug.apk
+          name: server-single-apk-offline-wake-test
+          path: artifacts/Server-Android-debug.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Publish a direct-download Receiver Companion preview
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/server-receiver-persistent-enrolment'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG=server-offline-receiver-companion-preview
-          APK=artifacts/Server-Offline-Receiver-debug.apk
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APK#Server-Offline-Receiver.apk" --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$TAG" "$APK#Server-Offline-Receiver.apk" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Server Receiver Companion — Offline Wake Preview" \
-              --target "$GITHUB_SHA" \
-              --notes "Preview APK for Android offline Receiver wake-up. It requires explicit installation, Android Call Screening approval, Contacts access and notification permission. This companion detects a cellular wake signal only; Server WebRTC carries the actual conversation. Carrier charges may apply to the caller's cellular wake attempt." \
-              --prerelease
-          fi
-          echo "PUBLISHED_RECEIVER_COMPANION_PREVIEW"
-
-  gsm-screening-smoke:
-    name: Simulate offline GSM call and verify Server Receiver notification
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
-      - name: Compile Receiver app and GSM instrumentation tests
-        run: |
-          set -euo pipefail
-          build_ok=0
-          for attempt in 1 2 3; do
-            echo "Receiver instrumentation build attempt $attempt/3"
-            if gradle -p apps/android-receiver assembleDebug assembleDebugAndroidTest --no-daemon --console=plain; then
-              build_ok=1
-              break
-            fi
-            if [[ "$attempt" -lt 3 ]]; then
-              echo "Gradle dependency/build request failed; retrying after a short backoff."
-              sleep 20
-            fi
-          done
-          test "$build_ok" -eq 1
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -133,14 +97,14 @@ jobs:
             adb devices -l
           script: |
             set -euo pipefail
-            APP=apps/android-receiver/app/build/outputs/apk/debug/app-debug.apk
-            TEST=apps/android-receiver/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            APP=artifacts/Server-Android-debug.apk
+            TEST=apps/android-caller/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             test -s "$APP"
             test -s "$TEST"
             adb install "$APP"
             adb install "$TEST"
-            PACKAGE=com.server.receiver.debug
-            RUNNER=com.server.receiver.debug.test/androidx.test.runner.AndroidJUnitRunner
+            PACKAGE=com.server.caller.debug
+            RUNNER=com.server.caller.debug.test/androidx.test.runner.AndroidJUnitRunner
             adb shell cmd role add-role-holder --user 0 android.app.role.CALL_SCREENING "$PACKAGE"
             adb shell pm grant "$PACKAGE" android.permission.READ_CONTACTS
             adb shell pm grant "$PACKAGE" android.permission.POST_NOTIFICATIONS
@@ -148,13 +112,13 @@ jobs:
             adb emu gsm voice home
             adb emu gsm data off
             adb shell settings put global airplane_mode_on 0
-            adb shell am instrument -w -e class com.server.receiver.OfflineWakeReceiverSmokeTest#seedKnownServerCallerAndVerifyLocalMatch "$RUNNER"
+            adb shell am instrument -w -e class com.server.caller.OfflineWakeReceiverSmokeTest#seedKnownServerCallerAndVerifyLocalMatch "$RUNNER"
             adb emu gsm call +2348012345678
             sleep 3
-            adb shell am instrument -w -e class com.server.receiver.OfflineWakeReceiverSmokeTest#gsmWakeCallProducesServerNotification "$RUNNER"
+            adb shell am instrument -w -e class com.server.caller.OfflineWakeReceiverSmokeTest#gsmWakeCallProducesServerNotification "$RUNNER"
             adb emu gsm cancel +2348012345678 || true
             adb emu gsm call +2348098765432
             sleep 3
-            adb shell am instrument -w -e class com.server.receiver.OfflineWakeReceiverSmokeTest#gsmWakeCallFromDifferentServerCallerProducesServerNotification "$RUNNER"
+            adb shell am instrument -w -e class com.server.caller.OfflineWakeReceiverSmokeTest#gsmWakeCallFromDifferentServerCallerProducesServerNotification "$RUNNER"
             adb emu gsm cancel +2348098765432 || true
-            echo "PASS: Android GSM emulator delivered incoming cellular wake calls from two distinct Server callers and the Receiver posted both caller-specific notifications."
+            echo "PASS: the single Server app recognised GSM wake calls from two different opted-in callers and posted caller-specific notifications."
