@@ -72,7 +72,7 @@ class ServerReceiverSetupActivity : ComponentActivity() {
     scroll.addView(root)
     setContentView(scroll)
     root.addView(TextView(this).apply {
-      text = "SERVER RECEIVER"
+      text = "SERVER"
       textSize = 12f
       letterSpacing = .18f
       setTextColor(0xff72e6b0.toInt())
@@ -84,7 +84,7 @@ class ServerReceiverSetupActivity : ComponentActivity() {
       setPadding(0, 8, 0, 8)
     })
     root.addView(TextView(this).apply {
-      text = "This small companion listens for a cellular call from a verified Server caller when this phone has no internet connection. It does not carry the conversation. After the alert, turn on mobile data or Wi-Fi and answer the Server call over the internet."
+      text = "Server can detect a cellular wake-up from an eligible Server caller when this phone has no internet connection. It does not carry the conversation. After the alert, turn on mobile data or Wi-Fi and answer the Server call over the internet."
       textSize = 14f
       setTextColor(0xffb0c0ca.toInt())
       setPadding(0, 0, 0, 18)
