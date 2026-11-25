@@ -32,7 +32,7 @@ internal data class ServerCaller(val serverId: String, val displayName: String)
 internal data class PendingGuestCall(val callId: String, val invitationUrl: String)
 
 internal object ServerReceiverRoster {
-  private const val PREFS = "server_receiver_companion"
+  private const val PREFS = "server_receiver"
   private const val SECRET_KEY = "native_secret"
   private const val ROSTER_KEY = "caller_roster_json"
   private const val KEY_ALIAS = "server.receiver.native-secret-key"
