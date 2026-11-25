@@ -1,4 +1,4 @@
-name: Build Server Receiver Android preview
+name: Build the single Server Android APK
 
 on:
   push:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    name: Compile Server Android caller with Receiver Manager
+    name: Compile Server caller and receiver roles in one APK
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -32,7 +32,7 @@ jobs:
           gradle-version: '8.11.1'
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-      - name: Build the integrated Server APK
+      - name: Build the single Server APK
         run: |
           set -euo pipefail
           gradle -p apps/android-caller assembleDebug --no-daemon --console=plain --stacktrace
@@ -45,12 +45,12 @@ jobs:
           echo "Verifying APK: $APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
           mkdir -p artifacts
-          cp "$APK" artifacts/Server-Receiver-Manager-debug.apk
+          cp "$APK" artifacts/Server-Android-debug.apk
           sha256sum artifacts/Server-Receiver-Manager-debug.apk
           ls -lh artifacts/Server-Receiver-Manager-debug.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: server-receiver-manager-android-apk
+          name: server-single-android-apk
           path: artifacts/Server-Receiver-Manager-debug.apk
           if-no-files-found: error
           retention-days: 14
